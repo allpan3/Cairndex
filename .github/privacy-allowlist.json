@@ -100,6 +100,14 @@
       "provenance": "Playwright capture of fresh synthetic folder, picker and drop fixtures; reviewed edge to edge, with no owner media, paths, accounts, notifications or desktop content"
     },
     {
+      "sha256": "050ec718940ca47975803b8327ac33b73c1ab661db22565cfc9f24eeb2e8894f",
+      "paths": [
+        "docs/screenshots/desktop-file-copies.png"
+      ],
+      "purpose": "Document two dropped files becoming one bundle, with collection and folder",
+      "provenance": "Playwright capture of a fresh synthetic library, collection and generated drop files; reviewed edge to edge, with no owner media, paths, accounts, notifications or desktop content"
+    },
+    {
       "sha256": "89bef834cf7d7f44c467e5e8eb6c497e5fda6c393791e7d450759b4869e646f3",
       "paths": [
         "docs/screenshots/portable-selection.png"

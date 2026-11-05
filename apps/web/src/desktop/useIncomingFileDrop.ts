@@ -41,28 +41,27 @@ export function useIncomingFileDrop(
     onDropCapture: (event: DragEvent) => {
       if (!isFiles(event)) return
       event.preventDefault()
-      event.stopPropagation()
+      // A bundle card that takes files receives a checked drop itself
+      const card = (event.target as Element | null)?.closest?.('[data-file-drop-bundle]')
       const own = selfDrag.current || isHostDragOutActive()
       selfDrag.current = false
-      if (own) return
-      if (!enabled) {
-        onError('File copies are unavailable in the current library state.')
-        return
+      const refuse = (message: string | null) => {
+        event.stopPropagation()
+        if (message) onError(message)
       }
-      if (isBlockingSurfaceOpen()) {
-        onError('Close the open dialog before dragging files in.')
-        return
-      }
+      if (own) return refuse(null)
+      if (!enabled) return refuse('File copies are unavailable in the current library state.')
+      if (isBlockingSurfaceOpen()) return refuse('Close the open dialog before dragging files in.')
       if (
         Array.from(event.dataTransfer.items).some((item) => item.webkitGetAsEntry?.()?.isDirectory)
-      ) {
-        onError('Folder drops are not supported. Select the files inside.')
-        return
-      }
+      )
+        return refuse('Folder drops are not supported. Select the files inside.')
       const files = Array.from(event.dataTransfer.files)
       const error = incomingFilesError(files)
-      if (error) onError(error)
-      else onFiles(files)
+      if (error) return refuse(error)
+      if (card) return
+      event.stopPropagation()
+      onFiles(files)
     },
   }
 }

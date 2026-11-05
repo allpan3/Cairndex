@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { proxyApi, startBackend, stopBackend } from './realBackend'
 
-test('Write Mode immediately enables reviewed file and folder renames @fullstack', async ({
+test('write mode enables file and folder renames that apply on Enter @fullstack', async ({
   page,
 }) => {
   test.setTimeout(150_000)
@@ -50,15 +50,11 @@ test('Write Mode immediately enables reviewed file and folder renames @fullstack
     await page.getByRole('menuitem', { name: 'Rename…', exact: true }).click()
     await page.getByRole('textbox', { name: 'Rename Folder', exact: true }).fill('Renamed')
     await page.getByRole('textbox', { name: 'Rename Folder', exact: true }).press('Enter')
-    const review = page.getByRole('dialog', { name: 'Review rename', exact: true })
-    const apply = review.getByRole('button', { name: 'Apply reviewed operation', exact: true })
-    await expect(apply).toBeEnabled({ timeout: 20_000 })
-    expect(await readFile(join(root, 'Folder/amber.txt'), 'utf8')).toBe('Synthetic amber')
-    await apply.click()
-    await expect(review.getByRole('heading', { name: 'rename: succeeded' })).toBeVisible({
+    // Enter is the approval: the rename runs as one journaled operation, with Undo
+    await expect(page.getByText('Renamed “Folder” to “Renamed”.')).toBeVisible({
       timeout: 20_000,
     })
-    await review.getByRole('button', { name: 'Close', exact: true }).click()
+    expect(await readFile(join(root, 'Renamed/amber.txt'), 'utf8')).toBe('Synthetic amber')
     await files.getByRole('row').filter({ hasText: 'Renamed' }).dblclick()
     const amber = files.getByRole('row').filter({ hasText: 'amber.txt' })
     await amber.click()
@@ -67,13 +63,9 @@ test('Write Mode immediately enables reviewed file and folder renames @fullstack
     const name = inspector.getByRole('textbox', { name: 'Rename amber.txt' })
     await name.fill('gold.txt')
     await name.press('Enter')
-    await expect(apply).toBeEnabled({ timeout: 20_000 })
-    expect(await readFile(join(root, 'Renamed/amber.txt'), 'utf8')).toBe('Synthetic amber')
-    await apply.click()
-    await expect(review.getByRole('heading', { name: 'rename: succeeded' })).toBeVisible({
+    await expect(page.getByText('Renamed “amber.txt” to “gold.txt”.')).toBeVisible({
       timeout: 20_000,
     })
-    await review.getByRole('button', { name: 'Close', exact: true }).click()
     expect(await readFile(join(root, 'Renamed/gold.txt'), 'utf8')).toBe('Synthetic amber')
     await expect(files.getByRole('row').filter({ hasText: 'gold.txt' })).toBeVisible()
 
@@ -89,7 +81,7 @@ test('Write Mode immediately enables reviewed file and folder renames @fullstack
     const keyboardName = files.getByRole('textbox', { name: 'Rename gold.txt' })
     await keyboardName.fill('cancelled.txt')
     await keyboardName.press('Escape')
-    await expect(review).toHaveCount(0)
+    await expect(page.getByText('Renaming “gold.txt”')).toHaveCount(0)
     await access(join(root, 'Renamed/gold.txt'))
     await expect(page.getByRole('alert')).toHaveCount(0)
   } finally {

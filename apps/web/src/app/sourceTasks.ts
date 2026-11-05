@@ -1,0 +1,122 @@
+import type { SourceRequest } from '../api/sourceOperations'
+
+/** Where one item of a background source task stands. */
+export type TaskItemState =
+  | { kind: 'waiting' }
+  | { kind: 'sending' }
+  | { kind: 'checking'; percent: number | null }
+  | { kind: 'applying'; percent: number | null }
+  | {
+      kind: 'done'
+      destination: string
+      operation: string
+      skipped: boolean
+      /** The catalog file at the destination, and whether this operation made it. */
+      file: string | null
+      created: boolean
+    }
+  | { kind: 'exists' }
+  | { kind: 'failed'; message: string }
+
+/** One journaled operation inside a task, with the bytes it uploads first, if any. */
+export interface TaskItem {
+  name: string
+  size: number | null
+  file?: File
+  request: SourceRequest
+  state: TaskItemState
+}
+
+/** What happens once every item of a task has landed. */
+export type TaskFinish =
+  | { kind: 'none' }
+  | { kind: 'new-bundle'; title: string; collections: string[] }
+  | { kind: 'add-to-bundle'; bundle: string; title: string }
+  | { kind: 'delete-bundle'; bundle: string }
+
+/**
+ * A group of source operations the owner started with one click: files copied
+ * in from this computer, a move, a trash or an undo. It runs in the background
+ * and reports in the sidebar; only a question (an occupied name) or a failure
+ * keeps it there after it ends.
+ */
+export interface SourceTask {
+  id: string
+  /** Present-tense headline while it runs, such as "Copying 3 files to Trips". */
+  title: string
+  /** Past-tense message once it ends, such as "Copied 3 files to Trips". */
+  summary: string
+  /** Whether Undo is offered when it ends; an undo is not undone again. */
+  undoable: boolean
+  items: TaskItem[]
+  finish: TaskFinish
+  running: boolean
+  stopping: boolean
+  /** A failure of the finishing step, after every item landed. */
+  error: string
+}
+
+export const noun = (count: number) => (count === 1 ? '1 file' : `${count.toLocaleString()} files`)
+
+/** The folder's own name, or "Library" for the root. */
+export const folderLabel = (folder: string) => (folder ? folder.split('/').at(-1)! : 'Library')
+
+export const joinPath = (folder: string, name: string) => (folder ? `${folder}/${name}` : name)
+
+export const parentFolder = (path: string) =>
+  path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+
+const stem = (name: string) => (name.includes('.') ? name.slice(0, name.lastIndexOf('.')) : name)
+
+/**
+ * A name for the bundle the dropped files become: the stem they share
+ * ("Harbor at dusk" for its .mp4 and .srt), else the largest file's stem,
+ * which is usually the main media rather than a sidecar.
+ */
+export function suggestBundleTitle(files: { name: string; size: number }[]): string {
+  if (files.length === 0) return ''
+  const stems = files.map((file) => stem(file.name))
+  let shared = stems[0]!
+  for (const next of stems.slice(1)) {
+    let length = 0
+    while (length < shared.length && shared[length] === next[length]) length += 1
+    shared = shared.slice(0, length)
+  }
+  // A prefix that stops inside a word ("clip-0" of clip-01 and clip-02) keeps whole words
+  const word = /[\p{L}\p{N}]/u
+  if (
+    word.test(shared.at(-1) ?? '') &&
+    stems.some((name) => name.length > shared.length && word.test(name[shared.length]!))
+  )
+    shared = shared.replace(/[\p{L}\p{N}]+$/u, '')
+  shared = shared.replace(/[\s._-]+$/, '')
+  if (shared.length >= 3) return shared
+  const largest = files.reduce((best, file) => (file.size > best.size ? file : best))
+  return stem(largest.name)
+}
+
+/** The folder most of these library paths sit in; ties go to the first seen. */
+export function mostCommonFolder(paths: (string | null | undefined)[]): string | null {
+  const counts = new Map<string, number>()
+  for (const path of paths)
+    if (path) counts.set(parentFolder(path), (counts.get(parentFolder(path)) ?? 0) + 1)
+  let best: string | null = null
+  for (const [folder, count] of counts)
+    if (best === null || count > counts.get(best)!) best = folder
+  return best
+}
+
+/** How far along a task is, from 0 to 1, counting the item in progress by its percent. */
+export function taskProgress(task: SourceTask): number {
+  if (task.items.length === 0) return 1
+  let done = 0
+  for (const item of task.items) {
+    if (item.state.kind === 'done') done += 1
+    else if (
+      (item.state.kind === 'checking' || item.state.kind === 'applying') &&
+      item.state.percent !== null
+    )
+      done += item.state.percent / 100 / 2 + (item.state.kind === 'applying' ? 0.5 : 0)
+  }
+  return done / task.items.length
+}

@@ -207,12 +207,14 @@ Directory members are not recursed. Browser builds have no native drag-out.
 
 Incoming files use HTML File drops and the file picker. Tauri native drop
 interception remains off so internal HTML drags still reach the application.
-A drop opens the portable source-operation dialog. Add Files opens the same
-workflow. Copies target the current File Browser folder, or the library root
-on other surfaces. The owner enables writes, prepares each copy, inspects its
-saved review and explicitly applies it. Each file has stable upload and operation
-identities. Cancellation stops the in-flight upload. Prepared reviews remain
-available. A selection is limited to 128 regular files, each at most 128 GiB.
+A drop opens the incoming-files dialog; Add Files opens the same dialog. In the
+Bundle Browser the files become a new bundle, or join the bundle card they were
+dropped on; in the File Browser they copy into the open folder. Copy runs in the
+background and reports in the sidebar, and each file is its own journaled
+operation with stable upload and operation identities. Stop cancels what has not
+been applied. A selection is limited to 128 regular files, each at most 128 GiB.
+Move needs the dropped files' native paths, so it waits for native drop handling
+and its own ADR.
 
 This workflow does not infer host paths from File names. In-place linking of
 existing library files uses reviewed Update and manual bundling, rather than

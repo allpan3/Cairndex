@@ -6,6 +6,7 @@ import type { components } from '../api/schema'
 import type { BundleSort, SortOrder } from '../api/client'
 import type { BundleCardItem } from './BundleCard'
 import { Browser, type BrowserNavigation } from './Browser'
+import { mostCommonFolder, parentFolder } from './sourceTasks'
 import { Toolbar } from './Toolbar'
 import {
   type BrowsePrefs,
@@ -142,6 +143,8 @@ export function CatalogBundleBrowser({
   headerTrailing,
   onScreen = true,
   onFilterTag,
+  onDropFilesOnBundle,
+  onDropContext,
 }: {
   library: string
   locateRequest: number
@@ -192,6 +195,13 @@ export function CatalogBundleBrowser({
   /** On screen; the View menu's zoom applies only then. */
   onScreen?: boolean
   onFilterTag?: (id: string) => void
+  /** Files dropped on one card, with the folder that bundle's files live in. */
+  onDropFilesOnBundle?: (
+    files: File[],
+    bundle: { id: string; title: string; folder: string | null },
+  ) => void
+  /** Where files dropped on this view should go: its collection and likeliest folder. */
+  onDropContext?: (context: { collection: string | null; folder: string | null }) => void
 }) {
   const status = useReplicaStatus(library).data
   const localHistoryEnabled = (status?.browse_version ?? 0) >= 11
@@ -339,6 +349,15 @@ export function CatalogBundleBrowser({
       ) ?? [],
     [browse.data, localHistoryEnabled, leaving],
   )
+  // A new bundle dropped here most likely belongs beside this view's bundles
+  const collectionId = selection.collectionId ?? null
+  const dropFolder = useMemo(
+    () => (collectionId ? mostCommonFolder(items.map((item) => item.resume_relative_path)) : null),
+    [collectionId, items],
+  )
+  useEffect(() => {
+    onDropContext?.({ collection: collectionId, folder: dropFolder })
+  }, [onDropContext, collectionId, dropFolder])
   const scopeFor = (text: string) =>
     JSON.stringify([
       library,
@@ -996,6 +1015,19 @@ export function CatalogBundleBrowser({
               onContextMenu={bundleMenu}
               onEmptyContextMenu={emptyMenu}
               onReorder={reorder}
+              onDropFilesOnBundle={
+                onDropFilesOnBundle &&
+                ((id, files) => {
+                  const item = items.find((candidate) => candidate.id === id)
+                  onDropFilesOnBundle(files, {
+                    id,
+                    title: item?.title ?? '',
+                    folder: item?.resume_relative_path
+                      ? parentFolder(item.resume_relative_path)
+                      : null,
+                  })
+                })
+              }
               onBundleDragStart={onBundleDrag}
               onBundleDragEnd={onBundleDrag && (() => onBundleDrag(null))}
               isLoading={browse.isPending}

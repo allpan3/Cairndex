@@ -1,8 +1,8 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CatalogQueryContext } from '../api/catalogQuery'
 import { AllTagsPage } from './AllTagsPage'
 import type { FileBrowserEntry, FileSelection, LibraryRead } from '../api/client'
-import { useTags } from '../api/hooks'
+import { useTags, useWriteMode } from '../api/hooks'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import { getHostLabels, hostAltKeyHeld } from '../platform'
 import { CatalogBundleBrowser } from './CatalogBundleBrowser'
@@ -16,7 +16,7 @@ import { CatalogUnbundledBrowser } from './CatalogUnbundledBrowser'
 import { CatalogFileDetails } from './CatalogFileDetails'
 import { useLibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { useHostFileMenu } from '../desktop/useHostFileMenu'
-import { useIncomingFileDrop } from '../desktop/useIncomingFileDrop'
+import { incomingFilesError, useIncomingFileDrop } from '../desktop/useIncomingFileDrop'
 import type { PendingDeepLink } from './deepLinkUri'
 import { installDragCopyTracking, setActiveDrag, type DragItem } from './dnd'
 import { usePersistentState } from '../state/usePersistentState'
@@ -24,23 +24,33 @@ import { CatalogToast, type CatalogNotice } from './CatalogToast'
 import { useCatalogCollections } from './useCatalogCollections'
 import { useNavigationHistory } from './useNavigationHistory'
 import { AddToBundleDialog, CreateBundleDialog } from './ManualBundlingDialogs'
-import { useSourceRename } from './useSourceRename'
-import { SourceRenameDialog } from './SourceRenameDialog'
+import { IncomingDialog, type IncomingTarget } from './IncomingDialog'
+import { SourceTaskProgress } from './SourceTaskProgress'
+import { useSourceTasks } from './useSourceTasks'
+import { renameError, renameTask } from './sourceActions'
+import { RelocateDialog, TrashDialog } from './SourceActionDialogs'
+import { CatalogTrashBrowser } from './CatalogTrashBrowser'
+import { useTrash, useUnfinishedOperations } from './useSourceLists'
+import { UnfinishedOperationsDialog, UnfinishedOperationsNotice } from './UnfinishedOperations'
+import { isBlockingSurfaceOpen } from '../desktop/fileDrop'
 
 /** One navigable place, for Back/Forward. */
 interface Place {
   mode: AppMode
   selection: Selection
-  unbundled: boolean
+  scope: FileScope
   path: string
 }
+
+/** What the Files surface lists: a folder, the Unbundled queue or the Trash. */
+type FileScope = 'browse' | 'unbundled' | 'trash'
 
 const samePlace = (a: Place, b: Place) =>
   a.mode === b.mode &&
   a.selection.view === b.selection.view &&
   (a.selection.collectionId ?? null) === (b.selection.collectionId ?? null) &&
   (a.selection.smartCollectionId ?? null) === (b.selection.smartCollectionId ?? null) &&
-  a.unbundled === b.unbundled &&
+  a.scope === b.scope &&
   a.path === b.path
 
 function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
@@ -69,7 +79,6 @@ function TagNavigation({ onSelect }: { onSelect: (id: string) => void }) {
   )
 }
 
-import { SourceOperations } from './SourceOperations'
 import { CatalogLibraryActions } from './CatalogLibraryActions'
 import { InspectorToggle, SidebarToggle } from './PanelToggles'
 import { PanelResizer } from './PanelResizer'
@@ -115,13 +124,13 @@ export function CatalogOrdinaryBrowser(props: {
   libraryNotices?: (onNotice: (notice: CatalogNotice) => void) => ReactNode
 }) {
   const [mode, setMode] = useState<AppMode>('collection')
-  const [fileOperations, setFileOperations] = useState(false)
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
   const [filters, setFilters] = useState(emptyAdHocFilters)
   const [locateRequest, setLocateRequest] = useState(0)
   // The file Locate in Bundle Browser opens its bundle on
   const [locateFile, setLocateFile] = useState<LocatedFile | null>(null)
-  const [unbundled, setUnbundled] = useState(false)
+  const [fileScope, setFileScope] = useState<FileScope>('browse')
+  const unbundled = fileScope === 'unbundled'
   const [path, setPath] = useState('')
   const [file, setFile] = useState<FileBrowserEntry | null>(null)
   // A file the bundle menu asked to show; the File Browser selects it on arrival
@@ -129,7 +138,29 @@ export function CatalogOrdinaryBrowser(props: {
   const [player, setPlayer] = useState(DEFAULT_PLAYER_PREFS)
   const [bundleHostPath, setBundleHostPath] = useState<string | null>(null)
   const [unbundledHostPath, setUnbundledHostPath] = useState<string | null>(null)
-  const [incoming, setIncoming] = useState<File[] | null>(null)
+  const [incoming, setIncoming] = useState<{ files: File[]; target: IncomingTarget } | null>(null)
+  const [action, setAction] = useState<{
+    kind: 'copy' | 'move' | 'trash'
+    paths: string[]
+  } | null>(null)
+  const [reviewUnfinished, setReviewUnfinished] = useState(false)
+  const filePicker = useRef<HTMLInputElement>(null)
+  // The Bundle Browser's open collection and the folder its bundles share
+  const dropContext = useRef<{ collection: string | null; folder: string | null }>({
+    collection: null,
+    folder: null,
+  })
+  const onDropContext = useCallback(
+    (context: { collection: string | null; folder: string | null }) => {
+      dropContext.current = context
+    },
+    [],
+  )
+  // The folder the last files went to, per library, for drops with no better hint
+  const [lastFolders, setLastFolders] = usePersistentState<Record<string, string>>(
+    'cairndex.incomingFolders',
+    {},
+  )
   // The one transient message, at the foot of the window as v0.2.1 showed it
   const [notice, setNotice] = useState<CatalogNotice | null>(null)
   const dismissNotice = useCallback(() => setNotice(null), [])
@@ -187,7 +218,7 @@ export function CatalogOrdinaryBrowser(props: {
       ...previous,
       tags: { ...emptyAdHocFilters().tags, include: [id] },
     }))
-    setUnbundled(false)
+    setFileScope('browse')
     setMode('collection')
   }, [])
   useEffect(() => {
@@ -204,7 +235,7 @@ export function CatalogOrdinaryBrowser(props: {
     )
     setFile(null)
     setLocated(directory ? null : relative)
-    setUnbundled(false)
+    setFileScope('browse')
     setMode('file')
   }, [])
   // Locate in Bundle Browser, as in v0.2.1: All bundles, no filters, the bundle
@@ -214,7 +245,7 @@ export function CatalogOrdinaryBrowser(props: {
     (bundle: string, located: LocatedFile | null) => {
       setSelection({ view: 'all', collectionId: null })
       setFilters(emptyAdHocFilters())
-      setUnbundled(false)
+      setFileScope('browse')
       onSelect(bundle)
       setLocateFile(located)
       setLocateRequest((value) => value + 1)
@@ -230,7 +261,7 @@ export function CatalogOrdinaryBrowser(props: {
   // The drop reads Option/Alt (add, do not move) from whichever signal the engine delivers
   useEffect(() => installDragCopyTracking(document, hostAltKeyHeld), [])
   const openPlace = useCallback((next: Selection) => {
-    setUnbundled(false)
+    setFileScope('browse')
     setSelection(next)
     // A filter left over from the last place would quietly empty this one
     setFilters(emptyAdHocFilters())
@@ -252,13 +283,13 @@ export function CatalogOrdinaryBrowser(props: {
     dragItem,
   })
   const place = useMemo(
-    () => ({ mode, selection, unbundled, path }),
-    [mode, selection, unbundled, path],
+    () => ({ mode, selection, scope: fileScope, path }),
+    [mode, selection, fileScope, path],
   )
   const history = useNavigationHistory(place, samePlace, (next) => {
     setMode(next.mode)
     setSelection(next.selection)
-    setUnbundled(next.unbundled)
+    setFileScope(next.scope)
     setPath(next.path)
     setFile(null)
     setLocated(null)
@@ -274,15 +305,18 @@ export function CatalogOrdinaryBrowser(props: {
     </>
   )
   const headerTrailing = <InspectorToggle visible={panels.inspector} onToggle={toggleInspector} />
+  const sourceEnabled = Boolean(props.sourceOperationsEnabled && !props.blocked)
   useDesktopMenu((action) => {
     if (action === 'toggle-sidebar') toggleSidebar()
     else if (action === 'toggle-inspector') toggleInspector()
     else if (action === 'show-bundles' || action === 'new-bundle') {
-      setUnbundled(false)
+      setFileScope('browse')
       setMode('collection')
     } else if (action === 'show-files') {
-      setUnbundled(false)
+      setFileScope('browse')
       setMode('file')
+    } else if (action === 'add-files' && sourceEnabled && !isBlockingSurfaceOpen()) {
+      filePicker.current?.click()
     } else if (action === 'new-collection' && !props.blocked) {
       // The sidebar asks for the name, so it must be open
       setPanels((previous) => ({ ...previous, sidebar: true }))
@@ -303,7 +337,7 @@ export function CatalogOrdinaryBrowser(props: {
     if (deepLink.unknownLibrary) {
       setNotice({ text: 'This link points at a library that is not on this server.', alert: true })
     } else {
-      setUnbundled(false)
+      setFileScope('browse')
       setMode('collection')
       if (deepLink.kind === 'bundle') {
         setSelection({ view: 'all', collectionId: null })
@@ -318,12 +352,46 @@ export function CatalogOrdinaryBrowser(props: {
     /* eslint-enable react-hooks/set-state-in-effect */
     onDeepLinkHandled?.()
   }, [deepLink, onDeepLinkHandled, onSelect])
-  const sourceEnabled = Boolean(props.sourceOperationsEnabled && !props.blocked)
-  const sourceRename = useSourceRename(props.library, sourceEnabled, (text) =>
-    setNotice({ text, alert: true }),
-  )
   const libraryName = props.libraries.find((item) => item.id === props.library)?.name ?? 'Library'
-  const incomingDrop = useIncomingFileDrop(sourceEnabled, setIncoming, (text) =>
+  const tasks = useSourceTasks(props.library, setNotice)
+  // Write mode in Libraries is the one switch; each action below is its own operation
+  const writeMode = useWriteMode(props.library, sourceEnabled)
+  const writable = sourceEnabled && writeMode.data?.effective === true
+  const trash = useTrash(props.library, sourceEnabled, mode === 'file' && fileScope === 'trash')
+  const unfinished = useUnfinishedOperations(props.library, sourceEnabled, tasks)
+  const rename = writable
+    ? (path: string, newName: string) => {
+        const name = newName.trim()
+        if (!name || name === path.split('/').at(-1)) return
+        const error = renameError(name)
+        if (error) setNotice({ text: error, alert: true })
+        else tasks.start(renameTask(path, name))
+      }
+    : undefined
+  const sourceAction = writable
+    ? (kind: 'copy' | 'move' | 'trash', paths: string[]) => {
+        if (paths.length > 0) setAction({ kind, paths })
+      }
+    : undefined
+  // Where incoming files go follows where they arrived: the open folder, or a
+  // new bundle beside the bundles of the open collection
+  const receive = (files: File[]) => {
+    const remembered = lastFolders[props.library] ?? ''
+    setIncoming({
+      files,
+      target:
+        mode === 'file' && fileScope === 'browse'
+          ? { kind: 'folder', folder: path }
+          : mode === 'collection' && manualBundling
+            ? {
+                kind: 'new-bundle',
+                collection: dropContext.current.collection,
+                folder: dropContext.current.folder ?? remembered,
+              }
+            : { kind: 'folder', folder: remembered },
+    })
+  }
+  const incomingDrop = useIncomingFileDrop(sourceEnabled, receive, (text) =>
     setNotice(text ? { text, alert: true } : null),
   )
   const hostFiles = useLibraryHostFiles(
@@ -364,12 +432,19 @@ export function CatalogOrdinaryBrowser(props: {
             mode={mode}
             onMode={(next) => {
               setMode(next)
-              setUnbundled(false)
+              setFileScope('browse')
             }}
             systemViewsEnabled={props.systemViewsEnabled}
-            unbundled={unbundled}
+            fileScope={fileScope}
             onUnbundled={() => {
-              setUnbundled(true)
+              setFileScope('unbundled')
+              setMode('file')
+            }}
+            // Shown while write mode is on, or while the Trash holds anything:
+            // turning write mode off must not make trashed files look gone
+            showTrash={writable || trash.rows.length > 0}
+            onTrash={() => {
+              setFileScope('trash')
               setMode('file')
             }}
             selection={selection}
@@ -389,7 +464,16 @@ export function CatalogOrdinaryBrowser(props: {
             onRenameCollectionHandled={() => setRenameCollection(null)}
             collections={collections}
             onNotice={setNotice}
-            activity={props.libraryNotices?.(setNotice)}
+            activity={
+              <>
+                <SourceTaskProgress tasks={tasks} />
+                <UnfinishedOperationsNotice
+                  count={unfinished.length}
+                  onReview={() => setReviewUnfinished(true)}
+                />
+                {props.libraryNotices?.(setNotice)}
+              </>
+            }
             libraryActions={
               <CatalogLibraryActions
                 update={
@@ -404,11 +488,7 @@ export function CatalogOrdinaryBrowser(props: {
                 }
                 items={[
                   ...(sourceEnabled
-                    ? [
-                        { label: 'Add Files…', onClick: () => setFileOperations(true) },
-                        { label: 'File Operations…', onClick: () => setFileOperations(true) },
-                        null,
-                      ]
+                    ? [{ label: 'Add Files…', onClick: () => filePicker.current?.click() }, null]
                     : []),
                   ...props.libraryMenu,
                 ]}
@@ -419,21 +499,61 @@ export function CatalogOrdinaryBrowser(props: {
         )}
         <div className="catalog-ordinary-content">
           {sourceEnabled && (
-            <SourceOperations
-              library={props.library}
-              editor={props.editor}
-              file={mode === 'file' && !unbundled ? file : null}
-              directory={mode === 'file' && !unbundled ? path : ''}
-              onReviewEntity={props.onReviewEntity}
-              incoming={incoming}
-              onDismissIncoming={() => setIncoming(null)}
-              open={fileOperations}
-              onOpen={() => setFileOperations(true)}
-              onClose={() => setFileOperations(false)}
+            <input
+              ref={filePicker}
+              type="file"
+              multiple
+              hidden
+              aria-label="Files to copy into the library"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? [])
+                event.target.value = ''
+                if (files.length === 0) return
+                const error = incomingFilesError(files)
+                if (error) setNotice({ text: error, alert: true })
+                else receive(files)
+              }}
             />
           )}
-          {sourceRename.prepare.variables && (
-            <SourceRenameDialog library={props.library} rename={sourceRename} />
+          {action && action.kind !== 'trash' && (
+            <RelocateDialog
+              library={props.library}
+              action={action.kind}
+              paths={action.paths}
+              onClose={() => setAction(null)}
+              onStart={tasks.start}
+            />
+          )}
+          {action?.kind === 'trash' && (
+            <TrashDialog
+              paths={action.paths}
+              onClose={() => setAction(null)}
+              onStart={tasks.start}
+            />
+          )}
+          {reviewUnfinished && (
+            <UnfinishedOperationsDialog
+              library={props.library}
+              operations={unfinished}
+              enabled={writable}
+              tasks={tasks}
+              onClose={() => setReviewUnfinished(false)}
+            />
+          )}
+          {incoming && (
+            <IncomingDialog
+              library={props.library}
+              files={incoming.files}
+              target={incoming.target}
+              collections={collections.items}
+              onManage={props.onManage}
+              onClose={() => setIncoming(null)}
+              onStart={(task, folder) => {
+                tasks.start(task)
+                setLastFolders((previous) => ({ ...previous, [props.library]: folder }))
+                setIncoming(null)
+              }}
+            />
           )}
           <div hidden={mode !== 'collection'} className="catalog-bundle-surface">
             <CatalogBundleBrowser
@@ -451,6 +571,21 @@ export function CatalogOrdinaryBrowser(props: {
               onShowSubContents={setShowSubContents}
               onOpenCollection={openCollection}
               onFilterTag={filterFromChip}
+              onDropContext={onDropContext}
+              onDropFilesOnBundle={
+                sourceEnabled && manualBundling
+                  ? (files, bundle) =>
+                      setIncoming({
+                        files,
+                        target: {
+                          kind: 'bundle',
+                          bundle: bundle.id,
+                          title: bundle.title,
+                          folder: bundle.folder ?? lastFolders[props.library] ?? '',
+                        },
+                      })
+                  : undefined
+              }
               onRenameCollection={(id) => setRenameCollection({ id })}
               dragItem={dragItem}
               onDragItem={updateDragItem}
@@ -483,10 +618,21 @@ export function CatalogOrdinaryBrowser(props: {
               headerLeading={headerLeading}
               headerTrailing={headerTrailing}
               bundling={manualBundling}
-              onRename={sourceRename.rename}
+              onRename={rename}
+              onSourceAction={sourceAction}
             />
           )}
-          {mode === 'file' && !unbundled && (
+          {mode === 'file' && fileScope === 'trash' && (
+            <CatalogTrashBrowser
+              trash={trash}
+              tasks={tasks}
+              writable={writable}
+              headerLeading={headerLeading}
+              headerTrailing={headerTrailing}
+              onReviewEntity={props.onReviewEntity}
+            />
+          )}
+          {mode === 'file' && fileScope === 'browse' && (
             <div className="catalog-file-surface">
               <FileBrowser
                 catalogLibrary={props.library}
@@ -517,7 +663,8 @@ export function CatalogOrdinaryBrowser(props: {
                 playerPrefs={player}
                 onPlayerPrefs={setPlayer}
                 onLocateBundle={locate}
-                onRename={sourceRename.rename}
+                onRename={rename}
+                onSourceAction={sourceAction}
               />
               <aside className="inspector" aria-label="File inspector">
                 {file ? (
@@ -536,7 +683,7 @@ export function CatalogOrdinaryBrowser(props: {
                           )
                       }}
                       locatable={Boolean(file.bundle_id && !file.unbundled)}
-                      onRename={sourceRename.rename}
+                      onRename={rename}
                     />
                     {!file.linked && status?.path_media_version !== 1 && (
                       <p>Update the server to preview unindexed files.</p>
@@ -569,7 +716,7 @@ export function CatalogOrdinaryBrowser(props: {
           onCreated={(collection, added) => {
             // The point of the action is the collection, so land in it, as legacy did
             setFolder(null)
-            setUnbundled(false)
+            setFileScope('browse')
             setSelection({ view: 'all', collectionId: collection.id })
             setMode('collection')
             setNotice({

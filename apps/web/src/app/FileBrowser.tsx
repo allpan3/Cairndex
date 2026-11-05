@@ -137,8 +137,10 @@ interface FileBrowserProps {
   // (ADR-0013: the per-library opt-in *and* the deployment switch). False keeps
   // the browser exactly as it was before write mode existed.
   writeMode?: boolean
-  /** Portable Rename prepares a reviewed source operation instead of a legacy write. */
+  /** Portable Rename runs a journaled source operation instead of a legacy write. */
   onRename?: (relativePath: string, newName: string) => void
+  /** Portable Copy to…, Move to… and Move to Trash, in place of the legacy writes. */
+  onSourceAction?: (action: 'copy' | 'move' | 'trash', relativePaths: string[]) => void
   // Transient message, with an Undo action when the operation has an inverse.
   onFlash?: (message: string, undo?: () => void) => void
   // App-owned so an upload survives navigation and reports in the sidebar
@@ -654,6 +656,7 @@ function FileList({
   path: currentPath,
   writeMode = false,
   onRename,
+  onSourceAction,
   onFlash,
   onImportFiles,
   libraryName,
@@ -845,7 +848,14 @@ function FileList({
     if (canRename) {
       items.push(null, { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) })
     }
-    if (writeMode) {
+    if (onSourceAction) {
+      const paths = [entry.relative_path]
+      items.push(
+        { label: 'Copy to…', onClick: () => onSourceAction('copy', paths) },
+        { label: 'Move to…', onClick: () => onSourceAction('move', paths) },
+        { label: 'Move to Trash', onClick: () => onSourceAction('trash', paths) },
+      )
+    } else if (writeMode) {
       items.push(
         { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
         // A folder's own delete takes everything inside it, in one operation.
@@ -884,7 +894,7 @@ function FileList({
       )
       if (hostItems.length > 0) items.push(...hostItems)
     }
-    if (canRename || writeMode) {
+    if (canRename || writeMode || onSourceAction) {
       const writeItems: MenuEntry[] = []
       // Rename acts on one entry; a multi-selection has no single new name.
       if (canRename && n === 1)
@@ -895,7 +905,23 @@ function FileList({
       // Move takes the whole selection, directories included — unlike bundling,
       // which is a files-only action.
       const moveTargets = selectionTargets(entry.relative_path, selected)
-      if (writeMode) {
+      if (onSourceAction) {
+        const many = moveTargets.length > 1
+        writeItems.push(
+          {
+            label: many ? `Copy ${moveTargets.length} Items to…` : 'Copy to…',
+            onClick: () => onSourceAction('copy', moveTargets),
+          },
+          {
+            label: many ? `Move ${moveTargets.length} Items to…` : 'Move to…',
+            onClick: () => onSourceAction('move', moveTargets),
+          },
+          {
+            label: many ? `Move ${moveTargets.length} Items to Trash` : 'Move to Trash',
+            onClick: () => onSourceAction('trash', moveTargets),
+          },
+        )
+      } else if (writeMode) {
         writeItems.push({
           label: moveTargets.length > 1 ? `Move ${moveTargets.length} Items…` : 'Move to…',
           onClick: () => write.askToMove(moveTargets),
@@ -1162,11 +1188,15 @@ function FileList({
       write.startRename(only)
       return
     }
-    if (writeMode && (e.key === 'Delete' || (e.key === 'Backspace' && (e.metaKey || e.ctrlKey)))) {
+    if (
+      (writeMode || onSourceAction) &&
+      (e.key === 'Delete' || (e.key === 'Backspace' && (e.metaKey || e.ctrlKey)))
+    ) {
       if (selected.size === 0) return
       e.preventDefault()
       const paths = [...selected]
-      write.askToDelete(paths, linkedCount(paths))
+      if (onSourceAction) onSourceAction('trash', paths)
+      else write.askToDelete(paths, linkedCount(paths))
     }
   }
 

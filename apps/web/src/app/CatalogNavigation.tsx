@@ -20,8 +20,10 @@ type ViewCounts = components['schemas']['CatalogViewCounts']
 
 export function CatalogNavigation({
   systemViewsEnabled,
-  unbundled,
+  fileScope,
   onUnbundled,
+  showTrash = false,
+  onTrash,
   library,
   editor,
   libraries,
@@ -49,8 +51,11 @@ export function CatalogNavigation({
   onNotice,
 }: {
   systemViewsEnabled: boolean
-  unbundled: boolean
+  /** What the Files surface lists, for the sidebar's active row. */
+  fileScope: 'browse' | 'unbundled' | 'trash'
   onUnbundled: () => void
+  showTrash?: boolean
+  onTrash?: () => void
   library: string
   editor: string
   libraries: LibraryRead[]
@@ -116,8 +121,10 @@ export function CatalogNavigation({
             ? ['all', 'uncategorized', 'untagged', 'recent', 'random', 'missing', 'unbundled']
             : ['all', 'uncategorized', 'untagged', 'recent']
         }
-        fileScope={unbundled ? 'unbundled' : 'browse'}
+        fileScope={fileScope}
         onOpenUnbundled={onUnbundled}
+        showTrash={showTrash}
+        onOpenTrash={onTrash}
         mode={mode}
         onMode={onMode}
         libraries={libraries}

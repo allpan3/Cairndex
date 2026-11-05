@@ -23,6 +23,7 @@ export function CatalogUnbundledBrowser({
   headerTrailing,
   bundling = false,
   onRename,
+  onSourceAction,
 }: {
   library: string
   libraryName: string
@@ -35,6 +36,7 @@ export function CatalogUnbundledBrowser({
   /** Offer Create Bundle and Add to Bundle; the server needs `browse_version: 9`. */
   bundling?: boolean
   onRename?: (relativePath: string, newName: string) => void
+  onSourceAction?: (action: 'copy' | 'move' | 'trash', relativePaths: string[]) => void
 }) {
   const [file, setFile] = useState<FileBrowserEntry | null>(null)
   const [dialog, setDialog] = useState<{
@@ -80,6 +82,7 @@ export function CatalogUnbundledBrowser({
         playerPrefs={player}
         onPlayerPrefs={setPlayer}
         onRename={onRename}
+        onSourceAction={onSourceAction}
       />
       {file?.file_id ? (
         <aside className="inspector" aria-label="File inspector">

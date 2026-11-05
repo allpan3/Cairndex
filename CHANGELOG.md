@@ -290,6 +290,25 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Dropped files become a bundle, join a bundle or land in a folder.** Files
+  dropped in the Bundle Browser's empty space, or chosen with Add Files…, open
+  **Add N files as a new bundle**, with a name taken from the files, the open
+  collection already chosen and a suggested folder. Files dropped on a bundle
+  card join that bundle, in its folder. In the File Browser they copy into the
+  open folder. **Copy** closes the dialog at once: the copies run in the
+  background with their progress in the sidebar, and the result has **Undo**,
+  which moves bundled copies to the Trash.
+  An occupied name waits in the sidebar for Keep Both, Replace or Skip. Each
+  file is still its own journaled operation whose review the click accepts.
+- **Library file actions are single actions, without the File Operations
+  panel.** With write mode on, a file or folder's menu has Rename…, Copy to…,
+  Move to… and Move to Trash, and Delete asks to move the selection to the
+  Trash. Rename applies on Enter rather than through a review dialog. Each
+  action runs in the background like a copy, with Undo. **Trash** in the
+  sidebar lists trashed items with Put Back and replaced versions with Restore
+  a Copy. Write mode is switched only in Libraries. Saved operations from a
+  reload or another window that still wait show in the sidebar with Review….
+
 - Library preparation and the first file scan now explain their server scope.
   Initial scans retain their label across refresh, cancellation and retry;
   later Updates keep the compact progress display. Existing libraries opened
