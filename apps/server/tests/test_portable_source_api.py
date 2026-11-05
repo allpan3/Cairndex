@@ -157,3 +157,60 @@ def test_new_folder_requires_write_permission_through_application(
     registry_session.expire_all()
     run_one(store, tmp_path / "library", authorize)
     assert not (tmp_path / "library/Nested").exists()
+
+
+@pytest.mark.parametrize("status,access", [(-25308, "authorization"), (-25300, "login")])
+def test_source_login_failure_survives_exchange_and_authorization_preserves_intent(
+    isolated_client, registry_session, tmp_path, monkeypatch, status, access
+):
+    import errno
+
+    from cairndex.file_ops import smb_transport
+    from cairndex.replicas import source_claims
+
+    root = tmp_path / "library"
+    identity, _ = create(isolated_client, root)
+    base = f"/api/v1/libraries/{identity}"
+    intent = {"operation": "new-folder", "action": "mkdir", "destination": "Nested"}
+    isolated_client.put(base + "/write-mode", json={"enabled": True})
+    assert isolated_client.post(base + "/source-operations", json=intent).status_code == 202
+    store = service._handles[identity][0]
+    claim = source_claims.claim
+
+    def refuse(*args):
+        error = smb_transport.KeychainError(errno.EACCES, "synthetic private login detail")
+        error.keychain_status = status
+        raise error
+
+    monkeypatch.setattr(source_claims, "claim", refuse)
+    run_one(store, root, lambda: ensure_portable_write_mode(registry_session, identity))
+    target = base + "/source-operations/new-folder"
+    failed = isolated_client.get(target).json()
+    assert failed["state"] == "interrupted"
+    assert failed["result"]["storage_failure"]["access"] == access
+    assert "synthetic private" not in str(failed)
+    service.exchange(identity)
+    assert isolated_client.get(base + "/replica/status").json()["storage_access"] == access
+    asked = []
+    monkeypatch.setattr(smb_transport, "authorize", asked.append)
+    authorized = isolated_client.post(base + "/replica/storage-authorization")
+    assert authorized.status_code == 200
+    assert authorized.json()["storage_access"] is None
+    assert asked == [root]
+    stopped = isolated_client.get(target).json()
+    assert stopped["state"] == "interrupted"
+    assert stopped["request"] == failed["request"]
+    assert stopped["result"]["storage_failure"]["step"] == "claim"
+    assert not (root / "Nested").exists()
+    monkeypatch.setattr(source_claims, "claim", claim)
+    assert isolated_client.post(target + "/retry").status_code == 202
+    run_one(store, root, lambda: ensure_portable_write_mode(registry_session, identity))
+    ready = isolated_client.get(target).json()
+    assert ready["state"] == "prepared"
+    assert (
+        isolated_client.post(target + "/accept", json={"receipt": ready["receipt"]}).status_code
+        == 202
+    )
+    run_one(store, root, lambda: ensure_portable_write_mode(registry_session, identity))
+    assert isolated_client.get(target).json()["state"] == "succeeded"
+    assert (root / "Nested").is_dir()

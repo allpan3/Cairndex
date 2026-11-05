@@ -1,5 +1,6 @@
 """Journaled filesystem phases with exact receipts and conservative restart checks."""
 
+import errno
 import json
 import os
 from collections.abc import Callable
@@ -288,12 +289,15 @@ def run_one(
                 "UPDATE source_operations SET progress=? WHERE id=?", (count, request.operation)
             )
 
+    step = "authorization"
     try:
         authorize()
         from cairndex.replicas.source_claims import claim
 
+        step = "claim"
         claim(store, root, request.operation, request.model_dump(mode="json"))
         if state == "preparing":
+            step = "prepare"
             review = prepare(store, root, request, progress)
             from cairndex.replicas.source_catalog import tracked
 
@@ -327,6 +331,7 @@ def run_one(
                     (value_text(review), request.operation),
                 )
         else:
+            step = "apply"
             before_apply()
             apply(
                 store,
@@ -338,12 +343,43 @@ def run_one(
                 authorize,
             )
     except (OSError, DomainError) as error:
+        from cairndex.file_ops.smb_transport import access_message, access_problem
+
+        access = access_problem(error)
         message = (
             error.message
             if isinstance(error, DomainError)
-            else "Source storage is unavailable; retained intent and versions require retry"
+            else access_message(error)
+            if access
+            else {
+                errno.EACCES: "Storage denied access; check write permissions and retry",
+                errno.EPERM: "Storage denied access; check write permissions and retry",
+                errno.ENOSPC: "Storage is full; free space and retry the retained operation",
+                errno.EROFS: "Storage is read-only; enable writes and retry",
+                errno.ENOTSUP: "Storage lacks a required safe operation; intent retained",
+            }.get(
+                error.errno or 0,
+                "Source storage is unavailable; retained intent and versions require retry",
+            )
         )
         with store.connection() as db:
+            if isinstance(error, OSError):
+                current = db.execute(
+                    "SELECT result FROM source_operations WHERE id=?", (request.operation,)
+                ).fetchone()
+                result = json.loads(current[0] or "{}")
+                # Numeric protocol codes and fixed phases aid diagnosis without
+                # retaining exception text, source paths or network identities.
+                result["storage_failure"] = {
+                    "step": step,
+                    "errno": error.errno,
+                    "ntstatus": getattr(error, "ntstatus", None),
+                    "access": access,
+                }
+                db.execute(
+                    "UPDATE source_operations SET result=? WHERE id=?",
+                    (value_text(result), request.operation),
+                )
             db.execute(
                 "UPDATE source_operations SET state='interrupted',error=? "
                 "WHERE id=? AND state!='cancelled'",
