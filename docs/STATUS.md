@@ -2,8 +2,8 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `b5744685`, qualified on
-2026-11-05. It includes incoming-files dialogs and background tasks on top of
+The local desktop and web test installation is `d8af5311`, qualified on
+2026-11-05. It includes New Folder, incoming-files dialogs and background tasks on top of
 the merged historical audit, latest-Update acceptance, Widen title repair and
 SMB source-read improvement. This is an owner-test installation, not a release.
 Rollback copies and private profiles are preserved. Incoming-files remains
@@ -28,7 +28,7 @@ on a new server even when the library already exists. Later Update scans are
 incremental. See [discovery](replica-discovery.md) for phases and measurements.
 
 [Reviewed conversion](replica-migration.md) retains old metadata and leaves media
-untouched. Source Copy, Rename, Move, Replace, Trash and conditional Undo require
+untouched. Source Copy, Rename, Move, Replace, Trash, New Folder and conditional Undo require
 explicit per-library and deployment permission and a journaled operation.
 Collection membership never moves source files. The
 [source-operation record](source-operations-extraction.md) retains qualification
@@ -69,14 +69,14 @@ Library-only Write Mode and Trash. Immediate Apply uses the exact prepared
 receipt; Enter confirms Rename. Undo for a bundled copy trashes its files and
 removes the task-created bundle. Replace bundling has no Undo. The old storage
 budget, saved-draft and recent-operation panels are removed; the default budget
-remains. Waiting operations cover only the newest page. Native-drop Move remains deferred. New Folder is implemented on the test
-branch with journaled creation and conditional Undo; qualification and an updated
-installation are in progress. See its source-operation documentation for details.
+remains. Waiting operations cover only the newest page. Native-drop Move remains
+deferred. New Folder is installed with journaled creation and conditional Undo;
+owner testing is next. See its source-operation documentation for details.
 
 ## Qualification and evidence
 
-These results qualify the named snapshots. They do not establish a full-suite
-pass for the later three-branch combination.
+These results qualify the named snapshots. The latest New Folder installation
+includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
@@ -87,6 +87,7 @@ pass for the later three-branch combination.
 | Installed combined audit/SMB | Linux 86 backend cases, macOS three Widen cases, 11 selected browser cases per platform; sidecar smoke, four frozen integrations, app-only build, signature and distribution checks |
 | Incoming branch alone | macOS full frontend gate with 1,439 units, production build and 26 browser cases |
 | Installed incoming combination | Full frontend gates with 1,439 units and 14 combined browser cases on each platform; production web/app-only builds, sidecar smoke, four frozen integrations, signature/distribution and installed identity/startup/shutdown checks |
+| Installed New Folder follow-up | Linux 2,061 memory plus 77 disk backend cases; macOS 91 source-operation cases; both-platform backend static and full frontend gates with 1,439 units, seven browser cases per platform; packaged New Folder/Undo smoke, four frozen integrations, app-only build, signature/distribution and installed desktop/web checks |
 
 The full Linux backend runs retain the known ARM manifest exclusion, covered by
 hosted x86 CI. Unchanged Rust, dependency and frontend gates were retained where
@@ -99,7 +100,7 @@ Installed desktop/web identity, health, startup and shutdown checks passed using
 disposable private data. Package bytes, modes and symlinks matched. Profiles and
 private files retained names, modes, sizes and modification times; credentials
 were untouched. Receipts are retained locally under
-`20261105-incoming-files`, `20261104-smb-update-combined` and
+`20261105-new-folder`, `20261105-incoming-files`, `20261104-smb-update-combined` and
 `20261104-widen-title`. The local testing
 checklist records rollback and installation details. Do not publish private
 receipt contents wholesale. Failed attempts remain evidence, not passing gates.
@@ -123,11 +124,11 @@ is not an owner-NAS or full-UI Update benchmark.
   format and mypy checks pass in the Linux guest; the corrected whole-history
   scan passes with all actual private literals retained. Required hosted checks
   also passed on both audit and SMB merge heads.
-- Test incoming-files one workflow at a time, beginning with two synthetic files
-  copied into a new bundle. Keep its branch unmerged until owner acceptance.
-  Combined automated checks and local installation passed; native Finder-drop
-  delivery and interaction quality remain owner checks. Backend and Rust source
-  are unchanged from main, so their full gates were retained rather than rerun.
+- Test incoming-files one workflow at a time, now beginning with right-click →
+  New Folder in File Browser with Write Mode enabled. Keep its branch unmerged
+  until owner acceptance. Combined automated checks and local installation
+  passed; native Finder-drop delivery and interaction quality remain owner
+  checks. Rust source is unchanged, so its existing gates were retained.
 - Complete owner acceptance and representative NAS/media timing. Synthetic
   measurements do not establish large-library readiness on the owner's storage.
 - Provider/cloud delivery, offline delivery, hydration, conflicts, large-scale use
