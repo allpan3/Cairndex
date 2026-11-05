@@ -158,9 +158,13 @@ explains that it reads every byte.
 **Other drafts** appears only when another draft or page is available. The side-view
 entry names the available work: File changes, Saved reviews, or both. Ordinary
 grouping candidates remain reachable through Earlier grouping choices. The file
-change query filters before pagination. Reopening after a newer Update waits for
-a fresh draft list before choosing the draft. Longer explanations are available
-on demand.
+change query filters before pagination. Reopening waits for a fresh draft list
+and opens the latest completed Update, even when an earlier draft retains
+selected files or a prepared review. Earlier drafts keep their choices under
+**Other drafts**. They show an earlier-Update notice and **Open latest Update**,
+because their original file observations may no longer match after source
+changes or an SMB remount. Switching drafts does not refresh their observations
+or bypass source validation. Longer explanations are available on demand.
 
 ![Synthetic grouping review with additions above new suggestions](screenshots/grouping-review-sections.png)
 

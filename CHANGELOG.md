@@ -397,6 +397,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Open Review Discoveries on the latest completed Update. Earlier edited or
+  prepared drafts no longer take precedence over freshly scanned files, which
+  could cause a file-change error after an SMB remount. Earlier drafts retain
+  their choices and show a notice with a link to the latest Update.
+
 - Restore file and folder Rename in the portable File Browser and Unbundled
   list, including keyboard and inspector editing. Write Mode changes take
   effect without restarting. Names enter the existing reviewed source-operation

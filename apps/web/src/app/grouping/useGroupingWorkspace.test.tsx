@@ -158,6 +158,31 @@ describe('private grouping operation lifecycle', () => {
     expect(server.chosen).toEqual(['/workspaces/synthetic-first', '/workspaces/synthetic-second'])
   }, 10_000)
 
+  it.each([null, 'earlier-review'])(
+    'opens the newest Update while retaining an older draft with accepting=%s',
+    async (accepting) => {
+      const older = { ...ready, id: 'earlier-update', accepting }
+      const requests: string[] = []
+      vi.mocked(grouping).mockImplementation(async (_library, path, method = 'GET') => {
+        if (path === '/workspaces')
+          return { items: [older], available_run: ready.id, next_cursor: null }
+        if (method === 'POST') requests.push(path)
+        return path.endsWith(older.id) ? older : ready
+      })
+      vi.mocked(discovery).mockResolvedValue({ id: 'earlier-review', state: 'failed' })
+      const { result } = setup()
+      await waitFor(() => expect(result.current.workspace).toBe(ready.id))
+      expect(result.current.lists.data?.items).toEqual([older])
+      expect(requests).toEqual([`/workspaces/${ready.id}`])
+      // Earlier choices remain available when explicitly selected; polling
+      // must not replace a draft while the owner is working in it.
+      await act(() => result.current.choose(older.id))
+      await act(() => result.current.lists.refetch())
+      expect(result.current.workspace).toBe(older.id)
+      expect(requests).toEqual([`/workspaces/${ready.id}`, `/workspaces/${older.id}`])
+    },
+  )
+
   it('recovers and cancels running verification after the dialog is reopened', async () => {
     vi.mocked(grouping).mockImplementation(async (_library, path) => {
       if (path === '/workspaces')

@@ -213,6 +213,19 @@ function GroupingReviewSession({
               )}
             </div>
           </div>
+          {state.workspace && latest && state.workspace !== latest && (
+            <p className="grp-hint" role="status">
+              This draft is from an earlier Update.{' '}
+              <button
+                className="btn btn--compact"
+                title="Open current suggestions. This draft keeps its saved choices."
+                disabled={choosingBlocked}
+                onClick={() => void state.choose(latest)}
+              >
+                Open latest Update
+              </button>
+            </p>
+          )}
           {collections.error && (
             <p className="grp-error" role="alert">
               Collections could not be loaded, so placement choices are unavailable.{' '}
