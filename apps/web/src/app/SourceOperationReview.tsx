@@ -105,9 +105,10 @@ export function SourceOperationReview({
           )}
           {collisionError && !value.result?.started && (
             <>
-              <p>Nothing was replaced. Choose a different name or cancel this item.</p>
               <ChangeName
                 disabled={busy || !enabled}
+                cancelDisabled={busy}
+                onCancel={() => void act('', undefined, 'DELETE')}
                 name={(value.request.destination ?? '').split('/').at(-1) ?? ''}
                 onChange={(name) => {
                   if (enabled && !busy)
@@ -187,12 +188,15 @@ export function SourceOperationReview({
               ))}
             </section>
           )}
-          {(['queued', 'preparing', 'prepared', 'accepted'].includes(value.state) ||
-            (['applying', 'interrupted'].includes(value.state) && !value.result?.started)) && (
-            <button disabled={busy} onClick={() => void act('', undefined, 'DELETE')}>
-              Cancel item
-            </button>
-          )}
+          {!collisionError &&
+            !value.result?.started &&
+            ['queued', 'preparing', 'prepared', 'accepted', 'applying', 'interrupted'].includes(
+              value.state,
+            ) && (
+              <button disabled={busy} onClick={() => void act('', undefined, 'DELETE')}>
+                Cancel item
+              </button>
+            )}
         </>
       )}
       {error && <p role="alert">{error}</p>}

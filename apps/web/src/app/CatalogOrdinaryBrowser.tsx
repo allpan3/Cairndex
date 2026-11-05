@@ -359,12 +359,12 @@ export function CatalogOrdinaryBrowser(props: {
   const trash = useTrash(props.library, sourceEnabled, mode === 'file' && fileScope === 'trash')
   const unfinished = useUnfinishedOperations(props.library, sourceEnabled, tasks)
   const rename = writable
-    ? (path: string, newName: string) => {
+    ? async (path: string, newName: string) => {
         const name = newName.trim()
         if (!name || name === path.split('/').at(-1)) return
         const error = renameError(name)
-        if (error) setNotice({ text: error, alert: true })
-        else tasks.start(renameTask(path, name))
+        if (error) throw new Error(error)
+        await tasks.name(renameTask(path, name))
       }
     : undefined
   const sourceAction = writable
@@ -488,7 +488,7 @@ export function CatalogOrdinaryBrowser(props: {
           />
         )}
         <div className="catalog-ordinary-content">
-          {(tasks.tasks.length > 0 || unfinished.length > 0) && (
+          {(tasks.tasks.some((task) => !task.inline) || unfinished.length > 0) && (
             <div className="file-activity" aria-label="File activity">
               <SourceTaskProgress tasks={tasks} />
               <UnfinishedOperations
@@ -659,7 +659,7 @@ export function CatalogOrdinaryBrowser(props: {
                 onSourceAction={sourceAction}
                 onNewFolder={
                   writable && status?.source_mkdir
-                    ? (parent, name) => tasks.start(newFolderTask(parent, name))
+                    ? (parent, name) => tasks.name(newFolderTask(parent, name))
                     : undefined
                 }
               />
