@@ -2,22 +2,21 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `1980d16c`, qualified on
-2026-11-04. It includes the historical UI audit, latest-Update acceptance,
-Widen title repair and SMB source-read improvement. This is an owner-test
-installation, not a published release. Rollback copies and private profiles
-are preserved. Owner acceptance remains a release checkpoint.
+The local desktop and web test installation is `b5744685`, qualified on
+2026-11-05. It includes incoming-files dialogs and background tasks on top of
+the merged historical audit, latest-Update acceptance, Widen title repair and
+SMB source-read improvement. This is an owner-test installation, not a release.
+Rollback copies and private profiles are preserved. Incoming-files remains
+unmerged pending the owner's step-by-step acceptance.
 
 [PR #130](https://github.com/allpan3/Cairndex/pull/130) merged the qualified audit
 fixes and privacy correction into main after all required hosted checks passed.
 [PR #131](https://github.com/allpan3/Cairndex/pull/131) merged the separate SMB
 source-read change after all six required checks and the full hosted CI passed.
 
-The incoming-files branch is backed up remotely, not installed, and must remain
-unmerged until combined validation and owner testing are complete. The owner
-authorized its next desktop/web test installation, one branch at a time. Original local branches and
-unfinished worktree edits remain untouched. Publication does not change the
-installed app or authorize a release.
+The incoming-files branch is backed up remotely. Its combined test build is
+installed; owner testing is the remaining merge checkpoint. Original local
+branches and unfinished worktree edits remain untouched. No release is authorized.
 
 ## Implementation and decisions
 
@@ -85,7 +84,8 @@ pass for the later three-branch combination.
 | Widen | Linux 2,042 memory plus 55 disk backend cases; both-platform backend static checks; three new backend regressions; six macOS grouping browser cases and the new Linux browser case |
 | SMB before Widen incorporation | Linux 2,054 memory plus 55 disk backend cases; 20 focused SMB cases per platform; macOS 280 broader source/discovery/recovery cases; static checks on both platforms |
 | Installed combined audit/SMB | Linux 86 backend cases, macOS three Widen cases, 11 selected browser cases per platform; sidecar smoke, four frozen integrations, app-only build, signature and distribution checks |
-| Incoming branch alone | macOS full frontend gate with 1,439 units, production build and 26 browser cases; no Linux browser or desktop package qualification for the combination |
+| Incoming branch alone | macOS full frontend gate with 1,439 units, production build and 26 browser cases |
+| Installed incoming combination | Full frontend gates with 1,439 units and 14 combined browser cases on each platform; production web/app-only builds, sidecar smoke, four frozen integrations, signature/distribution and installed identity/startup/shutdown checks |
 
 The full Linux backend runs retain the known ARM manifest exclusion, covered by
 hosted x86 CI. Unchanged Rust, dependency and frontend gates were retained where
@@ -98,7 +98,8 @@ Installed desktop/web identity, health, startup and shutdown checks passed using
 disposable private data. Package bytes, modes and symlinks matched. Profiles and
 private files retained names, modes, sizes and modification times; credentials
 were untouched. Receipts are retained locally under
-`20261104-smb-update-combined` and `20261104-widen-title`. The local testing
+`20261105-incoming-files`, `20261104-smb-update-combined` and
+`20261104-widen-title`. The local testing
 checklist records rollback and installation details. Do not publish private
 receipt contents wholesale. Failed attempts remain evidence, not passing gates.
 
@@ -121,10 +122,11 @@ is not an owner-NAS or full-UI Update benchmark.
   format and mypy checks pass in the Linux guest; the corrected whole-history
   scan passes with all actual private literals retained. Required hosted checks
   also passed on both audit and SMB merge heads.
-- Review the prepared PR summaries and complete proportional VM regressions for
-  the incoming combination. Qualify any later combined package before install.
-  This cleanup verified source equivalence and documentation; it did not rerun
-  unchanged application suites or qualify the combined incoming runtime.
+- Test incoming-files one workflow at a time, beginning with two synthetic files
+  copied into a new bundle. Keep its branch unmerged until owner acceptance.
+  Combined automated checks and local installation passed; native Finder-drop
+  delivery and interaction quality remain owner checks. Backend and Rust source
+  are unchanged from main, so their full gates were retained rather than rerun.
 - Complete owner acceptance and representative NAS/media timing. Synthetic
   measurements do not establish large-library readiness on the owner's storage.
 - Provider/cloud delivery, offline delivery, hydration, conflicts, large-scale use
