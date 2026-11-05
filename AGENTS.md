@@ -358,6 +358,12 @@ gate and cannot remove commits retained by existing GitHub PR refs.
 
 Documentation is part of implementation, not an optional cleanup step.
 
+Keep `docs/STATUS.md` focused on current implementation, qualification limits,
+unresolved decisions and next steps. Update existing sections when state changes;
+do not append completed checkpoint diaries. Keep durable detail in the relevant
+topic document and use Git history for superseded status, rather than copying
+the diary into an archive.
+
 For every meaningful phase or commit, ask which docs are affected before moving on. If behavior, schema, API, routes, filters, UI, deployment, operations, or product decisions change, update the relevant docs in the same branch and preferably the same commit slice.
 
 Required documentation targets include, as applicable:

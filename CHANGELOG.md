@@ -173,6 +173,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- Keep project status focused on current state and qualification limits; retain
+  SQLite durability measurements in the development guide and superseded status
+  in Git history.
+
 - Wait for the file-change acknowledgement before reloading the bundle-file
   browser test. Delayed acknowledgement coverage checks that the file remains
   alive, leaves the old bundle and keeps controls locked until delivery finishes.

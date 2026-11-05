@@ -640,12 +640,12 @@ because the developer cannot be verified" warning, and that Mac's owner must
 approve it once under System Settings → Privacy & Security → *Open Anyway*.
 
 Do not read the DMG as a substitute for signing. It is not one. You can see the
-difference directly — this is the real output for an ad-hoc build:
+difference directly — this is the real output for an ad-hoc build.
+An ad-hoc build has no signing team:
 
 ```bash
 codesign -dv src-tauri/target/release/bundle/macos/Cairndex.app
 # → Signature=adhoc
-# → TeamIdentifier=not set
 
 spctl --assess --type open --context context:primary-signature -vv \
   src-tauri/target/release/bundle/dmg/Cairndex_0.2.0_aarch64.dmg

@@ -789,6 +789,74 @@ lint/format). `gen:api` uses `npx openapi-typescript` rather than a pinned
 devDependency because that tool's TypeScript peer range does not yet include
 TS 6.
 
+## macOS SQLite durability
+
+The 2026-10-18 qualification measured the macOS policy in
+[ADR-0039](adr/0039-macos-sqlite-durability.md): FULL synchronous and both
+fullfsync flags for every SQLite writer. Linux/Docker policy is unchanged.
+
+Synthetic storage timings on the approved macOS VM, Python 3.12.13 and SQLite
+3.53.1. The columns compare median / p95 milliseconds before and after. Three fresh
+databases per policy, with alternating policy order, supply 150 samples per
+rating mode, 60 batches of each size and 30 checkpoints. Automatic checkpoints
+are disabled for the pooled WAL timings; each explicit checkpoint has 1 MiB of
+new payload.
+These are SQLite transaction timings, excluding API, catalog replay and media
+work. The first row includes opening, committing and closing the last
+connection, which also checkpoints its WAL.
+
+| Storage and operation | Before, median / p95 ms | After, median / p95 ms |
+| --- | ---: | ---: |
+| Local WAL, rating including open/close, previous FULL | 0.62 / 2.02 | 18.45 / 28.69 |
+| Local WAL, pooled rating, previous FULL | 0.10 / 0.32 | 5.24 / 9.38 |
+| Local WAL, pooled rating, previous ORM NORMAL | 0.007 / 0.013 | 5.24 / 9.38 |
+| Local WAL, 32-row batch, previous FULL | 0.26 / 0.49 | 7.19 / 18.77 |
+| Local WAL, 200-row batch, previous ORM NORMAL | 0.41 / 0.44 | 8.20 / 15.20 |
+| Local WAL, 1 MiB checkpoint, previous FULL | 1.03 / 1.52 | 5.25 / 15.93 |
+| Local rollback, rating, previous ORM NORMAL | 0.44 / 0.89 | 17.46 / 24.73 |
+| Local rollback, 200-row batch, previous ORM NORMAL | 1.10 / 1.23 | 21.33 / 34.54 |
+
+On the mounted test SMB share, rollback journaling remained in use. No WAL was
+attempted there. The synthetic file rejected `F_FULLFSYNC` with errno 45,
+`ENOTSUP`, and accepted `fsync`. SQLite commits and integrity checks passed
+with both flags on, consistent with its documented fallback.
+
+| SMB rollback operation | Before ORM NORMAL, median / p95 ms | After, median / p95 ms |
+| --- | ---: | ---: |
+| Rating | 76.81 / 118.36 | 120.79 / 142.70 |
+| 32-row batch | 86.83 / 100.21 | 132.75 / 154.69 |
+| 200-row batch | 106.74 / 152.78 | 151.08 / 181.91 |
+
+With FULL already set and both flags off, the SMB rating median was 118.52 ms
+and the 200-row batch 150.66 ms. Most of the increase therefore comes from
+NORMAL to FULL, rather than the rejected fullfsync call. This cost is acceptable
+for the retained network-library engine and conversion paths. Current portable
+libraries keep their working databases local. The benchmark created only its
+own uniquely named scratch tree, removed it and unmounted its test mount.
+
+The local synthetic file accepted `F_FULLFSYNC`. All benchmark databases passed
+integrity checks and exact scan-row counts. The absolute local costs are
+acceptable for edits and existing scan batches, so scans retain the same
+durability policy. This does not qualify large-library throughput or physical
+power-loss safety. SQLite's fallback and a successful flush request cannot
+establish that the hypervisor, host or NAS persists bytes on stable storage.
+Run `uv run python -m cairndex.devtools.benchmark_sqlite_durability` from
+`apps/server` to reproduce. Gates and benchmarks use isolated synthetic temp
+state; the owner's library, registry and private store are outside the tests.
+
+Both full VM gates ended with `Final result: 0`. macOS passed 1,954 backend
+tests and 137 Rust tests; Linux passed 1,788 + 165 backend tests and 135 Rust
+tests. Both passed 4 frozen binary tests, 154 web test files, all 47 browser
+tests, static checks, sidecar smoke and the web build. The macOS app build and
+distribution check passed too. The documented ARM manifest assertion is
+excluded in the Linux guest and remains covered by hosted x86 CI.
+Docker context/image privacy, API/restart/arbitrary-UID smoke, registry
+backup/restore and private recovery smoke also ended with `Final result: 0`
+against the local test VM daemon. Receipts:
+`fullfsync-ack-final-mac-20261018-230329`,
+`fullfsync-ack-final-linux-20261018-230705` and
+`fullfsync-docker-20261018-230350`.
+
 ## Large-library performance tooling
 
 To profile browse/query performance at scale, generate a synthetic library and
