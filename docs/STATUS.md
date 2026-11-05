@@ -8,10 +8,16 @@ Widen title repair and SMB source-read improvement. This is an owner-test
 installation, not a published release. Rollback copies and private profiles
 are preserved. Owner acceptance remains a release checkpoint.
 
-The incoming-files redesign is prepared on a dependent branch. It is not
-installed, and its combined runtime has not yet been qualified. The preparation
-branches below are unpushed. The owner authorized publishing qualified work and
-merging it after required checks; incoming-files work must remain unmerged.
+[PR #130](https://github.com/allpan3/Cairndex/pull/130) merged the qualified audit
+fixes and privacy correction into main after all required hosted checks passed.
+[PR #131](https://github.com/allpan3/Cairndex/pull/131) merged the separate SMB
+source-read change after all six required checks and the full hosted CI passed.
+
+The incoming-files branch is backed up remotely, not installed, and must remain
+unmerged until combined validation and owner testing are complete. The owner
+authorized its next desktop/web test installation, one branch at a time. Original local branches and
+unfinished worktree edits remain untouched. Publication does not change the
+installed app or authorize a release.
 
 ## Implementation and decisions
 
@@ -47,10 +53,11 @@ Do not restore cross-device metadata reuse as a shortcut for SMB remounts.
 ## Work awaiting consolidation
 
 Original branches remain available as local implementation and evidence records.
-The prepared stack has six audit commits, an independent privacy-gate correction,
-one SMB commit and one incoming-files commit. Application files match the tested audit and installed SMB snapshots;
-the incoming application tree matches a merge of the original branches. Open
-dependent PRs in this order after qualification and publication clearance.
+The prepared stack keeps the audit fixes and privacy correction together,
+followed by the separate SMB and incoming-files changes. Application runtime
+files match the tested audit and installed SMB snapshots; the incoming application
+tree matches a merge of the original branches. Audit and SMB are merged;
+incoming-files now includes main and stays unmerged for owner testing.
 
 | Scope | Original branch | Prepared branch |
 | --- | --- | --- |
@@ -112,7 +119,8 @@ is not an owner-NAS or full-UI Update benchmark.
   a fixed public signing key. Actual private values remain protected. Repeat
   publication audits before each push. All 25 privacy-gate tests, focused lint,
   format and mypy checks pass in the Linux guest; the corrected whole-history
-  scan passes with all actual private literals retained. Merge the qualified audit and SMB PRs only after required checks.
+  scan passes with all actual private literals retained. Required hosted checks
+  also passed on both audit and SMB merge heads.
 - Review the prepared PR summaries and complete proportional VM regressions for
   the incoming combination. Qualify any later combined package before install.
   This cleanup verified source equivalence and documentation; it did not rerun
