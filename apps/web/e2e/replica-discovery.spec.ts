@@ -104,7 +104,9 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
         .uncheck()
       await existingTitle.fill('Unrelated private catalog draft')
       await page.getByRole('button', { name: 'Update', exact: true }).click()
-      await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByText(/(?:Initial scan|Update) complete/)).toBeVisible({
+        timeout: 30_000,
+      })
       await expect(existingTitle).toHaveValue('Unrelated private catalog draft')
       await reviewOpened(page)
       await page
@@ -200,7 +202,9 @@ test('Update reviews private discoveries, preserves drafts and repairs a moved f
     )
     for (const page of pages) {
       await page.getByRole('button', { name: 'Update', exact: true }).click()
-      await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByText(/(?:Initial scan|Update) complete/)).toBeVisible({
+        timeout: 30_000,
+      })
       await reviewDiscoveries(page)
       await expect(page.getByText('No new files or identity choices on this page.')).toBeVisible()
       await closeDiscoveries(page)
@@ -287,7 +291,7 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     await page.getByRole('button', { name: 'Update', exact: true }).click()
     await page.getByRole('button', { name: 'Cancel Update', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Library Update' })).toContainText(
-      'Update cancelled',
+      'Initial scan cancelled',
     )
     await rm(join(roots[0], 'Temporary'), { recursive: true })
     const parked = join(scratch, 'parked')
@@ -299,7 +303,9 @@ test('Update cancellation, retry, malformed drafts and library switching @fullst
     await rename(parked, roots[0])
     await writeFile(join(roots[0], 'new.png'), 'synthetic retry image')
     await page.getByRole('button', { name: 'Update', exact: true }).click()
-    await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(/(?:Initial scan|Update) complete/)).toBeVisible({
+      timeout: 30_000,
+    })
     await reviewOpened(page)
     await page
       .getByRole('navigation', { name: 'Discovery suggestions' })
@@ -412,7 +418,9 @@ test('competing source identities are reviewable on both replicas @fullstack', a
       await page.goto('/')
       await openMetadataReview(page)
       await page.getByRole('button', { name: 'Update', exact: true }).click()
-      await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByText(/(?:Initial scan|Update) complete/)).toBeVisible({
+        timeout: 30_000,
+      })
       await writeFile(join(roots[i], 'Synthetic/雪.mp4'), `synthetic competing source ${i}`)
       const enqueued = page.waitForResponse(
         (response) =>
@@ -535,7 +543,9 @@ test('large Update review keeps later pages and partial acceptance complete @ful
     await openMetadataReview(page)
     await expect(page.getByRole('heading', { name: 'Library catalog', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Update', exact: true }).click()
-    await expect(page.getByText(/Update complete/)).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText(/(?:Initial scan|Update) complete/)).toBeVisible({
+      timeout: 60_000,
+    })
     await reviewOpened(page)
     await page
       .getByRole('navigation', { name: 'Discovery suggestions' })

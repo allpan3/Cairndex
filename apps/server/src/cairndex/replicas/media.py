@@ -19,6 +19,7 @@ from cairndex.media.ffprobe import PROBE_VERSION, ProbeError, normalize_metadata
 from cairndex.persistence.models import AssetFile, SubtitleTrack
 from cairndex.replicas.catalog.projection import read_row
 from cairndex.replicas.catalog.store import CatalogStore
+from cairndex.replicas.media_observations import MediaObservation
 from cairndex.replicas.protocol import ReplicaError
 from cairndex.scanning.media_types import classify
 
@@ -93,8 +94,26 @@ def catalog_file(db: sqlite3.Connection, identity: str) -> AssetFile:
 # A narrow adapter reads authored rows and writes only explicitly private observation tables
 class ReplicaMedia:
     # The store already validates the descriptor and private-directory identity
-    def __init__(self, store: CatalogStore, root: Path, library_id: str) -> None:
+    def __init__(
+        self,
+        store: CatalogStore,
+        root: Path,
+        library_id: str,
+        *,
+        snapshot: sqlite3.Connection | None = None,
+    ) -> None:
         self.store, self.root, self.library_id = store, root, library_id
+        self._snapshot = snapshot
+
+    @contextmanager
+    def _read(self) -> Iterator[sqlite3.Connection]:
+        # A bounded maintenance page shares its caller's snapshot. Its delayed
+        # observations still compare against current rows at the writer boundary.
+        if self._snapshot is not None:
+            yield self._snapshot
+        else:
+            with self.store.connection(readonly=True) as db:
+                yield db
 
     # Pin every input through no-follow directory descriptors for the subprocess lifetime
     @contextmanager
@@ -114,7 +133,7 @@ class ReplicaMedia:
 
     # Read one committed authored entity using its family/identity index
     def row(self, family: str, identity: str) -> dict[str, Any]:
-        with self.store.connection(readonly=True) as db:
+        with self._read() as db:
             value = read_row(db, family, identity)
         if value is None:
             raise NotFoundError("Catalog item is unavailable; refresh the catalog")
@@ -126,7 +145,7 @@ class ReplicaMedia:
             return
         from cairndex.replicas.discovery_sources import inspect
 
-        with self.store.connection(readonly=True) as db:
+        with self._read() as db:
             value = db.execute(
                 "SELECT value FROM catalog_units WHERE unit=?",
                 (f"asset_files/{identity}/$content",),
@@ -146,14 +165,30 @@ class ReplicaMedia:
             )
 
     # Local observations never establish shared presence or overwrite authored choices
-    def file(self, identity: str, *, inspect: bool = False, probe: bool = False) -> AssetFile:
+    def file(
+        self,
+        identity: str,
+        *,
+        inspect: bool = False,
+        probe: bool = False,
+        observations: list[MediaObservation] | None = None,
+    ) -> AssetFile:
         with _FILE_LOCKS[hash((self.store.path, identity)) % len(_FILE_LOCKS)]:
-            return self._inspect_file(identity, inspect=inspect, probe=probe)
+            return self._inspect_file(
+                identity, inspect=inspect, probe=probe, observations=observations
+            )
 
-    def _inspect_file(self, identity: str, *, inspect: bool, probe: bool) -> AssetFile:
+    def _inspect_file(
+        self,
+        identity: str,
+        *,
+        inspect: bool,
+        probe: bool,
+        observations: list[MediaObservation] | None,
+    ) -> AssetFile:
         row = self.row("asset_files", identity)
         kind = classify(row["relative_path"])
-        with self.store.connection(readonly=True) as db:
+        with self._read() as db:
             cached = db.execute("SELECT * FROM local_media WHERE file_id=?", (identity,)).fetchone()
         token = cached["generation"] if cached else None
         state = cached["state"] if cached else "unknown"
@@ -217,22 +252,21 @@ class ReplicaMedia:
                 except (OSError, ProbeError, PathSafetyError, ReplicaError):
                     metadata = None
                     error = "Local media could not be read or probed; retry when it is readable"
-            with self.store.connection() as db:
-                if state == "available" and info is not None:
-                    from cairndex.replicas.catalog.local_history import observed
-
-                    observed(db, identity, row["relative_path"], info.st_size, info.st_mtime_ns)
-                else:
-                    db.execute("DELETE FROM local_file_facts WHERE file_id=?", (identity,))
-                db.execute(
-                    "INSERT INTO local_media VALUES (?, ?, ?, ?, ?) ON CONFLICT(file_id) DO UPDATE "
-                    "SET generation=excluded.generation,state=excluded.state,"
-                    "metadata=excluded.metadata,"
-                    "error=excluded.error WHERE local_media.generation IS NOT excluded.generation "
-                    "OR local_media.state IS NOT excluded.state OR local_media.metadata IS NOT "
-                    "excluded.metadata OR local_media.error IS NOT excluded.error",
-                    (identity, token, state, json.dumps(metadata) if metadata else None, error),
-                )
+            observation = MediaObservation(
+                identity=identity,
+                path=row["relative_path"],
+                generation=token,
+                state=state,
+                metadata=json.dumps(metadata) if metadata else None,
+                error=error,
+                facts=(info.st_size, info.st_mtime_ns) if info else None,
+                previous=tuple(cached) if cached else None,
+            )
+            if observations is not None:
+                observations.append(observation)
+            else:
+                with self.store.connection() as db:
+                    observation.save(db)
         return AssetFile(
             **(row | {"role": FileRole[row["role"]]}),
             media_kind=kind[0] if kind else MediaKind.OTHER,

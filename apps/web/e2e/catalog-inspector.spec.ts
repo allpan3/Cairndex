@@ -89,6 +89,17 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     await expect(
       section('tags').getByRole('button', { name: 'Remove Synthetic child' }),
     ).toBeEnabled()
+    // A tag chip is the same pill as a collection chip, level with its add button
+    const pill = (family: string) =>
+      section(family).locator('.chip').filter({ hasText: 'Synthetic child' }).boundingBox()
+    const tagPill = await pill('tags')
+    const collectionPill = await pill('collections')
+    const addTag = await section('tags').getByRole('button', { name: '+ Tag' }).boundingBox()
+    expect([tagPill?.width, tagPill?.height]).toEqual([
+      collectionPill?.width,
+      collectionPill?.height,
+    ])
+    expect([addTag?.y, addTag?.height]).toEqual([tagPill?.y, tagPill?.height])
     const files = inspector.locator('[data-section="files"]')
     await files.getByRole('button', { name: /^movie\.mp4/ }).click()
     const facts = files.getByRole('region', { name: 'Local file details' })
@@ -134,13 +145,17 @@ test('ordinary inspector saves membership and covers while local facts stay priv
       join(root, 'Playback/movie.mp4'),
       join(root, 'Playback/temporarily-unavailable.mp4'),
     )
-    await facts.getByRole('button', { name: 'Check Again' }).click()
+    // The toolbar's Refresh reads the shown file again
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click()
     await expect(facts).toContainText('Unavailable on this device')
     await rename(
       join(root, 'Playback/temporarily-unavailable.mp4'),
       join(root, 'Playback/movie.mp4'),
     )
-    await facts.getByRole('button', { name: 'Check Again' }).click()
+    // So does selecting it again
+    await files.getByRole('button', { name: /^movie\.mp4/ }).click()
+    await expect(facts).toHaveCount(0)
+    await files.getByRole('button', { name: /^movie\.mp4/ }).click()
     await expect(facts).toContainText('Observed on this device')
     expect(await hash()).toBe(original)
     await page.route('**/replica/status', async (route) => {

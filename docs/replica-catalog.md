@@ -154,7 +154,9 @@ snapshot: All, Recent (every bundle), Uncategorized, Untagged, recorded local
 Missing Files and Unbundled files. Each collection in `/navigation/collections`
 also carries `direct_count`, its own bundles, beside the subtree `count`; the
 sidebar uses the subtree count when a row is folded and its direct count when
-expanded, independently of the listing's Show subcontents preference. A
+expanded, independently of the listing's Show subcontents preference. Each
+count equals the browse total for that destination; a page of them, and the tag
+facets, come from one read that looks up each destination's membership edges. A
 collection thumbnail
 resolves the chosen cover bundle's artwork, or else the earliest browsable bundle
 in the subtree that has any, and serves this device's cached frame with
@@ -276,10 +278,13 @@ Tag selection uses the shared Any/All/Equal rules, exclusions and descendant
 toggle. Queries, facet
 counts and previews apply to the complete eligible population before pagination.
 Saved expression text is never rewritten by browsing or preview. The inspector
-shows a bundle's tags and collections as chips, as v0.2.1 did. Its "+ Tag" and
-"+ Collection" pickers search the complete destination population before
-pagination. Picking a destination or removing a chip commits one stable pair at
-once: the preview retains the displayed edge and lifetime bases, refuses stale or
+shows a bundle's tags and collections as chips, as v0.2.1 did. Its pickers are
+v0.2.1's trees. "+ Tag" shows each tag group and Others as a foldable hierarchy
+with counts, pinyin search and `a/b` creation. "+ Collection" shows recent
+collections, then the collection tree with "only selected" and creation. Picking
+a destination first reads that destination's current bases, and servers before
+selection version 2 keep a search list of the complete destination population.
+Picking a destination or removing a chip commits one stable pair at once: the preview retains the displayed edge and lifetime bases, refuses stale or
 held choices and clears any collection cover that needs the removed pair. A held
 choice opens Metadata review instead. Explicit Add can restore a removed pair but
 cannot restore a deleted bundle or destination. After a lost reply the chips show
@@ -299,9 +304,11 @@ local derivatives in the private cache; missing artwork leaves metadata usable.
 File pages retain catalog order. Selecting one file checks its local bytes and
 shows the shared file inspector. Video facts use a bounded probe; image dimensions
 use a guarded header read. Unknown or unavailable facts do not become zero-size or
-shared availability claims. Check Again reads the selected file again. The shared File
-Browser uses the same details for cataloged files. Cover choice does not change
-the playback cursor or file order.
+shared availability claims. Each selection reads the file again, and so does a change
+in the File Browser listing's state for it. The toolbar's Refresh reads it again with
+the rest of the view, and a finished Update marks every file's details for a new read.
+The shared File Browser uses the same details for cataloged files. Cover choice does
+not change the playback cursor or file order.
 
 File Browser merges one direct local directory listing with retained catalog paths.
 It shows observed local entries, unlinked files and unavailable cataloged entries.
@@ -333,8 +340,11 @@ Servers with `selection_version: 1` support pointer toggles, Shift ranges, marqu
 selection, Up/Down, Home/End and Enter for one selected bundle. With
 `selection_version: 2`, a destination page can name one `target`, which the card
 menu's Remove from This Collection uses. With `selection_version: 3`, the page can
-ask for only the destinations at least one selected bundle has (`assigned: true`),
-which the bulk inspector shows as chips. Cmd/Ctrl+A selects
+ask for only the destinations at least one selected bundle has (`assigned: true`).
+With `selection_version: 4`, it can ask for only the destinations every selected
+bundle has (`common: true`), which the bulk inspector shows as chips, as v0.2.1
+did. Against version 3 the inspector filters the `assigned` page the same way.
+Cmd/Ctrl+A selects
 only the loaded bundle pages; Escape clears selection. Search, filter, sort,
 collection and system-view changes clear the active selection. Appending a page
 does not select its new rows automatically.
@@ -344,8 +354,9 @@ Size sums current selected-card observations only when every total is known;
 otherwise it states that the value is unknown on this device. A title (saved on
 Enter or leaving the field) or a rating replaces one field on all
 listed bundles; picking a destination or removing a chip changes only that
-membership pair. Each change commits at once. Notes are not a bulk field. A chip
-that only some selected bundles have is dashed. Destination search covers the
+membership pair. Each change commits at once. Notes are not a bulk field. Chips
+list only what every selected bundle has; the picker marks a destination that
+only some have with a dash. Destination search covers the
 catalog before pagination. Preview rejects stale or held bases, including changed
 lifetimes, without automatically refreshing them. Apply uses one causal
 transaction and includes dependent collection-cover clears. Later competing
@@ -495,9 +506,31 @@ The pass captures an upper file identity and an initial total once, then uses
 indexed cursor reads. Completion reconciles the total if files changed during
 the pass. A new pass covers files added after its boundary.
 
+One worker pass inspects at most 32 files, checking its 0.25-second budget
+between files. Probing occurs outside the database write lock. The observations
+and progress cursor commit together with the usual durable writer policy.
+Probe pages share one read snapshot; a separate autocommit reader checks current
+cancellation state without reparsing SQLite's schema for every file. Storyboard
+workers keep independent readers because their adapters escape the page's thread.
+The source worker continues these batches independently of metadata exchange,
+which can import and publish history while local inspection proceeds.
+Playback observations and authored path changes that overtake the batch win
+over its delayed results. A failed commit rolls back both facts and progress.
+
+The final browser run completed all 9,018 catalog entries in 159.157 seconds,
+with zero failed probes and 488 skipped entries. The generated library
+uses images and short videos on local VM storage. Admission/import time precedes
+the Collect metadata click and is excluded; browser polling is included.
+
+In an earlier profiled Cairndex macOS run, the first 1,000 files took 40.281 seconds
+before batching. After batching, 1,008 files took 6.231 seconds, with no failed
+or skipped files in either run. These direct-loop measurements use generated
+images and short videos; they exclude browser and history-exchange work.
+
 Cancellation stops subsequent files and aborts an in-flight probe. An already
 queued storyboard may finish because it also serves viewers. Restart retains
-progress; private recovery requires a new explicit pass. Media bytes,
+committed progress; an interrupted batch can be probed again. Private recovery
+requires a new explicit pass. Media bytes,
 shared metadata, playback progress and bundle cursors remain unchanged.
 
 Servers with `path_media_version: 1` also open supported unindexed File Browser
@@ -527,7 +560,10 @@ fails the export. Artifacts use the server's private export directory and its TT
 
 Servers with `storyboard_version: 1` make seek-bar storyboards on request. The
 viewer posts the generation it observed to `/replica/media/files/{id}/storyboard`
-and polls while the reply is `queued` or `running`. One background thread per
+and polls while the reply is `queued` or `running`. A card hover whose storyboard
+is missing posts the same request and loads the storyboard when it is ready, so a
+rest after a skim shows the sprite rather than the cover; v0.2.1's Update made
+these for every video. One background thread per
 server makes the newest waiting request first and keeps at most eight waiting.
 Each decoder pass inherits a fresh pinned descriptor, and the result is published
 only if the observed generation is still current. Storyboards are cached under the
@@ -557,6 +593,13 @@ the observed bases of the moment, the tag and the `moment_tags` edge. A
 ADR-0025 an added tag also adds the `asset_bundle_tags` edge, or restores its
 tombstone, and a held bundle edge refuses the preview. Removing a moment tag or
 deleting the moment leaves the bundle tag.
+
+With `moments_version: 5`, the tag-choice route also accepts an exact `target`.
+Moment pickers use the same grouped, expandable tree as bundle tags, including
+nested path creation and search. Selecting a row reads its current lifetime and
+membership guards before preparing the change; stale or held choices still
+require review. Older servers retain the paged search picker. No stored library
+format changes.
 
 Servers with `moments_version: 3` also make private moment previews.
 `/replica/media/moments/{id}/poster.jpg` returns the frame at the moment's start,

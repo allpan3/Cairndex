@@ -1649,6 +1649,11 @@
             "title": "Assigned",
             "type": "boolean"
           },
+          "common": {
+            "default": false,
+            "title": "Common",
+            "type": "boolean"
+          },
           "family": {
             "enum": [
               "tags",
@@ -4568,6 +4573,91 @@
           "candidate"
         ],
         "title": "DiscoveryPrepare",
+        "type": "object"
+      },
+      "DiscoveryRun": {
+        "additionalProperties": false,
+        "description": "Server-local scan state; absent progress fields stay absent while idle.",
+        "properties": {
+          "completed": {
+            "default": 0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "cursor": {
+            "default": "",
+            "title": "Cursor",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "initial_scan": {
+            "description": "No earlier Update succeeded in this private store",
+            "title": "Initial Scan",
+            "type": "boolean"
+          },
+          "observed": {
+            "default": 0,
+            "title": "Observed",
+            "type": "integer"
+          },
+          "phase": {
+            "default": "",
+            "title": "Phase",
+            "type": "string"
+          },
+          "repaired": {
+            "default": 0,
+            "title": "Repaired",
+            "type": "integer"
+          },
+          "sequence": {
+            "default": 0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "idle",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "required": [
+          "state",
+          "initial_scan"
+        ],
+        "title": "DiscoveryRun",
         "type": "object"
       },
       "DiscoveryStart": {
@@ -26266,6 +26356,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -28992,9 +29099,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Start Api V1 Libraries  Library Id  Replica Discovery Runs Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/DiscoveryRun"
                 }
               }
             },
@@ -29145,9 +29250,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Status Api V1 Libraries  Library Id  Replica Discovery Status Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/DiscoveryRun"
                 }
               }
             },

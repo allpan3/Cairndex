@@ -80,3 +80,11 @@ test('flatten keeps depth but never hides anything', () => {
 
   expect(shape(flattenHierarchy(items))).toEqual(['archive@0', 'year@1'])
 })
+
+test('flatten shows an orphan at the top level, as the visible walk does', () => {
+  // A tag group holds a child tag without its parent; a search over that group
+  // must still list the child
+  const items = [item('child', 'Child', 'absent'), item('top', 'Top')]
+
+  expect(shape(flattenHierarchy(items))).toEqual(['child@0', 'top@0'])
+})

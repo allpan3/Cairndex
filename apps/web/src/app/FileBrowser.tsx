@@ -10,6 +10,7 @@ import { libraryStateKey } from '../state/useBundleDraft'
 import {
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -60,10 +61,11 @@ import {
   selectionTargets,
   type SelectionModifiers,
 } from './selection'
+import { SelectionCount } from './SelectionCount'
 import { navTargetsFrom, rowStep } from './spatialNav'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
-import type { PlayerPrefs, SortOption, SortPref } from './types'
+import type { LocatedFile, PlayerPrefs, SortOption, SortPref } from './types'
 
 // File Browser mirrors the bundle browser's toolbar, but with file-appropriate
 // sort fields (bundles' rating/file-count/date-added don't apply) and only
@@ -125,7 +127,8 @@ interface FileBrowserProps {
   onRevealFile?: (relativePath: string) => void
   onOpenFile?: (relativePath: string) => void
   // Jump to this file's owning confirmed bundle in Bundle Browser
-  onLocateBundle?: (bundleId: string) => void
+  /** Locate the owning bundle, opened on this file when it has a catalog id */
+  onLocateBundle?: (bundleId: string, file: LocatedFile | null) => void
   /** Make a collection out of this folder (its bundles, under a chosen parent). */
   onCollectionFromFolder?: (directory: string) => void
   // Drag file(s) out to Finder/other apps (plan 3 §6); undefined disables it.
@@ -134,6 +137,8 @@ interface FileBrowserProps {
   // (ADR-0013: the per-library opt-in *and* the deployment switch). False keeps
   // the browser exactly as it was before write mode existed.
   writeMode?: boolean
+  /** Portable Rename prepares a reviewed source operation instead of a legacy write. */
+  onRename?: (relativePath: string, newName: string) => void
   // Transient message, with an Undo action when the operation has an inverse.
   onFlash?: (message: string, undo?: () => void) => void
   // App-owned so an upload survives navigation and reports in the sidebar
@@ -145,6 +150,50 @@ function crumbs(path: string): { label: string; path: string }[] {
   if (!path) return []
   const parts = path.split('/')
   return parts.map((label, i) => ({ label, path: parts.slice(0, i + 1).join('/') }))
+}
+
+/**
+ * The folder trail. A trail longer than its share of the row scrolls to its end,
+ * so the current folder stays in view and the root scrolls out first; the auto
+ * margin that right-aligns a short trail does nothing once it overflows.
+ */
+function Breadcrumbs({
+  libraryName,
+  path,
+  onNavigate,
+}: {
+  libraryName: string
+  path: string
+  onNavigate: (path: string) => void
+}) {
+  const trail = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const element = trail.current
+    if (!element) return
+    const end = () => {
+      element.scrollLeft = element.scrollWidth
+    }
+    end()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(end)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [path])
+  return (
+    <nav ref={trail} className="file-browser__crumbs" aria-label="Breadcrumb">
+      <button className="crumb" onClick={() => onNavigate('')} disabled={!path}>
+        {libraryName}
+      </button>
+      {crumbs(path).map((crumb) => (
+        <span key={crumb.path}>
+          <span className="crumb__sep">/</span>
+          <button className="crumb" onClick={() => onNavigate(crumb.path)}>
+            {crumb.label}
+          </button>
+        </span>
+      ))}
+    </nav>
+  )
 }
 
 /**
@@ -347,19 +396,11 @@ function CatalogBrowseScope(props: FileScopeProps) {
         header={
           <>
             {props.headerLeading}
-            <nav className="file-browser__crumbs" aria-label="Breadcrumb">
-              <button className="crumb" onClick={() => props.onNavigate('')} disabled={!props.path}>
-                {props.libraryName}
-              </button>
-              {crumbs(props.path).map((crumb) => (
-                <span key={crumb.path}>
-                  <span className="crumb__sep">/</span>
-                  <button className="crumb" onClick={() => props.onNavigate(crumb.path)}>
-                    {crumb.label}
-                  </button>
-                </span>
-              ))}
-            </nav>
+            <Breadcrumbs
+              libraryName={props.libraryName}
+              path={props.path}
+              onNavigate={props.onNavigate}
+            />
           </>
         }
         entries={query.data?.entries ?? []}
@@ -490,19 +531,7 @@ function BrowseScope(props: FileScopeProps) {
   const header = (
     <>
       {headerLeading}
-      <nav className="file-browser__crumbs" aria-label="Breadcrumb">
-        <button className="crumb" onClick={() => onNavigate('')} disabled={!path}>
-          {libraryName}
-        </button>
-        {crumbs(path).map((c) => (
-          <span key={c.path}>
-            <span className="crumb__sep">/</span>
-            <button className="crumb" onClick={() => onNavigate(c.path)}>
-              {c.label}
-            </button>
-          </span>
-        ))}
-      </nav>
+      <Breadcrumbs libraryName={libraryName} path={path} onNavigate={onNavigate} />
     </>
   )
 
@@ -624,6 +653,7 @@ function FileList({
   scope,
   path: currentPath,
   writeMode = false,
+  onRename,
   onFlash,
   onImportFiles,
   libraryName,
@@ -644,6 +674,14 @@ function FileList({
   // New Folder needs a directory to create *in*, which the flat unbundled queue
   // does not have. Renaming works in both scopes — a path is a path.
   const canCreateFolder = writeMode && scope === 'browse'
+  const canRename = Boolean(onRename) || writeMode
+  if (!canRename && write.renamingPath) write.cancelRename()
+  const submitRename = (path: string, name: string) => {
+    if (onRename) {
+      write.cancelRename()
+      onRename(path, name)
+    } else if (writeMode) write.submitRename(path, name)
+  }
   /**
    * The sort in force here, and how changing it is stored.
    *
@@ -684,12 +722,18 @@ function FileList({
       selectedPath,
     )
   // Keep the inspector and host actions on the refreshed path of the selected indexed file
-  const refreshSelectedEntry = useEffectEvent((entry: FileBrowserEntry) => {
-    if (catalogLibrary || selectedPath !== entry.relative_path) onSelectEntry(entry)
+  const refreshSelectedEntry = useEffectEvent((entry: FileBrowserEntry | null) => {
+    if (catalogLibrary || selectedPath !== entry?.relative_path) onSelectEntry(entry)
   })
   useEffect(() => {
     if (selectedEntry && !stale) refreshSelectedEntry(selectedEntry)
-  }, [selectedEntry, stale])
+    else if (
+      complete &&
+      selectedPath &&
+      !entries.some((entry) => entry.relative_path === selectedPath)
+    )
+      refreshSelectedEntry(null)
+  }, [selectedEntry, stale, complete, selectedPath, entries])
   const matchSearch = usePinyinSearch(search)
 
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
@@ -798,10 +842,11 @@ function FileList({
         onClick: () => onCollectionFromFolder(entry.relative_path),
       })
     }
+    if (canRename) {
+      items.push(null, { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) })
+    }
     if (writeMode) {
       items.push(
-        null,
-        { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
         { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
         // A folder's own delete takes everything inside it, in one operation.
         { label: 'Move to Trash', onClick: () => write.askToDelete([entry.relative_path], 0) },
@@ -839,10 +884,10 @@ function FileList({
       )
       if (hostItems.length > 0) items.push(...hostItems)
     }
-    if (writeMode) {
+    if (canRename || writeMode) {
       const writeItems: MenuEntry[] = []
       // Rename acts on one entry; a multi-selection has no single new name.
-      if (n === 1)
+      if (canRename && n === 1)
         writeItems.push({
           label: 'Rename…',
           onClick: () => write.startRename(targets[0] as string),
@@ -850,15 +895,17 @@ function FileList({
       // Move takes the whole selection, directories included — unlike bundling,
       // which is a files-only action.
       const moveTargets = selectionTargets(entry.relative_path, selected)
-      writeItems.push({
-        label: moveTargets.length > 1 ? `Move ${moveTargets.length} Items…` : 'Move to…',
-        onClick: () => write.askToMove(moveTargets),
-      })
-      writeItems.push({
-        label: n > 1 ? `Move ${n} Files to Trash` : 'Move to Trash',
-        onClick: () => write.askToDelete(targets, linkedCount(targets)),
-      })
-      if (canCreateFolder) writeItems.push({ label: 'New Folder', onClick: write.startNewFolder })
+      if (writeMode) {
+        writeItems.push({
+          label: moveTargets.length > 1 ? `Move ${moveTargets.length} Items…` : 'Move to…',
+          onClick: () => write.askToMove(moveTargets),
+        })
+        writeItems.push({
+          label: n > 1 ? `Move ${n} Files to Trash` : 'Move to Trash',
+          onClick: () => write.askToDelete(targets, linkedCount(targets)),
+        })
+        if (canCreateFolder) writeItems.push({ label: 'New Folder', onClick: write.startNewFolder })
+      }
       if (writeItems.length > 0) {
         if (items.length > 0) items.push(null)
         items.push(...writeItems)
@@ -889,7 +936,11 @@ function FileList({
       if (onLocateBundle && owningBundleId && !entry.unbundled) {
         items.push({
           label: 'Locate in Bundle Browser',
-          onClick: () => onLocateBundle(owningBundleId),
+          onClick: () =>
+            onLocateBundle(
+              owningBundleId,
+              entry.file_id ? { id: entry.file_id, path: entry.relative_path } : null,
+            ),
         })
       }
     }
@@ -1103,15 +1154,15 @@ function FileList({
   // F2 (and Enter, the macOS convention) renames the single selected entry;
   // Delete / ⌘⌫ moves the selection to the trash.
   const listKeyDown = (e: React.KeyboardEvent) => {
-    if (!writeMode || write.renamingPath || write.creatingFolder) return
-    if (e.key === 'F2' || e.key === 'Enter') {
+    if (write.renamingPath || write.creatingFolder) return
+    if (canRename && (e.key === 'F2' || e.key === 'Enter')) {
       const only = selected.size === 1 ? [...selected][0] : null
       if (!only) return
       e.preventDefault()
       write.startRename(only)
       return
     }
-    if (e.key === 'Delete' || (e.key === 'Backspace' && (e.metaKey || e.ctrlKey))) {
+    if (writeMode && (e.key === 'Delete' || (e.key === 'Backspace' && (e.metaKey || e.ctrlKey)))) {
       if (selected.size === 0) return
       e.preventDefault()
       const paths = [...selected]
@@ -1187,119 +1238,130 @@ function FileList({
 
   return (
     <>
-      <div className="toolbar" data-tauri-drag-region="deep">
-        {header}
-        <span className="toolbar__count">{visible.length.toLocaleString()} items</span>
-        <span className="toolbar__spacer" />
+      {/* Its own query container: a portable File Browser sits beside its inspector,
+          outside `.center`, and the viewer and dialogs below are not portaled, so the
+          whole browser cannot be one (containment would trap their fixed layout) */}
+      <div className="file-browser__bar">
+        <div className="toolbar" data-tauri-drag-region="deep">
+          {header}
+          <SelectionCount
+            total={visible.length}
+            selected={selected.size}
+            loaded={visible.length}
+            more={hasMore === true}
+            noun="entries"
+          />
+          <span className="toolbar__spacer" />
 
-        {/* New Folder used to sit here too. It is a once-in-a-while action that
+          {/* New Folder used to sit here too. It is a once-in-a-while action that
             permanently cost toolbar width, so it now lives in the File menu and
             the listing's context menus, where the rest of the write actions
             already are (owner, 2026-09-01). */}
-        {canCreateFolder && (
-          <>
-            <button
-              className="btn btn--sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={write.busy}
-              title="Copy files from this computer into this folder"
-            >
-              Add Files Here
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              hidden
-              aria-hidden="true"
-              onChange={(event) => {
-                write.importFiles([...(event.target.files ?? [])])
-                // Reset, so choosing the same file twice in a row still fires.
-                event.target.value = ''
-              }}
-            />
-          </>
-        )}
+          {canCreateFolder && (
+            <>
+              <button
+                className="btn btn--sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={write.busy}
+                title="Copy files from this computer into this folder"
+              >
+                Add Files Here
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                hidden
+                aria-hidden="true"
+                onChange={(event) => {
+                  write.importFiles([...(event.target.files ?? [])])
+                  // Reset, so choosing the same file twice in a row still fires.
+                  event.target.value = ''
+                }}
+              />
+            </>
+          )}
 
-        <input
-          type="search"
-          placeholder="Search files…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="Search files"
-          title="Filter files in this view by name"
-        />
+          <input
+            type="search"
+            placeholder="Search files…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search files"
+            title="Filter files in this view by name"
+          />
 
-        {/* Ahead of the buttons rather than among them (owner, 2026-09-01).
+          {/* Ahead of the buttons rather than among them (owner, 2026-09-01).
             Always shown — it drives card size in the grid and row height in the
             list — so the controls beside it don't shift with the layout. */}
-        <div className="zoom">
-          <input
-            type="range"
-            min={FILE_ZOOM_MIN}
-            max={FILE_ZOOM_MAX}
-            step={10}
-            value={prefs.zoom}
-            onChange={(e) => setPrefs({ ...prefs, zoom: Number(e.target.value) })}
-            aria-label="Zoom"
-          />
-        </div>
+          <div className="zoom">
+            <input
+              type="range"
+              min={FILE_ZOOM_MIN}
+              max={FILE_ZOOM_MAX}
+              step={10}
+              value={prefs.zoom}
+              onChange={(e) => setPrefs({ ...prefs, zoom: Number(e.target.value) })}
+              aria-label="Zoom"
+            />
+          </div>
 
-        {/* The same control the Bundle Browser uses, so the two toolbars are one
+          {/* The same control the Bundle Browser uses, so the two toolbars are one
             row of controls at one size — this was a bare select plus a separate
             arrow button (owner, 2026-09-01). */}
-        {!fixedOrder && (
-          <SortControl
-            sort={activeSort.sort}
-            order={activeSort.order}
-            options={FILE_SORTS}
-            onChange={setActiveSort}
-            perCollection={folderKey === null ? undefined : prefs.sortScope === 'folder'}
-            onPerCollection={
-              folderKey === null
-                ? undefined
-                : (value) => setPrefs({ ...prefs, sortScope: value ? 'folder' : 'global' })
-            }
-            scopeLabel="Remember sort per folder"
+          {!fixedOrder && (
+            <SortControl
+              sort={activeSort.sort}
+              order={activeSort.order}
+              options={FILE_SORTS}
+              onChange={setActiveSort}
+              perCollection={folderKey === null ? undefined : prefs.sortScope === 'folder'}
+              onPerCollection={
+                folderKey === null
+                  ? undefined
+                  : (value) => setPrefs({ ...prefs, sortScope: value ? 'folder' : 'global' })
+              }
+              scopeLabel="Remember sort per folder"
+            />
+          )}
+
+          <div className="seg toolbar__layouts" role="group" aria-label="Layout">
+            <button
+              className={prefs.layout === 'grid' ? 'is-active' : ''}
+              onClick={() => setPrefs({ ...prefs, layout: 'grid' })}
+              title="Card"
+              aria-label="Card"
+              aria-pressed={prefs.layout === 'grid'}
+            >
+              <IconLayoutCard />
+            </button>
+            <button
+              className={prefs.layout === 'list' ? 'is-active' : ''}
+              onClick={() => setPrefs({ ...prefs, layout: 'list' })}
+              title="List"
+              aria-label="List"
+              aria-pressed={prefs.layout === 'list'}
+            >
+              <IconLayoutList />
+            </button>
+          </div>
+
+          <ViewOptions
+            onAddFiles={canCreateFolder ? () => fileInputRef.current?.click() : undefined}
+            addFilesDisabled={write.busy}
+            layout={prefs.layout}
+            layouts={[
+              { value: 'grid', label: 'Card' },
+              { value: 'list', label: 'List' },
+            ]}
+            onLayout={(layout) => setPrefs({ ...prefs, layout })}
+            zoom={prefs.zoom}
+            min={FILE_ZOOM_MIN}
+            max={FILE_ZOOM_MAX}
+            onZoom={(zoom) => setPrefs({ ...prefs, zoom })}
           />
-        )}
-
-        <div className="seg toolbar__layouts" role="group" aria-label="Layout">
-          <button
-            className={prefs.layout === 'grid' ? 'is-active' : ''}
-            onClick={() => setPrefs({ ...prefs, layout: 'grid' })}
-            title="Card"
-            aria-label="Card"
-            aria-pressed={prefs.layout === 'grid'}
-          >
-            <IconLayoutCard />
-          </button>
-          <button
-            className={prefs.layout === 'list' ? 'is-active' : ''}
-            onClick={() => setPrefs({ ...prefs, layout: 'list' })}
-            title="List"
-            aria-label="List"
-            aria-pressed={prefs.layout === 'list'}
-          >
-            <IconLayoutList />
-          </button>
+          {headerTrailing}
         </div>
-
-        <ViewOptions
-          onAddFiles={canCreateFolder ? () => fileInputRef.current?.click() : undefined}
-          addFilesDisabled={write.busy}
-          layout={prefs.layout}
-          layouts={[
-            { value: 'grid', label: 'Card' },
-            { value: 'list', label: 'List' },
-          ]}
-          onLayout={(layout) => setPrefs({ ...prefs, layout })}
-          zoom={prefs.zoom}
-          min={FILE_ZOOM_MIN}
-          max={FILE_ZOOM_MAX}
-          onZoom={(zoom) => setPrefs({ ...prefs, zoom })}
-        />
-        {headerTrailing}
       </div>
 
       <div
@@ -1329,11 +1391,6 @@ function FileList({
         }
         aria-multiselectable="true"
       >
-        {hasMore && selected.size > 0 && (
-          <div className="listing-selection-note" role="status">
-            {selected.size} selected · Select All includes {visible.length} loaded entries
-          </div>
-        )}
         {/* Above the listing rather than inside it: the new folder has no
             position in the current sort until it has a name. */}
         {write.creatingFolder && (
@@ -1430,8 +1487,8 @@ function FileList({
                       onDoubleClick={() => openEntry(entry)}
                       onContextMenu={(e) => contextRow(entry, e)}
                       dragProps={entryDragProps(entry)}
-                      renaming={write.renamingPath === entry.relative_path}
-                      onRename={(name) => write.submitRename(entry.relative_path, name)}
+                      renaming={canRename && write.renamingPath === entry.relative_path}
+                      onRename={(name) => submitRename(entry.relative_path, name)}
                       onCancelRename={write.cancelRename}
                     />
                   ))}
@@ -1449,8 +1506,8 @@ function FileList({
                       onContextMenu={(e) => contextRow(entry, e)}
                       previewDisabled={marqueeRect !== null || menu.state !== null}
                       dragProps={entryDragProps(entry)}
-                      renaming={write.renamingPath === entry.relative_path}
-                      onRename={(name) => write.submitRename(entry.relative_path, name)}
+                      renaming={canRename && write.renamingPath === entry.relative_path}
+                      onRename={(name) => submitRename(entry.relative_path, name)}
                       onCancelRename={write.cancelRename}
                     />
                   ))}

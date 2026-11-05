@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import type { MenuState } from './useContextMenu'
+import type { MenuEntry, MenuState } from './useContextMenu'
 import { holdEditBasis } from '../api/editBasis'
 
 /**
@@ -158,5 +158,30 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
       )}
     </div>,
     document.body,
+  )
+}
+
+/**
+ * A menu that follows its target. The surface's current render rebuilds the
+ * entries, so a save that settles while the menu is open enables its actions.
+ * The opening snapshot remains when a refresh no longer shows the target.
+ *
+ * This component, not the surface, rebuilds the entries while rendering. An
+ * entry's handler can read a ref or start a write, and the compiler must assume
+ * that any call the surface makes while rendering may run it. Building the
+ * entries only creates their click handlers, and only those handlers run.
+ */
+export function TargetContextMenu<T>(props: {
+  state: MenuState | null
+  target: T | undefined
+  entries: (target: T) => MenuEntry[]
+  onClose: () => void
+}) {
+  const { state, target } = props
+  return (
+    <ContextMenu
+      state={state && target !== undefined ? { ...state, items: props.entries(target) } : state}
+      onClose={props.onClose}
+    />
   )
 }

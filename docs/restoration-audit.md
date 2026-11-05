@@ -121,6 +121,131 @@ old positions imported. Remembering and resuming the correct file and timestamp
 for current-app activity is required and does not depend on importing them.
 Stale grouping plans and old trash/import staging must not execute themselves.
 
+## Built-application comparison (2026-10-27)
+
+The source comparison above did not run the earlier application. This round
+built `7d5e50b6` and current main in Cairndex macOS and used both side by side.
+Each version had its own server, private store, registry and browser profile.
+A neutral generator wrote one media tree of about 9,000 generated files with
+invented names. Each version received the same authored metadata through its
+own API: 2,269 bundles with tags, collections, ratings, notes, moments and
+playback history. Current main then converted a copy of the v0.2.1 library
+through reviewed conversion. A second, unauthored copy served the grouping
+comparison. No owner library or screenshot was used.
+
+These regressions are confirmed against v0.2.1 and repaired. Each has a focused
+test that fails without its repair.
+
+| Regression | Cause and repair | Test |
+| --- | --- | --- |
+| Browse, sidebar counts and facets took 18–60 s per request | Correlated lookups compared a JSON expression index with a TEXT-affinity column and scanned all file rows per bundle. A unary plus restores the index. | `test_catalog_browse.py` plan test |
+| Refreshing one bundle's search row scanned all files (8.8 ms per bundle, paid by conversion and every edit) | Same affinity defect in the search view and triggers. Opening a store replaces only the view and two triggers. | `test_catalog_search_fields.py` |
+| An idle large library flushed continuously | Exchange rewrote unchanged retained objects; under ADR-0039 each commit is a full flush. A read-only check skips the identical write. | `test_replicas.py` |
+| Collect metadata ran at about 1.2 files/s | The worker probed one file per exchange pass. A pass now steps for up to 0.25 s, about 15 files/s. | `test_replica_maintenance.py` |
+| Inspector file rows showed only the kind; album tiles read "Check local bytes when opened" | Album pages ignored this device's observations. They now add observed size and media details; tiles use v0.2.1's caption. | `test_catalog_album.py`, `AlbumItem.test.tsx` |
+| A selection line above the grid pushed the cards down a row | The count reads "N items · N selected"; its tooltip says what Select All takes. | `SelectionCount.test.tsx`, `catalog-browse.spec.ts` |
+| A focus ring framed the whole grid on the first click | The grid hides its outline while a card shows the keyboard ring. | `catalog-browse.spec.ts` |
+| An inspector tag menu opened during a save kept disabled entries | `TargetContextMenu` rebuilds an open menu from the current render. The bundle file menu shares it. | `CatalogBundleMemberships.test.tsx` |
+| Inspector order read Files, Date Added, Size | Restored Files, Size, Date Added, as in v0.2.1 and the multi-bundle inspector. | `catalog-inspector-interactions.spec.ts` |
+| File Browser inspector had two titles, a loose path, "More details", Date Modified "—" and an unstyled Locate | Restored v0.2.1's `FileInspector`. The listing entry supplies the facts before the local observation arrives. | `CatalogFileDetails.test.tsx` |
+| Inspector cover became a 144 px banner | Restored the 16:10 cover. | `catalog-inspector-interactions.spec.ts` |
+| Inspector tag chips stood wider and taller than collection chips and their "+ Tag" | Tag chips gained a name button without the modifier that moves the padding onto the buttons, so the padding doubled. The rule now keys on that structure. | `catalog-inspector.spec.ts` |
+| Expanding a grouping row moved it away from the pointer | The centered dialog re-centered as its tree grew. Its top edge is now fixed. | `replica-grouping-interactions.spec.ts` |
+
+Other context menus were checked for the stale-flag defect. Card, folder and
+empty-area menus depend only on library readiness. The grouping review menu
+cannot open while busy, and its edits re-check pending state and send the
+displayed revision. Album and moment menus have no state-dependent entries.
+
+These differences are accepted, with their evidence:
+
+- The search field shrinks first in a narrow toolbar (PR #92, as v0.2.1's own
+  comment requests), and an overflow menu replaces clipped actions. Both
+  versions still took a fraction of a pixel from a short title, enough for an
+  ellipsis ("All" read "A…"); the field now takes all of the shrink while it can.
+- The collection header scrolls within 45% of the height; both versions cut the
+  third row.
+- Fold-based sidebar counts (owner decision above).
+- Settings adds a Keyboard shortcuts page; the other pages match.
+- Viewer controls, resume and auto-advance match. Escape with page focus does
+  not close the viewer in either version.
+- Grouping review shows counts and right-aligned placement pickers, collapsed by
+  default (PR #127).
+- Libraries rows show one problem badge rather than a per-row Available badge
+  (PR #92). Long root paths truncate without a tooltip, as in v0.2.1.
+
+The initial audit found a roughly 14-minute Update and slow Collect metadata.
+The November follow-up below replaces those measurements and repairs automatic
+review opening and its disabled Prepare state during initialization.
+
+These remain open; none blocks the repairs above:
+
+- An earlier pre-release build refuses a store whose search plans were
+  replaced. Format-three stores are unreleased, so testers must not downgrade.
+- The Libraries dialog keeps "Resume conversion" after a conversion completes.
+- Footer job labels truncate, as in v0.2.1.
+- Two clients of one server share the selected library; v0.2.1 was not
+  checked for this.
+- Not verified: pausing during the viewer's initial load may be overridden by
+  resume playback.
+
+## Owner testing findings (November 2026)
+
+The owner tested the built application of this audit, web and desktop, and
+reported nine findings. The UI and performance regressions were reproduced on
+synthetic data in Cairndex macOS.
+
+| Finding | Cause and repair | Test |
+| --- | --- | --- |
+| The "+ Tag" picker was not hierarchical | The portable rewrite replaced v0.2.1's tag tree with a flat page of 50 names. `TagPickerPanel` is that tree again (groups, Others, folding, counts, pinyin search, `a/b` creation), shared with the legacy editor. A pick reads its one tag's bases first. "+ Collection" had the same defect and now uses `CollectionPickerPanel`. | `CatalogBundleMemberships.tree.test.tsx`, `usePopover.test.ts` |
+| The File Browser toolbar clipped in a narrow window | It sat outside the `surface` query container that narrows the Bundles toolbar. Its toolbar now has its own container; the folder trail scrolls to its end. | `catalog-browse.spec.ts` narrow-window test |
+| Locate in Bundle Browser worked for unbundled files | Locate is disabled with a tooltip for a file without a bundle. | `CatalogFileDetails.test.tsx` |
+| Locate selected the bundle but did not show the file | The album now opens on the located file, inside its folder member when it has one. | `CatalogBundleAlbum.locate.test.tsx`, `catalog-album.spec.ts` |
+| A multi-bundle selection showed the union of tags and collections | The selection read gained `common` (`selection_version: 4`); chips show only what every bundle has, and the picker marks the rest with a dash. | `test_catalog_selection.py`, `CatalogBundleMemberships.test.tsx` |
+| A skim returned to the first frame after each stop | Collect metadata makes no storyboards, so the transition kept the cover. A hovered card now requests its storyboard. | `replica-media.spec.ts` |
+| Grouping review indent, spacing and "Add to existing bundles 1" | Folder rows lead their files again, folded runs keep their wrapper, rows share one spacing, and the heading reads "New files for existing bundles". | `useGroupingTree.test.tsx`, `replica-grouping-sections.spec.ts` |
+| Moves between collections, conversion and select-all were slow | Queued work now wakes the worker, review edits run in one pass, moved cards leave at once, and an unchanged collection row is not rewritten. Moving 10 bundles fell from 2.7–4.7 s to 0.8 s; a 200-file conversion fell from 1.5–3.7 s to 0.5–0.8 s. | `test_replica_worker.py`, `test_catalog_selection.py` projection test |
+| (Found while measuring) Sidebar counts kept the server busy | Each tag and collection compiled its own browse filter, polled every 2 s. One read per page now counts them; a collections page fell from 0.16 s to 0.015 s. | `test_catalog_browse.py` count test |
+
+The owner also asked about a Keychain prompt and a red sidebar line after
+Collect metadata. That was expected behavior with a confusing notice. A rebuilt,
+ad-hoc-signed sidecar may ask macOS again for the saved share login, which
+publishing to an SMB library needs (ADR-0037). Saved work stays on the device
+until the prompt is answered. The red line was the generic exchange error; it is
+now hidden while Allow Access shows, and reworded. A stable local signing
+identity can avoid repeated prompts after rebuilds; access still needs
+qualification for the actual executable and share.
+
+The follow-up restores the same picker for portable moment tags. Capability 5
+adds an exact-target read with current lifetime and membership guards. Folding,
+child assignment and nested creation pass focused tests; the browser test also
+verifies that adding a moment tag tags its bundle and removing it leaves the
+bundle tag in place.
+
+Large-library Update now uses real read-only snapshots, indexed candidate
+exports and bounded worker passes. On the 9,000-file synthetic copy, the browser
+reached editable review in 290.964 seconds instead of 633.314 seconds before the
+scheduling repair. Initialization fell from 40.928 to 7.483 seconds. The
+[measurement record](replica-discovery.md#initial-update-timing) distinguishes
+browser timings from the faster direct worker loop and the historical scanner.
+Collect metadata completed all 9,018 synthetic entries in 159.157 seconds, with
+zero failures and 488 skipped entries. Its bounded probe page reuses read
+connections and saves observations with progress in one durable transaction;
+cancellation remains live and newer playback observations take precedence.
+These runs qualify the local synthetic repair, not representative media or NAS.
+The established-library follow-up reduces unchanged Update from
+26.453–27.396 seconds to 4.228–4.896 seconds by amortizing durable commits and
+skipping unnecessary grouping work. Ten new images take 5.288 seconds, with
+review ready at 6.929 seconds. The [repeat timing record](replica-discovery.md#established-library-update-timing)
+states the fixture, preparation costs and limits. The UI now distinguishes
+server-local catalog preparation and initial file scanning from ordinary Update.
+
+Still open from this round:
+
+- A collection move is still two commits (add, then remove) rather than one
+  `move` command.
+- On SMB, each exchange pass still scans transport and repair state in full.
+
 ## Verification and completion
 
 The final fresh receipts, `restoration-audio-v1-mac-20261019-213840` and

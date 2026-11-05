@@ -118,8 +118,14 @@ def place(db: sqlite3.Connection, units: Iterable[str]) -> set[tuple[str, str]]:
     return touched
 
 
-# Rebuild only directly affected rows; unresolved creations remain absent until complete
-def rebuild(db: sqlite3.Connection, entities: Iterable[tuple[str, str]]) -> set[str]:
+# Rebuild only directly affected rows; unresolved creations remain absent until complete.
+# With keep_unchanged, a row whose restored value equals the stored one is left in
+# place and not reported: a re-asserted guard, such as a collection's $alive in a
+# membership save, would otherwise rewrite the collection's row, whose search triggers
+# refresh every bundle in it, and revalidate every edge that references it.
+def rebuild(
+    db: sqlite3.Connection, entities: Iterable[tuple[str, str]], *, keep_unchanged: bool = False
+) -> set[str]:
     touched: set[str] = set()
     for family, identity in entities:
         if identity == "_":
@@ -141,7 +147,10 @@ def rebuild(db: sqlite3.Connection, entities: Iterable[tuple[str, str]]) -> set[
         row = restore_row(family, identity, values, json.loads(placement[0]) if placement else {})
         from cairndex.replicas.catalog.local_history import changed
 
-        changed(db, family, identity, read_row(db, family, identity), row)
+        previous = read_row(db, family, identity)
+        changed(db, family, identity, previous, row)
+        if keep_unchanged and previous == row:
+            continue
         db.execute("DELETE FROM catalog_references WHERE source=?", (owner,))
         db.execute("DELETE FROM catalog_unique_values WHERE owner=?", (owner,))
         db.execute("DELETE FROM catalog_rows WHERE family=? AND entity=?", (family, identity))
@@ -287,7 +296,7 @@ def _unique(db: sqlite3.Connection, family: str, row: Row) -> None:
 def project(db: sqlite3.Connection, units: set[str]) -> None:
     entities = {split_key(unit)[:2] for unit in units}
     entities.update(place(db, units))
-    owners = rebuild(db, entities)
+    owners = rebuild(db, entities, keep_unchanged=True)
     dependent = set(owners)
     # Removing an edge can invalidate a cover on any ancestor, even after the edge is gone
     for family, identity in entities:

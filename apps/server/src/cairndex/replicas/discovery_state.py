@@ -113,12 +113,19 @@ def run(store: CatalogStore, operation: str | None = None) -> dict[str, Any]:
             (operation, operation),
         ).fetchone()
         if row is None:
-            return {"state": "idle"}
+            return {"state": "idle", "initial_scan": True}
+        # A cancelled/failed attempt does not finish setup. Derive this from the
+        # private run history so browsers agree and the first result keeps its label.
+        initial_scan = not db.execute(
+            "SELECT 1 FROM discovery_runs WHERE state='succeeded' AND sequence<? LIMIT 1",
+            (row["sequence"],),
+        ).fetchone()
         progress = db.execute(
             "SELECT completed,total FROM discovery_progress WHERE run=? AND phase=?",
             (row["id"], row["phase"]),
         ).fetchone()
         return dict(row) | {
+            "initial_scan": initial_scan,
             "completed": progress[0] if progress else 0,
             "total": progress[1] if progress else None,
         }

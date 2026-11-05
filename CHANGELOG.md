@@ -134,6 +134,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- Correct an owner-approved privacy-gate false positive for literal substrings
+  inside the exact public codesign field name. Field values, longer identifiers,
+  private names and secret detection remain protected.
+
 - Update the web development dependencies Undici to 7.30.1 and Zod to 4.6.7
   for their HTTP parsing, integrity and constrained-collection advisories.
 - Require Pillow 13.0.0 and update certifi and setuptools for image parsing,
@@ -172,6 +176,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   request value already had to match a database row, a fixed list or a range first.
 
 ### Internal
+
+- Keep project status focused on current state and qualification limits; retain
+  SQLite durability measurements in the development guide and superseded status
+  in Git history.
+
+- Wait for both row selection and its inspector callback in Locate tests.
+
+- Make cross-device test boundaries independent of the temporary root. Catalog
+  job checks wait for terminal receipts, and two-sidecar discovery waits for
+  both creation events before testing a move, preserving causal ordering.
 
 - Wait for the file-change acknowledgement before reloading the bundle-file
   browser test. Delayed acknowledgement coverage checks that the file remains
@@ -276,6 +290,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Library preparation and the first file scan now explain their server scope.
+  Initial scans retain their label across refresh, cancellation and retry;
+  later Updates keep the compact progress display. Existing libraries opened
+  on a new server can need preparation, while browsers on the same server share
+  the working catalog and cache.
+
 - **The side panels' scrollbars hide until you scroll.** As macOS overlay
   scrollbars do, the sidebar's and inspector's thumb appears while the panel
   scrolls and fades a second later; it stays while the pointer is on it or
@@ -359,6 +379,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   that substitution, so a single item shows the shortcut the keymap asks for and
   still carries the system's full-screen action
   ([ADR-0028](docs/adr/0028-globe-shortcut-default-for-full-screen.md)).
+- **A toolbar Refresh replaces the per-file Check Again.** Refresh, beside Back
+  and Forward, reads what the window shows again: the folder listing, the
+  current collection's bundles and the selected file's details. Portable file
+  details also read their file again on each selection and when the File
+  Browser listing's state for it changes, and a finished Update marks every
+  file's details for a new read.
 
 ### Added
 
@@ -375,6 +401,96 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Keep filename-based bundle titles when Narrow/Widen rebuilds groups inside a
+  retained collection. A single widened group no longer takes its parent
+  folder's name; collection titles, file selection and source observations stay
+  intact. Widening a standalone bundle keeps the folder as a collection.
+
+- Open Review Discoveries on the latest completed Update. Earlier edited or
+  prepared drafts no longer take precedence over freshly scanned files, which
+  could cause a file-change error after an SMB remount. Earlier drafts retain
+  their choices and show a notice with a link to the latest Update.
+
+- Restore file and folder Rename in the portable File Browser and Unbundled
+  list, including keyboard and inspector editing. Write Mode changes take
+  effect without restarting. Names enter the existing reviewed source-operation
+  workflow; permission checks, retained recovery copies and explicit Apply remain.
+
+- Reduce repeat Update overhead by batching file observations and catalog checks
+  in bounded transactions, paging known files through existing indexes and
+  avoiding unchanged baseline writes. Settled libraries with no new files skip
+  grouping-index construction. Complete enumeration, content-change detection,
+  moved-file repair, cancellation and durable commits are retained.
+
+- Reduce Update and Collect metadata overhead with read-only SQLite snapshots,
+  indexed bundle-member export and bounded observation commits. Export resumes
+  from its last saved member; metadata observations and progress commit together.
+  Maintenance runs independently of history exchange, and Update and initial
+  grouping review advance cached work in bounded batches.
+  Cancellation, source identity checks and durable writer settings are preserved.
+
+- Open large portable libraries quickly again. Sorts, system views, sidebar
+  counts and filter facets no longer scan every file row for each bundle; on a
+  synthetic 2,269-bundle library they take under 0.3 s instead of up to a minute.
+- Stop rescanning every file when a portable bundle's search entry refreshes.
+  Opening a library replaces the search index's lookup plans in place, without
+  a rebuild. Earlier pre-release builds refuse a store opened this way.
+- Stop rewriting already retained provider objects on every exchange pass. On
+  macOS each rewrite waited for a full disk flush, which slowed Collect
+  metadata and other background work in large portable libraries.
+- Let Collect metadata and Generate storyboards advance several files in each
+  background pass instead of one. A synthetic library collected about
+  15 files/s instead of 1.2.
+- Show each file's size, dimensions and duration again in the portable
+  inspector's file list and the bundle album, from this device's last
+  observations.
+- Keep the bundle and file listings in place when you select. The selection
+  count joins the toolbar's item count, and the note that Select All takes
+  only loaded items moves into its tooltip.
+- Stop framing the whole bundle grid with a focus ring after a click. The
+  active card keeps its own ring for keyboard use.
+- Enable an open inspector tag menu once a pending tag change settles. A menu
+  opened during the change kept Rename, Paste and Remove disabled until it was
+  reopened.
+- Show the portable bundle inspector's Files, Size and Date Added in v0.2.1's
+  order again.
+- Restore v0.2.1's File Browser file inspector for portable libraries: one
+  title, every fact with Path last, Date Modified, and a full-width Locate in
+  Bundle Browser. Technical facts are no longer behind More details.
+- Restore v0.2.1's 16:10 inspector cover, which had become a shorter 16:9
+  banner capped at 144 px.
+- Keep the grouping review's top edge fixed, so expanding or folding a row no
+  longer re-centers the dialog and moves the row under the pointer.
+- Size inspector tag chips like collection chips again. Tag chips with a menu
+  button had doubled padding and stood taller than their "+ Tag" button.
+- Keep a short toolbar title whole while the search field can shrink. The title
+  still lost a fraction of a pixel, which drew an ellipsis ("All" read "A…").
+- Restore the shared hierarchical tag picker for moments, including folding,
+  grouped tags, search and nested-tag creation. Exact target reads preserve
+  conflict checks and one-way propagation to the containing bundle.
+- Restore v0.2.1's tag and collection trees in the portable inspector's
+  "+ Tag" and "+ Collection" pickers, for one bundle or a selection. Tags show
+  their groups, counts and folding; collections show recent ones and their
+  parents. A tag or collection only some selected bundles have shows a dash.
+- Show only the tags and collections every selected bundle has as chips when
+  several bundles are selected, instead of everything any of them has.
+- Open Locate in Bundle Browser on the located file inside its bundle, and
+  disable it for files that are not in a bundle yet.
+- Make a hovered card's missing storyboard on request, so a skim rests on the
+  frame under the pointer instead of flashing the cover first.
+- Let the portable File Browser toolbar fit a narrow window as Bundles does.
+  The folder trail scrolls to its last folder instead of pushing controls out.
+- Show one clear notice while a share login waits for permission, instead of
+  also showing the exchange error in red.
+- Restore the grouping review's folder indent and even row spacing. "Add to
+  existing bundles 1" now reads "New files for existing bundles".
+- Speed up collection moves, bundle/collection conversion in grouping review
+  and select-all there. Queued replica work starts at once, a moved bundle
+  leaves the open collection immediately, and an unchanged collection row is no
+  longer rewritten by each save.
+- Count a page of sidebar tags and collections, and the tag facets, in one
+  read. A page of collections now takes 0.015 s instead of 0.16 s on a
+  synthetic 2,269-bundle library, and the sidebar reads every page every 2 s.
 - Batch Update's cached indexing, grouping and export within one bounded
   transaction, avoiding a durable flush for each small subject. Retain the
   32-step or 50 ms limit, cancellation and atomic retry progress.

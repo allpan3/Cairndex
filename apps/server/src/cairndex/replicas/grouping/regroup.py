@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from cairndex.core.ids import new_id
+from cairndex.domain.enums import DEFAULT_STEM_LEVEL
 from cairndex.grouping import suggester as rules
 from cairndex.replicas.catalog.model import value_text
 from cairndex.replicas.discovery_plan import (
@@ -192,7 +193,14 @@ def plan(db: sqlite3.Connection, command: sqlite3.Row, context: dict[str, Any]) 
         ).fetchone()
         if directory:
             combine_additions(db, run, context["directory"])
-            classify_directory(db, run, context["directory"])
+            # Widening groups filenames; it does not make the result represent
+            # its whole folder. A retained collection also owns that folder name.
+            classify_directory(
+                db,
+                run,
+                context["directory"],
+                owns_directory=not context["header"] and context["level"] <= DEFAULT_STEM_LEVEL,
+            )
             return
     group = db.execute(
         "SELECT * FROM discovery_plan_groups WHERE run=? AND kind='bundle' "
@@ -242,7 +250,11 @@ def splice(db: sqlite3.Connection, command: sqlite3.Row, context: dict[str, Any]
             "UPDATE grouping_stems SET level=1 WHERE workspace=? AND directory=?",
             (workspace, context["directory"]),
         )
-    elif not header and groups > 1 and context["directory"]:
+    elif (
+        not header
+        and (groups > 1 or context["level"] > DEFAULT_STEM_LEVEL)
+        and context["directory"]
+    ):
         header = new_id()
         db.execute(
             "INSERT INTO "

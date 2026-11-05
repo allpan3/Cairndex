@@ -8,7 +8,9 @@ import {
   type ReactNode,
 } from 'react'
 
-import { fileStoryboardUrl, fileStreamUrl } from '../api/client'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { fileStoryboardUrl, fileStreamUrl, getActiveLibraryId } from '../api/client'
+import { replicaRequest } from '../api/replicas'
 import { formatClock } from '../lib/format'
 import { IconVolume, IconVolumeOff } from './icons'
 import type { HoverPreviewSource } from './hoverPreviewState'
@@ -60,6 +62,32 @@ export function HoverPreview({
     storyboardCuesRef.current = cues ?? null
   }, [cues])
   const cue = useMemo(() => cueForTime(cues, position)?.cue ?? null, [cues, position])
+  // A portable file has a storyboard only once something asks for it. v0.2.1's Update
+  // made them all; here a hover asks for its own, as the viewer does, and loads it
+  // when it is ready, so a rest after a skim shows the sprite instead of the cover.
+  const client = useQueryClient()
+  const library = getActiveLibraryId()
+  const generation = source?.mediaKind === 'video' ? (source.generation ?? null) : null
+  const requested = useQuery({
+    queryKey: ['replica-media', library, 'storyboard', source?.fileId, generation],
+    enabled: active && isFetched && cues === null && Boolean(library && generation),
+    queryFn: ({ signal }) =>
+      replicaRequest<{ state: string }>(
+        library!,
+        `/media/files/${source!.fileId}/storyboard`,
+        'POST',
+        { generation },
+        signal,
+      ),
+    refetchInterval: (query) =>
+      active && ['queued', 'running'].includes(query.state.data?.state ?? '') ? 1000 : false,
+    retry: false,
+  })
+  const ready = requested.data?.state === 'ready'
+  useEffect(() => {
+    if (ready && prefetchedStoryboardUrl)
+      void client.invalidateQueries({ queryKey: ['storyboard-vtt', prefetchedStoryboardUrl] })
+  }, [client, prefetchedStoryboardUrl, ready])
   useEffect(() => {
     if (!active || mode !== 'storyboard' || !isFetched || cues) return
     // A missing or invalid storyboard ends this hover without retrying in a loop

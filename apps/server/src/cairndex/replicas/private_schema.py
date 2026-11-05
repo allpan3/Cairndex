@@ -23,7 +23,11 @@ def schema(db: sqlite3.Connection) -> dict[str, str]:
 def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
     from cairndex.replicas.catalog import projection, storage
     from cairndex.replicas.catalog.discovery_index import SCHEMA as discovery_index_schema
-    from cairndex.replicas.catalog.index import INDEX_SCHEMA, LEGACY_INDEX_SCHEMA
+    from cairndex.replicas.catalog.index import (
+        INDEX_SCHEMA,
+        LEGACY_INDEX_SCHEMA,
+        PREVIOUS_INDEX_SCHEMA,
+    )
     from cairndex.replicas.catalog.suggestion_index import SCHEMA as suggestion_schema
     from cairndex.replicas.private_layout import DISCOVERY_SCHEMA as discovery_schema
     from cairndex.replicas.private_layout import GROUPING_SCHEMA as grouping_schema
@@ -67,7 +71,7 @@ def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
                 results.append(schema(expected))
     if catalog:
         without_search = results.copy()
-        for index_schema in (LEGACY_INDEX_SCHEMA, INDEX_SCHEMA):
+        for index_schema in (LEGACY_INDEX_SCHEMA, PREVIOUS_INDEX_SCHEMA, INDEX_SCHEMA):
             with closing(sqlite3.connect(":memory:")) as expected:
                 expected.executescript(projection.SCHEMA)
                 before = schema(expected)

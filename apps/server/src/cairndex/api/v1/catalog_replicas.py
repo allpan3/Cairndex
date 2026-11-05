@@ -55,6 +55,7 @@ from cairndex.replicas.catalog.selection import (
 )
 from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.protocol import ReplicaError, Token
+from cairndex.replicas.service import wake
 
 router = APIRouter(prefix="/libraries/{library_id}/replica/catalog", tags=["replica-catalog"])
 
@@ -112,9 +113,9 @@ def entity(family: Family, identity: str, store: Catalog) -> CatalogEntity:
 # Queue previews and saves without doing structural work in a request handler
 @router.post("/jobs", response_model=CatalogJob, status_code=202)
 def enqueue(payload: CatalogJobRequest, store: Catalog) -> CatalogJob:
-    return CatalogJob.model_validate(
-        jobs.enqueue(store, payload.operation, payload.action, payload.body)
-    )
+    queued = jobs.enqueue(store, payload.operation, payload.action, payload.body)
+    wake()
+    return CatalogJob.model_validate(queued)
 
 
 # Paginated durable jobs recover lost queue responses without scanning authored history
@@ -215,8 +216,9 @@ def moment_tag_choices(
     limit: Limit = 30,
     q: Annotated[str, Query(max_length=1000)] = "",
     assigned: bool = False,
+    target: Token | None = None,
 ) -> CatalogMembershipPage:
-    return moment_tags(store, moment_id, after, limit, q, assigned)
+    return moment_tags(store, moment_id, after, limit, q, assigned, target)
 
 
 @router.get("/navigation/{family}", response_model=CatalogNavigationPage)

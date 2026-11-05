@@ -45,10 +45,18 @@ def memberships(
 
 
 def moment_tags(
-    store: "CatalogStore", moment: str, after: str, limit: int, search: str, assigned: bool
+    store: "CatalogStore",
+    moment: str,
+    after: str,
+    limit: int,
+    search: str,
+    assigned: bool,
+    target: str | None = None,
 ) -> CatalogMembershipPage:
     """Tag choices for one moment; an added tag also reaches the bundle (ADR-0025)."""
-    return choices(store, "moments", moment, "tags", "moment_tags", after, limit, search, assigned)
+    return choices(
+        store, "moments", moment, "tags", "moment_tags", after, limit, search, assigned, target
+    )
 
 
 def choices(
@@ -61,6 +69,7 @@ def choices(
     limit: int,
     search: str,
     assigned: bool,
+    target: str | None = None,
 ) -> CatalogMembershipPage:
     """Search all destinations before pagination, with exact edge and lifetime bases."""
     with store.connection(readonly=True) as db:
@@ -74,8 +83,12 @@ def choices(
             "SELECT c.entity,c.body FROM catalog_rows c WHERE c.family=? AND c.entity>? "
             "AND instr(lower(json_extract(c.body,'$.name')),lower(?))>0 "
             "AND (?=0 OR EXISTS (SELECT 1 FROM catalog_rows e WHERE e.family=? "
-            "AND e.entity=? || '~' || c.entity)) ORDER BY c.entity LIMIT ?",
-            (family, after, search, int(assigned), edge, owner, limit + 1),
+            "AND e.entity=? || '~' || c.entity)) "
+            + ("AND c.entity=? " if target is not None else "")
+            + "ORDER BY c.entity LIMIT ?",
+            (family, after, search, int(assigned), edge, owner)
+            + ((target,) if target is not None else ())
+            + (limit + 1,),
         ).fetchall()
         items = []
         for row in rows[:limit]:

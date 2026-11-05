@@ -86,13 +86,16 @@ class CatalogBrowseRequest(StrictModel):
 
 
 # Empty bundles and confirmed bundles with at least one visible member match legacy All.
+# Correlated lookups compare a JSON expression index with ``+b.entity``: the unary
+# plus drops the column's TEXT affinity, which otherwise stops SQLite using the
+# expression index and makes every bundle scan every file row.
 ELIGIBLE = """b.family='asset_bundles'
 AND NOT (json_extract(b.body,'$.grouping_state')='PROVISIONAL'
  AND json_extract(b.body,'$.grouping_source')='SCAN_SUGGESTION')
 AND (NOT EXISTS (SELECT 1 FROM catalog_rows f WHERE f.family='asset_files'
- AND json_extract(f.body,'$.bundle_id')=b.entity)
+ AND json_extract(f.body,'$.bundle_id')=+b.entity)
  OR EXISTS (SELECT 1 FROM catalog_rows f WHERE f.family='asset_files'
- AND json_extract(f.body,'$.bundle_id')=b.entity
+ AND json_extract(f.body,'$.bundle_id')=+b.entity
  AND json_extract(f.body,'$.relative_path') NOT LIKE '.%'
  AND json_extract(f.body,'$.relative_path') NOT LIKE '%/.%'))"""
 
@@ -134,12 +137,12 @@ def _scope(db: sqlite3.Connection, request: CatalogBrowseRequest) -> tuple[str, 
         )
         where += (
             f" AND NOT EXISTS (SELECT 1 FROM catalog_rows e WHERE e.family='{family}' "
-            "AND json_extract(e.body,'$.bundle_id')=b.entity)"
+            "AND json_extract(e.body,'$.bundle_id')=+b.entity)"
         )
     if request.view == "missing":
         where += (
             " AND EXISTS (SELECT 1 FROM catalog_rows f JOIN local_media m ON m.file_id=f.entity "
-            "WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')=b.entity "
+            "WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')=+b.entity "
             "AND m.state='unavailable')"
         )
     for expression in expressions:
@@ -167,7 +170,7 @@ def _ordering(db: sqlite3.Connection, request: CatalogBrowseRequest) -> tuple[st
         "manual": "json_extract(b.body,'$.manual_order')",
         "file_count": (
             "(SELECT count(*) FROM catalog_rows f WHERE f.family='asset_files' "
-            "AND json_extract(f.body,'$.bundle_id')=b.entity)"
+            "AND json_extract(f.body,'$.bundle_id')=+b.entity)"
         ),
     }[request.sort]
     if request.sort == "manual" and request.collection_id and not request.include_descendants:
@@ -254,6 +257,20 @@ def directory_bundles(db: sqlite3.Connection, directory: str) -> list[str]:
             (directory, directory + "/", directory + "0"),
         )
     ]
+
+
+def browse_population(
+    db: sqlite3.Connection, request: CatalogBrowseRequest
+) -> tuple[str, list[Any]]:
+    """The identities `browse_total` counts, as a subquery and its arguments."""
+    where, args = _scope(db, request)
+    return f"SELECT b.entity FROM catalog_rows b WHERE {where}", args
+
+
+def browse_total(db: sqlite3.Connection, request: CatalogBrowseRequest) -> int:
+    """The complete eligible population of one browse request, without a page."""
+    where, args = _scope(db, request)
+    return int(db.execute(f"SELECT count(*) FROM catalog_rows b WHERE {where}", args).fetchone()[0])
 
 
 def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrowsePage:

@@ -18,6 +18,7 @@ def test_two_sidecars_discover_move_and_restore_review(tmp_path):
     with running(bases[0], tmp_path) as a, running(bases[1], tmp_path) as b:
         clients = [a, b]
         prefixes = []
+        published: set[str] = set()
         for index, client in enumerate(clients):
             response = client.post(
                 "/api/v1/libraries/register", json={"root_path": str(roots[index])}
@@ -59,11 +60,17 @@ def test_two_sidecars_discover_move_and_restore_review(tmp_path):
                 ).status_code
                 == 202
             )
-            eventually(
+            applied = eventually(
                 lambda client=client, discovery=discovery: client.get(
                     discovery + "/reviews/packaged-review"
                 ).json(),
                 lambda s: s.get("state") == "applied",
+            )
+            published.add(applied["event"])
+            # A local commit precedes publication; copy only published history.
+            eventually(
+                lambda client=client, prefix=prefix: client.get(prefix + "/replica/status").json(),
+                lambda s: s.get("outbox") == 0,
             )
         for source, destination in ((root, peer), (peer, root)):
             shutil.copytree(
@@ -72,14 +79,18 @@ def test_two_sidecars_discover_move_and_restore_review(tmp_path):
                 dirs_exist_ok=True,
             )
         for client, prefix in zip(clients, prefixes, strict=True):
-            eventually(
-                lambda client=client, prefix=prefix: client.get(prefix + "/replica/status").json(),
-                lambda s: s.get("outbox") == 0,
+            # An empty outbox says nothing about peer import. Moving before the
+            # peer's creation arrives would correctly retain a competing old path.
+            page = eventually(
+                lambda client=client, prefix=prefix: client.get(
+                    prefix + "/replica/catalog/entities/asset_files?limit=50"
+                ).json(),
+                lambda page: (
+                    len(page["items"]) == 3
+                    and all(set(file["parents"]) == published for file in page["items"])
+                ),
             )
-            files = client.get(prefix + "/replica/catalog/entities/asset_files?limit=50").json()[
-                "items"
-            ]
-            assert len(files) == 3 and all(not file["has_conflicts"] for file in files)
+            assert all(not file["has_conflicts"] for file in page["items"])
         (root / "new.png").rename(root / "moved.png")
         discovery = prefixes[0] + "/replica/discovery"
         assert a.post(discovery + "/runs", json={"operation": "packaged-move"}).status_code == 202
@@ -89,16 +100,18 @@ def test_two_sidecars_discover_move_and_restore_review(tmp_path):
         )
         assert moved["repaired"] == 1
         (root / "pending.png").write_bytes(b"synthetic pending packaged review")
-        a.post(discovery + "/runs", json={"operation": "packaged-pending"})
+        response = a.post(discovery + "/runs", json={"operation": "packaged-pending"})
+        assert response.status_code == 202, response.text
         eventually(
             lambda: a.get(discovery + "/status").json(),
             lambda s: s.get("state") == "succeeded" and s.get("id") == "packaged-pending",
         )
         candidate = a.get(discovery + "/candidates").json()["items"][0]
-        a.post(
+        response = a.post(
             discovery + "/reviews",
             json={"operation": "retained-review", "candidate": candidate["id"]},
         )
+        assert response.status_code == 202, response.text
         prepared = eventually(
             lambda: a.get(discovery + "/reviews/retained-review").json(),
             lambda s: s.get("state") == "ready",

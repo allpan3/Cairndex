@@ -1,6 +1,7 @@
 """Serve private replicas without ever opening a database inside the provider folder"""
 
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
@@ -92,12 +93,8 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
                 raise ReplicaError("Library descriptor changed; recovery review required")
             if isinstance(handle[0], CatalogStore):
                 run_one(handle[0], handle[1].root)
-                from cairndex.replicas.discovery import tick
-
-                tick(handle[0], handle[1].root)
-                from cairndex.replicas.grouping.worker import step as edit_grouping
-
-                edit_grouping(handle[0])
+                advance_discovery(handle[0], handle[1].root)
+                advance_grouping(handle[0])
                 from cairndex.file_ops.gate import ensure_portable_write_mode
                 from cairndex.media.hls import close_library_sessions
                 from cairndex.registry.engine import registry_session_scope
@@ -119,18 +116,6 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
                         authorize_source,
                         lambda: close_library_sessions(library_id),
                     )
-                    from cairndex.replicas.maintenance import step as maintain_media
-
-                    maintain_media(
-                        handle[0],
-                        handle[1].root,
-                        library_id,
-                        lambda: (
-                            source_work is None
-                            or not source_work()
-                            or lifecycle.blocked(library_id)
-                        ),
-                    )
             handle[1].tick()
             source_transport = _source_transports.get(library_id)
             if source_transport:
@@ -147,7 +132,10 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
         with handle[0].connection() as db:
             db.execute(
                 "INSERT OR REPLACE INTO config VALUES ('exchange_error', ?)",
-                ("Waiting for metadata storage or recovery; saved work remains private",),
+                (
+                    "Changes are saved on this device but not yet written to the library "
+                    "folder. Cairndex keeps trying.",
+                ),
             )
         raise ReplicaError(
             "Metadata exchange is waiting for storage; saved work remains private"
@@ -156,11 +144,34 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
         handle[2].release()
 
 
+def advance_discovery(store: CatalogStore, root: Path) -> None:
+    """Amortize exchange overhead without extending an individual Update transaction."""
+    from cairndex.replicas.discovery import tick
+    from cairndex.replicas.discovery_state import run
+
+    deadline = time.monotonic() + DISCOVERY_SECONDS
+    for _ in range(32):
+        tick(store, root)
+        if time.monotonic() >= deadline or run(store).get("state") != "running":
+            return
+
+
+# A review edit takes several steps, each its own commit. Running them in one bounded
+# pass skips the transport tick and the pause between passes.
+def advance_grouping(store: CatalogStore) -> None:
+    from cairndex.replicas.grouping.worker import step
+
+    deadline = time.monotonic() + GROUPING_SECONDS
+    while step(store) and time.monotonic() < deadline:
+        pass
+
+
 # Queued work that another bounded pass would advance. Inbox dependencies are not
 # counted: they can wait indefinitely for objects that have not arrived yet.
 _PENDING_WORK = (
     "SELECT 1 FROM discovery_runs WHERE state='running' LIMIT 1",
-    "SELECT 1 FROM catalog_jobs WHERE state='queued' LIMIT 1",
+    "SELECT 1 FROM catalog_jobs WHERE state='queued' "
+    "AND json_extract(intent,'$.action')!='media_maintenance' LIMIT 1",
     "SELECT 1 FROM discovery_reviews WHERE state IN ('queued','apply_queued') LIMIT 1",
     "SELECT 1 FROM discovery_verifications WHERE state IN ('queued','running') LIMIT 1",
     "SELECT 1 FROM grouping_commands WHERE state IN ('queued','running') LIMIT 1",
@@ -241,12 +252,26 @@ def close(library_id: str) -> None:
 # the short pause leaves the SQLite writer free for HTTP saves between passes.
 BUSY_WAIT = 0.025
 IDLE_WAIT = 1.0
+# Longest run of review edit steps in one pass; a save waits at most this much longer
+GROUPING_SECONDS = 0.25
+DISCOVERY_SECONDS = 0.25
+
+# Set when a request queues work, so the next pass starts now rather than after
+# IDLE_WAIT. Clearing after the wait loses no request: the work is committed before
+# wake() and every pass reads the queues afresh.
+_wake = threading.Event()
+
+
+def wake() -> None:
+    """Start the next worker pass without waiting out the idle interval."""
+    _wake.set()
 
 
 # Poll only replicas opened by this server, with bounded work per replica
 class ReplicaWorker:
     def __init__(self) -> None:
         self._stop = threading.Event()
+        self._wake = _wake
         self._thread = threading.Thread(target=self.run, name="replica-exchange", daemon=True)
         self._sources = ThreadPoolExecutor(max_workers=2, thread_name_prefix="source-operation")
         self._pending: dict[str, Future[None]] = {}
@@ -258,7 +283,11 @@ class ReplicaWorker:
     def run(self) -> None:
         "Storage failures remain visible on explicit status/exchange instead of killing the loop"
         busy = False
-        while not self._stop.wait(BUSY_WAIT if busy else IDLE_WAIT):
+        while True:
+            self._wake.wait(BUSY_WAIT if busy else IDLE_WAIT)
+            self._wake.clear()
+            if self._stop.is_set():
+                return
             busy = False
             for identity, future in list(self._pending.items()):
                 if future.done():
@@ -290,14 +319,63 @@ class ReplicaWorker:
                             ).fetchone()
                         if waiting:
                             self._pending[library_id] = self._sources.submit(
-                                exchange, library_id, source_work=lambda: not self._stop.is_set()
+                                self.run_sources, library_id
                             )
                 except (DomainError, OSError):
                     continue
 
+    def run_sources(self, library_id: str) -> None:
+        """Keep local media work independent of the size of shared history.
+
+        Maintenance uses the same lifecycle admission and guarded media adapter
+        as playback. It needs no transport lock; source writes still use exchange.
+        """
+        from cairndex.replicas.maintenance import advance
+
+        while not self._stop.is_set():
+            with _lock:
+                handle = _handles.get(library_id)
+            if handle is None or not isinstance(handle[0], CatalogStore):
+                return
+            store, transport = handle[0], handle[1]
+            with lifecycle.work(library_id):
+                if not serving(library_id, store):
+                    return
+                with store.connection(readonly=True) as db:
+                    if db.execute("SELECT 1 FROM config WHERE key='blocked'").fetchone():
+                        return
+                    if not db.execute("SELECT 1 FROM config WHERE key='catalog_ready'").fetchone():
+                        return
+                    source = db.execute(
+                        "SELECT 1 FROM source_operations "
+                        "WHERE state IN ('queued','accepted') LIMIT 1"
+                    ).fetchone()
+                    media = db.execute(
+                        "SELECT 1 FROM catalog_jobs WHERE state='queued' "
+                        "AND json_extract(intent,'$.action')='media_maintenance' LIMIT 1"
+                    ).fetchone()
+                if media:
+                    manifest = read_manifest(transport.root)
+                    if manifest.replica is None or manifest.replica.model_dump_json() != handle[3]:
+                        raise ReplicaError("Library descriptor changed; recovery review required")
+                    advance(
+                        store,
+                        transport.root,
+                        library_id,
+                        lambda: self._stop.is_set() or lifecycle.blocked(library_id),
+                    )
+            if source:
+                exchange(library_id, source_work=lambda: not self._stop.is_set())
+            if not source and not media:
+                return
+            # Yield between bounded batches and wake immediately on shutdown.
+            if self._stop.wait(BUSY_WAIT):
+                return
+
     def stop(self) -> None:
         """Stop admission to the worker before releasing its handles"""
         self._stop.set()
+        self._wake.set()
         self._thread.join(timeout=15)
         self._sources.shutdown(wait=False, cancel_futures=True)
         if self._thread.is_alive():

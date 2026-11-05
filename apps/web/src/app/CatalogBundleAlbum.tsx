@@ -14,7 +14,7 @@ import { AlbumRow, AlbumTile } from './AlbumItem'
 import type { BrowserNavigation } from './Browser'
 import { selectionRange, type SelectionModifiers } from './selection'
 import { rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
-import type { LayoutMode } from './types'
+import type { LayoutMode, LocatedFile } from './types'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { useCatalogHistory } from './useCatalogHistory'
 
@@ -30,8 +30,12 @@ export function CatalogBundleAlbum(props: {
   onOpen: (file: string) => void
   onSelectFile: (file: string | null) => void
   hostFiles?: LibraryHostFiles
+  /** A located file to select, at the top level or in the folder member holding it */
+  initialFile?: LocatedFile | null
 }) {
   const [directory, setDirectory] = useState<string | null>(null)
+  // The folder opened first carries the located file; leaving it ends the search
+  const [locating, setLocating] = useState(props.initialFile ?? null)
   const status = useReplicaStatus(props.library).data
   const historyError = useCatalogHistory(
     props.library,
@@ -55,8 +59,10 @@ export function CatalogBundleAlbum(props: {
           key={directory}
           directory={directory}
           onDirectory={setDirectory}
+          initialFile={locating}
           onBack={() => {
             setDirectory(null)
+            setLocating(null)
             props.onSelectFile(null)
           }}
         />
@@ -77,6 +83,7 @@ function AlbumPage({
   onSelectFile,
   activeView = true,
   hostFiles,
+  initialFile = null,
 }: {
   library: string
   bundle: string
@@ -89,6 +96,7 @@ function AlbumPage({
   onOpen: (id: string) => void
   onSelectFile: (id: string | null) => void
   hostFiles?: LibraryHostFiles
+  initialFile?: LocatedFile | null
 }) {
   const [generation, setGeneration] = useState(0)
   const pages = useInfiniteQuery({
@@ -139,6 +147,31 @@ function AlbumPage({
     if (!modifiers.shiftKey) anchor.current = id
     setActive(id)
   }
+  // Locate selects its file once a page lists it, or opens the folder member
+  // holding it; the search stops at the first answer, so later edits keep theirs
+  const seeking = useRef(initialFile)
+  useEffect(() => {
+    const target = seeking.current
+    if (!target || !pages.isSuccess) return
+    const found = items.find((item) => item.file?.id === target.id)
+    if (found) {
+      seeking.current = null
+      setSelected(new Set([found.id]))
+      setActive(found.id)
+      anchor.current = found.id
+      requestAnimationFrame(() => navigation.current?.focus(found.id))
+    } else if (pages.hasNextPage) {
+      if (!pages.isFetchingNextPage) void pages.fetchNextPage()
+    } else {
+      seeking.current = null
+      const folder = directory
+        ? undefined
+        : items.find(
+            (item) => item.directory && target.path.startsWith(`${item.directory.directory_path}/`),
+          )
+      if (folder) onDirectory(folder.id)
+    }
+  }, [items, pages, directory, onDirectory])
   const sole = selected.size === 1 ? items.find((item) => selected.has(item.id)) : null
   useEffect(() => {
     if (activeView) onSelectFile(sole?.file?.id ?? null)

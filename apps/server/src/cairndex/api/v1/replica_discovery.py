@@ -1,6 +1,6 @@
 """Bounded private Update and reviewed grouping routes for capable replicas"""
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Query, Response
 from pydantic import Field
@@ -9,6 +9,7 @@ from cairndex.api.v1.catalog_replicas import Catalog
 from cairndex.replicas import discovery_state as state
 from cairndex.replicas import discovery_verification as verification
 from cairndex.replicas.protocol import Digest, StrictModel, Token
+from cairndex.replicas.service import wake
 
 router = APIRouter(prefix="/libraries/{library_id}/replica/discovery", tags=["replica-discovery"])
 
@@ -16,6 +17,22 @@ router = APIRouter(prefix="/libraries/{library_id}/replica/discovery", tags=["re
 # A request starts work without enumerating a directory or inspecting media
 class DiscoveryStart(StrictModel):
     operation: Token
+
+
+class DiscoveryRun(StrictModel):
+    """Server-local scan state; absent progress fields stay absent while idle."""
+
+    state: Literal["idle", "running", "succeeded", "failed", "cancelled"]
+    initial_scan: bool = Field(description="No earlier Update succeeded in this private store")
+    id: str = ""
+    sequence: int = 0
+    phase: str = ""
+    cursor: str = ""
+    observed: int = 0
+    repaired: int = 0
+    error: str | None = None
+    completed: int = 0
+    total: int | None = None
 
 
 # Ordering edits refer only to files already held in the private candidate
@@ -53,15 +70,19 @@ class DiscoveryAccept(StrictModel):
 
 
 # Progress includes completed observations and repairs, never a guessed directory total
-@router.get("/status")
+@router.get("/status", response_model=DiscoveryRun, response_model_exclude_unset=True)
 def status(store: Catalog) -> dict[str, Any]:
     return state.run(store)
 
 
 # Stable enqueue identities preserve safe retries after a lost response
-@router.post("/runs", status_code=202)
+@router.post(
+    "/runs", status_code=202, response_model=DiscoveryRun, response_model_exclude_unset=True
+)
 def start(payload: DiscoveryStart, store: Catalog) -> dict[str, Any]:
-    return state.enqueue(store, payload.operation)
+    run = state.enqueue(store, payload.operation)
+    wake()
+    return run
 
 
 # Cancellation is private and leaves already committed events intact
@@ -124,9 +145,11 @@ def candidate_choices(
 # Preparation captures the user selection before a background worker touches catalog relationships
 @router.post("/reviews", status_code=202)
 def prepare(payload: DiscoveryPrepare, store: Catalog) -> dict[str, Any]:
-    return state.prepare(
+    review = state.prepare(
         store, payload.operation, payload.model_dump(exclude={"operation"}, exclude_unset=True)
     )
+    wake()
+    return review
 
 
 # Recover queued/ready/applied reviews independently of the browser session
@@ -168,7 +191,9 @@ def review_page(
 # Commit is asynchronous and revalidates source observations before authoring
 @router.post("/reviews/{operation}/accept", status_code=202)
 def accept(operation: Token, payload: DiscoveryAccept, store: Catalog) -> dict[str, Any]:
-    return state.accept(store, operation, payload.receipt)
+    review = state.accept(store, operation, payload.receipt)
+    wake()
+    return review
 
 
 # Closing a queued preview is reversible and cannot accidentally authorize a queued commit
@@ -188,7 +213,9 @@ def cancel_review(operation: Token, store: Catalog) -> Response:
 # Request handlers enqueue complete reads and never hash source content
 @router.post("/verifications", status_code=202)
 def verify(payload: DiscoveryVerify, store: Catalog) -> dict[str, Any]:
-    return verification.enqueue(store, payload.operation, payload.candidate)
+    queued = verification.enqueue(store, payload.operation, payload.candidate)
+    wake()
+    return queued
 
 
 # Byte progress is visible without reopening the media source

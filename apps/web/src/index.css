@@ -455,8 +455,10 @@ button {
      lets the search box give up space before the breadcrumb trail does. */
   min-width: 80px;
   /* Shrink weighs by width, so a short title would otherwise be cut while the
-     field still had room to give: the field gives first */
-  flex-shrink: 100;
+     field still had room to give: the field gives first. A weight of 100 still
+     took a fraction of a pixel from the title, and any overflow draws an
+     ellipsis ("All" read "A…"); at this weight the title's share rounds to zero. */
+  flex-shrink: 10000;
 }
 /* Back/Forward history — a compact seg pair leading each surface's top bar. */
 .nav-history button {
@@ -503,6 +505,20 @@ button {
   background: var(--accent-soft);
   color: var(--text-strong);
 }
+/* One turn of the Refresh icon per click (see RefreshButton) */
+.toolbar__refresh--turning .icon {
+  animation: toolbar-refresh-turn 450ms ease-out;
+}
+@keyframes toolbar-refresh-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toolbar__refresh--turning .icon {
+    animation: none;
+  }
+}
 /* A narrow surface keeps actions and search on one row, with view controls in a dialog */
 .toolbar {
   overflow: hidden;
@@ -548,21 +564,24 @@ button {
   .toolbar .toolbar__layouts {
     display: none;
   }
-  .center .toolbar {
+  .center .toolbar,
+  .file-browser__bar .toolbar {
     gap: 6px;
     padding-left: 8px;
     padding-right: 8px;
   }
-  .center .file-browser .toolbar .btn {
+  .file-browser__bar .toolbar .btn {
     display: none;
   }
-  .center .toolbar input[type='search'] {
+  .center .toolbar input[type='search'],
+  .file-browser__bar .toolbar input[type='search'] {
     min-width: 72px;
   }
-  .center .file-browser__crumbs {
+  .file-browser__bar .file-browser__crumbs {
     min-width: 40px;
   }
-  .center .toolbar .toolbar__title {
+  .center .toolbar .toolbar__title,
+  .file-browser__bar .toolbar .toolbar__title {
     display: none;
   }
 }
@@ -1731,8 +1750,7 @@ button {
 }
 .inspector__cover {
   width: 100%;
-  aspect-ratio: 16 / 9;
-  max-height: 144px;
+  aspect-ratio: 16 / 10;
   border-radius: 8px;
   background: var(--bg) center/cover no-repeat;
   border: 1px solid var(--border);
@@ -2852,7 +2870,10 @@ button {
   cursor: pointer;
   padding: 0;
 }
-.chip--collection {
+/* When the name is a button, the buttons carry the padding. Keyed on the
+   structure rather than a modifier, because tag chips that gained a name button
+   without the modifier doubled their padding. */
+.chip:has(> .chip__open) {
   gap: 0;
   padding: 0;
 }
@@ -2947,6 +2968,28 @@ button {
 }
 .pick-row--on {
   color: var(--text-strong);
+}
+/* The tag picker row's toggle: guides, box, name and count, beside its fold
+   chevron. Visible overflow lets the guides bleed into the row's padding. */
+.pick-row__pick {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: visible;
+}
+.pick-row__pick:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 /* Vertical hierarchy guides: one thin rule per ancestor level. The negative
    block margin bleeds the lines into the row's 3px vertical padding so they meet
@@ -3676,6 +3719,11 @@ code {
   flex-direction: column;
   gap: 10px;
   overflow: hidden;
+  /* The tree follows its rows, so a centered dialog re-centered on every expand
+     and fold and moved the row under the pointer. A fixed top edge only grows
+     downward, where v0.2.1's full-height review also sat. */
+  align-self: flex-start;
+  margin-top: 6vh;
 }
 .portable-grp-tree {
   flex: 1 1 auto;
@@ -3686,6 +3734,11 @@ code {
 }
 .portable-grp-tree [role='treeitem'] {
   padding-block: 3px;
+}
+/* Every row kind takes the same rhythm. The node margin suits the nested list of the
+   older review; between absolutely placed rows it doubled the gap after a node. */
+.portable-grp-tree .grp-node {
+  margin: 0;
 }
 .portable-grp-tree [role='treeitem']:focus-visible {
   outline: 1px solid var(--accent);
@@ -3734,7 +3787,9 @@ code {
   width: 14px;
   height: 18px;
 }
-.grp-section > .grp-check {
+.grp-section > .grp-check,
+.grp-section > .grp-check-spacer {
+  flex: 0 0 14px;
   width: 14px;
   height: 14px;
 }
@@ -3817,6 +3872,20 @@ code {
 .grp-intro-details > summary::after {
   content: ' ⓘ';
   color: var(--text-muted);
+}
+.grp-intro-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.grp-intro-row > .grp-intro-details {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.grp-intro-row > .grp-status {
+  flex: 0 1 auto;
+  max-width: 60%;
+  text-align: right;
 }
 /* Reserved so a notice never pushes the list down mid-click. */
 .grp-status {
@@ -6062,6 +6131,35 @@ code {
   color: var(--error);
   overflow-wrap: anywhere;
 }
+.discovery-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.discovery-setup strong {
+  color: var(--text-strong);
+}
+.discovery-setup__title {
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+}
+.discovery-setup p {
+  margin: 0;
+}
+.discovery-setup summary {
+  cursor: pointer;
+}
+.discovery-setup details[open] summary {
+  margin-bottom: 6px;
+}
+.replica-discovery .discovery-setup {
+  max-width: 440px;
+  margin-bottom: 8px;
+}
 .sidebar__job-error {
   /* Sits inside the sidebar foot beside the job rows, so it carries their
      padding rather than the standalone margin it had further up the panel. */
@@ -6194,6 +6292,11 @@ code {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+.file-browser__bar {
+  container-type: inline-size;
+  container-name: surface;
+  flex-shrink: 0;
 }
 .file-browser__more {
   margin: 10px auto;
@@ -7692,12 +7795,10 @@ code {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-.listing-selection-note {
-  padding: 6px 12px;
-  color: var(--text-muted);
-  font-size: 12px;
+/* The active card carries the ring, so a click does not also frame the whole grid */
+.browser:focus-visible:has([data-focused='true']) {
+  outline: none;
 }
-
 /* Compatibility notices reserve space instead of covering browsing controls. */
 .library-workspace {
   height: 100%;
@@ -7770,14 +7871,6 @@ code {
 }
 
 /* Technical details stay available without pushing file actions below long paths */
-.file-inspector__details {
-  margin-top: 12px;
-}
-.file-inspector__details summary {
-  cursor: pointer;
-  padding: 8px 0;
-  color: var(--text-muted);
-}
 .file-meta__row dt {
   flex-shrink: 0;
 }
@@ -7899,7 +7992,8 @@ code {
 :root[data-titlebar='overlay']
   .catalog-ordinary-layout--no-sidebar
   .file-browser
-  > .toolbar:first-child,
+  > .file-browser__bar:first-child
+  > .toolbar,
 :root[data-titlebar='overlay'] .catalog-ordinary-layout--no-sidebar .alltags__toolbar {
   padding-left: 100px;
 }
@@ -8069,16 +8163,8 @@ code {
   border: 0;
   padding: 0;
 }
-.catalog-file-details > .btn {
-  margin-top: 6px;
-}
 .catalog-file-surface > .inspector {
   overflow-y: auto;
-}
-/* A destination only some selected bundles have */
-.chip--partial {
-  background: transparent;
-  border-style: dashed;
 }
 .catalog-chips-more {
   margin: 2px 0 0;

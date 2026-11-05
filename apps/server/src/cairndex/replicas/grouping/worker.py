@@ -44,7 +44,7 @@ def step(store: CatalogStore) -> bool:
             "SELECT id FROM grouping_workspaces WHERE state='building' ORDER BY rowid LIMIT 1"
         ).fetchone()
         if building:
-            initialize.step(db, building[0])
+            initialize.advance(db, building[0])
             return True
         command = db.execute(
             "SELECT * FROM grouping_commands WHERE state IN ('queued','running') "

@@ -13,6 +13,7 @@ import { useBundleFileDropTarget, type BundleFileDropHandler } from './useBundle
  */
 export type BundleCardItem = BundleSummary & {
   resume_storyboard_version?: string | null
+  resume_generation?: string | null
   size_known?: boolean
 }
 
@@ -72,6 +73,7 @@ export function BundleCard({
               duration: item.resume_duration,
               startTime: item.resume_position,
               storyboardVersion: item.resume_storyboard_version,
+              generation: item.resume_generation,
             }
           : null,
     [
@@ -87,6 +89,7 @@ export function BundleCard({
       item.resume_position,
       item.resume_relative_path,
       item.resume_storyboard_version,
+      item.resume_generation,
       item.resume_video_codec,
     ],
   )

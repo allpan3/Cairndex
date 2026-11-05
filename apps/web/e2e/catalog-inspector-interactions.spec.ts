@@ -205,7 +205,10 @@ test('ordinary note dragging and tag chip actions survive saves and navigation @
     await expect(
       inspector.locator('.prop').filter({ has: page.getByText('Files', { exact: true }) }),
     ).toContainText('6')
-    await expect(inspector.getByText('Date Added', { exact: true })).toBeVisible()
+    await expect(inspector.locator('.prop__k')).toContainText(['Files', 'Size', 'Date Added'])
+    // v0.2.1's 16:10 cover, without a height cap
+    const cover = await inspector.locator('.inspector__cover').boundingBox()
+    expect(cover!.width / cover!.height).toBeCloseTo(1.6, 1)
     await expect(inspector.getByText('Unknown on this device', { exact: true })).toBeVisible()
     await inspector
       .getByRole('button', { name: 'Open collection Synthetic child', exact: true })

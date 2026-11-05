@@ -151,7 +151,7 @@ test('additions list above the tree, keep their selection and join their bundle 
     const heading = (title: string) =>
       tree.getByRole('treeitem').filter({ has: page.getByText(title, { exact: true }) })
     const top = async (locator: Locator) => (await locator.boundingBox())!.y
-    const additions = heading('Add to existing bundles')
+    const additions = heading('New files for existing bundles')
     const suggestions = heading('New bundles and collections')
     await expect(additions).toHaveAttribute('aria-level', '1')
     await expect(row('Alpha')).toHaveAttribute('aria-level', '2')

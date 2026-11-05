@@ -8,6 +8,7 @@ import {
   bundleFiles,
   createEmptyBundle as createEmptyCatalogBundle,
   collectionFromFolder,
+  createCollection as createCatalogCollection,
   createTag as createCatalogTag,
   createTagGroup as createCatalogTagGroup,
   groupTag,
@@ -2844,11 +2845,31 @@ export function useDeleteCollection() {
 
 /** Create a collection (sidebar "+ Collection"); refetches the tree and the
  * per-collection counts so the new (empty) collection shows its 0 right away. */
+/** Create a collection; `existing` places a portable one last among its siblings. */
 export function useCreateCollection() {
   const qc = useQueryClient()
+  const library = useContext(CatalogQueryContext)
   return useMutation({
-    mutationFn: (payload: CollectionCreate) => createCollection(payload),
+    mutationFn: ({
+      existing = [],
+      ...payload
+    }: CollectionCreate & { existing?: CollectionRead[] }) => {
+      if (!library) return createCollection(payload)
+      const parent = payload.parent_id ?? null
+      return createCatalogCollection(
+        library,
+        payload.name,
+        parent,
+        existing
+          .filter((item) => (item.parent_id ?? null) === parent)
+          .reduce((last, item) => Math.max(last, item.sort_order + 1), 0),
+      )
+    },
     onSuccess: () => {
+      if (library) {
+        void qc.invalidateQueries({ queryKey: ['catalog-navigation', library] })
+        return
+      }
       qc.invalidateQueries({ queryKey: ['collections'] })
       invalidateCollectionCounts(qc)
     },

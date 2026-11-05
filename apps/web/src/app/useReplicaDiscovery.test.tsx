@@ -29,8 +29,7 @@ function serve(candidates: unknown[]) {
   })
 }
 
-function setup() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function setup(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return renderHook(() => useReplicaDiscovery('library', true, () => undefined), {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -58,6 +57,24 @@ test('an Update this window started opens the review when it leaves discoveries'
   expect(result.current.finished).toMatchObject({ id: 'synthetic-run', observed: 4 })
   act(() => result.current.clearFinished())
   expect(result.current.finished).toBeNull()
+})
+
+// Update is the library-wide refresh: no file needs a check of its own
+test('a finished Update marks every file detail of the library for a new read', async () => {
+  serve([])
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const here = ['catalog-local-file', 'library', 'file-one', 'observed']
+  const elsewhere = ['catalog-local-file', 'other-library', 'file-two', 'observed']
+  client.setQueryData(here, { state: 'available' })
+  client.setQueryData(elsewhere, { state: 'available' })
+  const { result } = setup(client)
+  await waitFor(() => expect(result.current.canStart).toBe(true))
+  expect(client.getQueryState(here)?.isInvalidated).toBe(false)
+
+  await act(() => result.current.start())
+
+  await waitFor(() => expect(client.getQueryState(here)?.isInvalidated).toBe(true))
+  expect(client.getQueryState(elsewhere)?.isInvalidated).toBe(false)
 })
 
 test('an Update that leaves nothing to decide reports without opening the review', async () => {

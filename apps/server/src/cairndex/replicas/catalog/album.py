@@ -3,7 +3,7 @@
 import hashlib
 import json
 import sqlite3
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -131,11 +131,14 @@ def album(
                     (owner, json.dumps(directory_ids)),
                 ).fetchall()
             )
+        local = _observations(db, [row["entity"] for row in rows if row["kind"] == "file"])
         items = [
             CatalogAlbumItem(
                 id=row["entity"],
                 kind=row["kind"],
-                file=FileRead.model_validate(catalog_file(db, row["entity"]))
+                file=FileRead.model_validate(catalog_file(db, row["entity"])).model_copy(
+                    update=local.get(row["entity"], {})
+                )
                 if row["kind"] == "file"
                 else None,
                 directory=DirectoryMemberRead.model_validate(
@@ -156,3 +159,28 @@ def album(
             observed=observed,
             editable=editable,
         )
+
+
+def _observations(db: sqlite3.Connection, ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Size and media details from this device's last observations, never from source bytes.
+
+    A size observed at an earlier path no longer describes the file, so it is ignored.
+    """
+    if not ids:
+        return {}
+    facts: dict[str, dict[str, Any]] = {}
+    for row in db.execute(
+        "SELECT c.entity,m.metadata,s.size FROM catalog_rows c "
+        "LEFT JOIN local_media m ON m.file_id=c.entity "
+        "LEFT JOIN local_file_facts s ON s.file_id=c.entity "
+        "AND s.path=json_extract(c.body,'$.relative_path') "
+        "WHERE c.family='asset_files' AND c.entity IN (SELECT value FROM json_each(?))",
+        (json.dumps(ids),),
+    ):
+        fact: dict[str, Any] = {}
+        if row["size"] is not None:
+            fact["size_bytes"] = row["size"]
+        if row["metadata"]:
+            fact["tech_metadata"] = json.loads(row["metadata"])
+        facts[row["entity"]] = fact
+    return facts

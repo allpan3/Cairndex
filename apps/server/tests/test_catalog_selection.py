@@ -157,7 +157,22 @@ def test_bulk_api_bounds_and_membership_pages(api):  # noqa: F811
     assert any(item["assigned_count"] == 0 for item in every)
     assert mine == [item for item in every if item["assigned_count"]]
     status = client.get(base.removesuffix("/catalog") + "/status").json()
-    assert status["selection_version"] == 3
+    assert status["selection_version"] == 4
+
+
+def test_common_memberships_list_only_what_every_selected_bundle_has(store):
+    def common(family):
+        page = choices(store, CatalogBulkMembershipRequest(ids=IDS, family=family, common=True))
+        return [item.id for item in page.items]
+
+    # The fixture gives the tag and the collection to the first bundle only
+    assert common("tags") == [] and common("collections") == []
+    commit(store, preview(store, membership(store, assigned=True)), "shared-tag")
+    commit(store, preview(store, membership(store, "collections", True)), "shared-collection")
+    assert common("tags") == ["tags-child"]
+    assert common("collections") == ["collections-child"]
+    page = choices(store, CatalogBulkMembershipRequest(ids=IDS, family="tags", common=True))
+    assert [item.assigned_count for item in page.items] == [len(IDS)]
 
 
 @pytest.mark.parametrize(
@@ -430,3 +445,37 @@ def test_bundle_files_confirms_and_extends_bundles_from_unbundled_files(store):
         title = read_row(db, "asset_bundles", loose["file-video"])["title"]
         # Without a title the confirmed bundle keeps its staging title, the file's stem
         assert title == "雪"
+
+
+def test_adding_a_member_leaves_the_unchanged_collection_row_in_place(store):
+    # A membership save re-asserts the collection's $alive. Rewriting its unchanged
+    # row fired search triggers that rebuilt the row of every bundle in the collection.
+    commit(store, preview(store, membership(store, "collections", True)), "two-members")
+    third = "bundle-000002"
+    page = choices(store, CatalogBulkMembershipRequest(ids=[third], family="collections"))
+    item = next(item for item in page.items if item.id == "collections-child")
+
+    def collection_rowid() -> int:
+        with store.connection(readonly=True) as db:
+            row = db.execute(
+                "SELECT rowid,(SELECT max(rowid) FROM catalog_rows) FROM catalog_rows "
+                "WHERE family='collections' AND entity='collections-child'"
+            ).fetchone()
+            assert row[0] < row[1], "a rewritten row would take a new rowid"
+            return row[0]
+
+    before = collection_rowid()
+    intent = {
+        "action": "bulk",
+        "ids": [third],
+        "field": "collections",
+        "target": item.id,
+        "assigned": True,
+        "observed": item.observed,
+    }
+    commit(store, preview(store, intent), "third-member")
+    assert collection_rowid() == before
+    name = json.loads(store.entity("collections", "collections-child")["fields"]["name"]["value"])
+    with store.connection(readonly=True) as db:
+        indexed = dict(db.execute("SELECT bundle_id,collections FROM catalog_search").fetchall())
+    assert all(name in indexed[identity] for identity in [*IDS, third])

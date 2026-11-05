@@ -17,16 +17,6 @@ import { focusRenameInput } from './renameSelection'
 import { useCommitOnPointerDownOutside } from './useCommitOutside'
 import { OverlayScrollbar } from './OverlayScrollbar'
 
-const PRIMARY_FACTS = new Set([
-  'Type',
-  'Size',
-  'Dimensions',
-  'Duration',
-  'Date Added',
-  'Date Modified',
-  'Status',
-])
-
 /**
  * Right-pane details for one file, wherever it was selected. Deliberately *not*
  * the bundle inspector: this describes a file, not the bundle around it.
@@ -48,6 +38,7 @@ export function FileInspector({
   onRename,
   locateLabel,
   onLocate,
+  locateDisabled = false,
 }: {
   entry: FileFacts | null
   hostLabels: HostLabels
@@ -60,6 +51,8 @@ export function FileInspector({
   // In-app navigation, available in both web and desktop builds.
   locateLabel?: string
   onLocate?: (relativePath: string) => void
+  /** Shown but unavailable, for a file that is not in a bundle yet */
+  locateDisabled?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
@@ -92,6 +85,7 @@ export function FileInspector({
   }, [editing])
 
   const canRename = onRename !== undefined
+  if (!canRename && editing) setEditing(false)
   const startEditing = () => {
     if (!canRename || !entry) return
     setDraft(entry.name)
@@ -119,7 +113,10 @@ export function FileInspector({
     )
   }
 
-  // The title already supplies the name; optional facts retain the complete relative path
+  // No "Name" row: the title above already is the name. Path *is* here now — in
+  // a bundle the files can come from anywhere, so where one lives is the thing
+  // you want the pane to tell you (owner, 2026-07-27). It wraps rather than
+  // truncates, and sits last so a deep path pushes nothing else out of view.
   const dims = formatDimensions(entry.width, entry.height)
   const rows: [string, string][] = [
     // Same spelling as every other surface's type label, so a file does not
@@ -204,20 +201,25 @@ export function FileInspector({
         </div>
       )}
       <dl className="file-meta">
-        {rows
-          .filter(([key]) => PRIMARY_FACTS.has(key))
-          .map(([key, value]) => (
-            <div className="file-meta__row" key={key}>
-              <dt>{key}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
+        {rows.map(([k, v]) => (
+          <div className="file-meta__row" key={k}>
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
       </dl>
-      {/* Keep actions after the essential facts and before optional technical details */}
+      {/* Actions below the facts: the metadata is what the pane is *for*, and
+          buttons above it pushed every fact down a row. Locate stays available
+          on the web; Open/Reveal remain mapped-desktop capabilities. */}
       {entry.kind === 'file' && (onLocate || onRevealFile || onOpenFile) && (
         <div className="file-inspector__actions">
           {onLocate && (
-            <button className="btn" onClick={() => onLocate(entry.relativePath)}>
+            <button
+              className="btn"
+              disabled={locateDisabled}
+              title={locateDisabled ? 'This file is not in a bundle yet' : undefined}
+              onClick={() => onLocate(entry.relativePath)}
+            >
               {locateLabel ?? 'Locate'}
             </button>
           )}
@@ -233,19 +235,6 @@ export function FileInspector({
           )}
         </div>
       )}
-      <details className="file-inspector__details" key={entry.relativePath}>
-        <summary>More details</summary>
-        <dl className="file-meta">
-          {rows
-            .filter(([key]) => !PRIMARY_FACTS.has(key))
-            .map(([key, value]) => (
-              <div className="file-meta__row" key={key}>
-                <dt>{key}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-        </dl>
-      </details>
     </aside>
   )
 }

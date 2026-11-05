@@ -307,8 +307,13 @@ export function CatalogWorkspace({
   }
   // Known only once status answers, so loading does not flash the not-ready view
   const notReady = (state !== undefined || status.error !== null) && !state?.ready
-  // The bundle browser shows the library's status only when it needs the owner
-  const attention = status.error?.message ?? state?.exchange_error ?? state?.blocked ?? null
+  // The bundle browser shows the library's status only when it needs the owner. A
+  // share login the server may not read yet has its own notice, which says why.
+  const attention =
+    status.error?.message ??
+    (state?.storage_access ? null : state?.exchange_error) ??
+    state?.blocked ??
+    null
   const storageAccess = state?.storage_access && (
     <StorageAccessNotice
       access={state.storage_access}
@@ -547,6 +552,7 @@ export function CatalogWorkspace({
             discovery.enabled
               ? {
                   running: discovery.running,
+                  initialScan: discovery.run.data?.initial_scan,
                   disabled: !discovery.canStart,
                   onClick: () => void discovery.start(),
                 }
@@ -617,24 +623,47 @@ export function CatalogWorkspace({
           libraryId={libraryId}
           onChangeLibrary={onChangeLibrary}
           title={
-            status.error
-              ? 'Library status unavailable'
-              : state?.blocked
-                ? 'Library needs recovery'
-                : 'Preparing the library'
+            status.error ? (
+              'Library status unavailable'
+            ) : state?.blocked ? (
+              'Library needs recovery'
+            ) : (
+              <span className="discovery-setup__title">Preparing this library on the server</span>
+            )
           }
           message={
             status.error
               ? `${status.error.message} Check the server, then try again.`
               : state?.blocked
                 ? `${state.blocked} Metadata Review shows what needs attention.`
-                : 'This device is still receiving the library’s metadata. The browser opens when it is complete.'
+                : 'Loading saved bundles, tags and collections. Large libraries can take several minutes. The library opens automatically when its metadata is ready.'
           }
         >
           {storageAccess}
-          <button className="lockscreen__submit" onClick={refresh}>
-            Try Again
-          </button>
+          {!status.error && !state?.blocked ? (
+            <div className="discovery-setup">
+              <div
+                className="job-progress__track job-progress__track--indeterminate"
+                role="progressbar"
+                aria-label="Preparing library metadata"
+              >
+                <div className="job-progress__bar" />
+              </div>
+              <details>
+                <summary>Why setup is needed</summary>
+                <p>
+                  This server needs its own working catalog and media cache, even for an existing
+                  library. Other browsers using this server share them. The desktop app’s local
+                  server has a separate copy. Missing shared metadata must arrive before the library
+                  can open; Metadata Review shows its status.
+                </p>
+              </details>
+            </div>
+          ) : (
+            <button className="lockscreen__submit" onClick={refresh}>
+              Try Again
+            </button>
+          )}
           <button className="btn" onClick={onManage}>
             Manage Libraries
           </button>

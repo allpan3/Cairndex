@@ -147,69 +147,85 @@ function GroupingReviewSession({
               ×
             </button>
           </div>
-          {/* One line by default; the points are the same every time */}
-          <details className="grp-intro-details">
-            <summary className="grp-intro">
-              Proposed grouping for new files. <strong>Nothing on disk changes.</strong>
-            </summary>
-            <ul className="grp-intro-points">
-              <li>
-                Edits save to a private draft. The catalog changes only when you accept a prepared
-                review.
-              </li>
-              <li>
-                The tree shows where each bundle goes. Hover a name to see the folder its files come
-                from.
-              </li>
-              <li>
-                Drag files between bundles. Double-click a name to rename it, or right-click a row
-                (Shift+F10) for more actions.
-              </li>
-              <li>Reflects the last Update. Run Update again if files changed since.</li>
-            </ul>
-          </details>
-          {/* One reserved line, so a notice never pushes the list under the pointer */}
-          <div className="grp-status" role={message ? 'alert' : 'status'} aria-live="polite">
-            {message ? (
-              <span className="grp-error">{message}</span>
-            ) : paused ? (
-              'An edit was interrupted.'
-            ) : (
-              working
-            )}{' '}
-            {state.error && state.pending && (
-              <button
-                className="btn btn--compact"
-                title="Send the same edit again"
-                disabled={state.sending}
-                onClick={state.retry}
-              >
-                Retry edit
-              </button>
-            )}
-            {paused && (
-              <button
-                className="btn btn--compact"
-                title="Continue the interrupted edit exactly as it was sent"
-                disabled={state.sending}
-                onClick={() => void state.resume()}
-              >
-                Resume edit
-              </button>
-            )}
-            {(state.status.error || state.lists.error) && (
-              <button
-                className="btn btn--compact"
-                aria-label="Retry grouping status"
-                onClick={() => {
-                  void state.status.refetch()
-                  void state.lists.refetch()
-                }}
-              >
-                Retry
-              </button>
-            )}
+          {/* The status shares the intro's line, so its reserved space adds no gap */}
+          <div className="grp-intro-row">
+            {/* One line by default; the points are the same every time */}
+            <details className="grp-intro-details">
+              <summary className="grp-intro">
+                Proposed grouping for new files. <strong>Nothing on disk changes.</strong>
+              </summary>
+              <ul className="grp-intro-points">
+                <li>
+                  Edits save to a private draft. The catalog changes only when you accept a prepared
+                  review.
+                </li>
+                <li>
+                  The tree shows where each bundle goes. Hover a name to see the folder its files
+                  come from.
+                </li>
+                <li>
+                  Drag files between bundles. Double-click a name to rename it, or right-click a row
+                  (Shift+F10) for more actions.
+                </li>
+                <li>Reflects the last Update. Run Update again if files changed since.</li>
+              </ul>
+            </details>
+            {/* One reserved line, so a notice never pushes the list under the pointer */}
+            <div className="grp-status" role={message ? 'alert' : 'status'} aria-live="polite">
+              {message ? (
+                <span className="grp-error">{message}</span>
+              ) : paused ? (
+                'An edit was interrupted.'
+              ) : (
+                working
+              )}{' '}
+              {state.error && state.pending && (
+                <button
+                  className="btn btn--compact"
+                  title="Send the same edit again"
+                  disabled={state.sending}
+                  onClick={state.retry}
+                >
+                  Retry edit
+                </button>
+              )}
+              {paused && (
+                <button
+                  className="btn btn--compact"
+                  title="Continue the interrupted edit exactly as it was sent"
+                  disabled={state.sending}
+                  onClick={() => void state.resume()}
+                >
+                  Resume edit
+                </button>
+              )}
+              {(state.status.error || state.lists.error) && (
+                <button
+                  className="btn btn--compact"
+                  aria-label="Retry grouping status"
+                  onClick={() => {
+                    void state.status.refetch()
+                    void state.lists.refetch()
+                  }}
+                >
+                  Retry
+                </button>
+              )}
+            </div>
           </div>
+          {state.workspace && latest && state.workspace !== latest && (
+            <p className="grp-hint" role="status">
+              This draft is from an earlier Update.{' '}
+              <button
+                className="btn btn--compact"
+                title="Open current suggestions. This draft keeps its saved choices."
+                disabled={choosingBlocked}
+                onClick={() => void state.choose(latest)}
+              >
+                Open latest Update
+              </button>
+            </p>
+          )}
           {collections.error && (
             <p className="grp-error" role="alert">
               Collections could not be loaded, so placement choices are unavailable.{' '}

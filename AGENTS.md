@@ -147,7 +147,9 @@ in Git's untracked `cairndex-private-patterns` file, one literal per line. The i
 seeds the local checkout and home-path prefixes; add incident-specific values without
 copying them into tracked configuration. Never use `--no-verify`, change
 `core.hooksPath`, or remove a pattern to get a commit or push through. A scanner finding
-is a stop signal to inspect and sanitize, not a lint exception.
+is a stop signal to inspect and sanitize, not a lint exception. Correcting a
+verified false-positive rule requires explicit owner authorization. Keep actual
+private literals protected and test the precise public-syntax boundary.
 
 Before **every push** and before creating or updating a pull request:
 
@@ -357,6 +359,12 @@ gate and cannot remove commits retained by existing GitHub PR refs.
 ## Documentation discipline
 
 Documentation is part of implementation, not an optional cleanup step.
+
+Keep `docs/STATUS.md` focused on current implementation, qualification limits,
+unresolved decisions and next steps. Update existing sections when state changes;
+do not append completed checkpoint diaries. Keep durable detail in the relevant
+topic document and use Git history for superseded status, rather than copying
+the diary into an archive.
 
 For every meaningful phase or commit, ask which docs are affected before moving on. If behavior, schema, API, routes, filters, UI, deployment, operations, or product decisions change, update the relevant docs in the same branch and preferably the same commit slice.
 

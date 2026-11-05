@@ -44,7 +44,9 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
     // counts as fetched, but leaves only the cached list to choose from.
     if (chosen.current || !lists.isSuccess || !lists.isFetchedAfterMount) return
     const retained = lists.data.items.find((item) => item.accepting || item.files > 0)
-    const run = retained?.id ?? lists.data.available_run
+    // A retained draft keeps its original source generations. After Update,
+    // open the fresh observations; earlier choices remain explicitly available.
+    const run = lists.data.available_run ?? retained?.id
     if (!run) return
     chosen.current = true
     void grouping<GroupingStatus>(library, `/workspaces/${run}`, 'POST')
@@ -68,7 +70,10 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
     queryFn: ({ signal }) =>
       grouping<GroupingCommand>(library, `/commands/${commandId}`, 'GET', undefined, signal),
     enabled: commandId !== null,
-    refetchInterval: commandId ? 300 : false,
+    // Queuing wakes the server's worker, so an edit usually finishes within a few
+    // passes; poll quickly until it does, then slowly in case it is retried
+    refetchInterval: (query) =>
+      ['succeeded', 'failed'].includes(query.state.data?.state ?? '') ? 1000 : 50,
     retry: false,
   })
   useEffect(() => {

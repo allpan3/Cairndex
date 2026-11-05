@@ -120,13 +120,7 @@ export function AlbumTile({
       </HoverPreview>
       <div className="album-tile__name">{file.display_title}</div>
       <div className="album-tile__sub">
-        {catalog
-          ? 'Check local bytes when opened'
-          : dims !== '—'
-            ? dims
-            : dur !== '—'
-              ? dur
-              : formatBytes(file.size_bytes)}
+        {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}
       </div>
     </div>
   )

@@ -22,6 +22,7 @@ export function CatalogUnbundledBrowser({
   headerLeading,
   headerTrailing,
   bundling = false,
+  onRename,
 }: {
   library: string
   libraryName: string
@@ -33,6 +34,7 @@ export function CatalogUnbundledBrowser({
   headerTrailing?: ReactNode
   /** Offer Create Bundle and Add to Bundle; the server needs `browse_version: 9`. */
   bundling?: boolean
+  onRename?: (relativePath: string, newName: string) => void
 }) {
   const [file, setFile] = useState<FileBrowserEntry | null>(null)
   const [dialog, setDialog] = useState<{
@@ -77,6 +79,7 @@ export function CatalogUnbundledBrowser({
         onFlash={(text) => onNotice({ text })}
         playerPrefs={player}
         onPlayerPrefs={setPlayer}
+        onRename={onRename}
       />
       {file?.file_id ? (
         <aside className="inspector" aria-label="File inspector">
@@ -84,7 +87,9 @@ export function CatalogUnbundledBrowser({
             key={file.file_id}
             library={library}
             file={file.file_id}
+            entry={file}
             hostFiles={hostFiles}
+            onRename={onRename}
           />
         </aside>
       ) : (
@@ -94,6 +99,7 @@ export function CatalogUnbundledBrowser({
           onRevealFile={hostFiles?.onRevealFile}
           onOpenFile={hostFiles?.onOpenFile}
           onStartFileDrag={hostFiles?.onStartFileDrag}
+          onRename={onRename}
         />
       )}
       {dialog?.kind === 'create' && (

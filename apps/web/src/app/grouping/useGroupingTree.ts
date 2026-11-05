@@ -263,33 +263,43 @@ export function useGroupingTree(state: TreeSource, attention: boolean, separateA
         if (node.kind === 'container') branch(node.id, depth + 1)
         else {
           const folders = loaded('folders', node.id) as GroupingFolder[]
-          for (const folder of folders.filter(
-            (item) =>
-              !folders.some(
-                (parent) => !parent.expanded && item.path.startsWith(parent.path + '/'),
-              ),
-          ))
+          const hidden = (path: string) =>
+            folders.some((parent) => !parent.expanded && path.startsWith(parent.path + '/'))
+          // Parents first, so a nested folder follows the folder that holds it
+          const shown = folders
+            .filter((folder) => !hidden(folder.path))
+            .sort((a, b) => a.path.localeCompare(b.path))
+          const within = (path: string) =>
+            shown.filter((folder) => path.startsWith(folder.path + '/')).length
+          const placed = new Set<string>()
+          const folderRow = (folder: GroupingFolder) => {
+            placed.add(folder.path)
             rows.push({
               kind: 'folder',
               key: `${node.id}:folder:${folder.path}`,
-              depth: depth + 1,
+              depth: depth + 1 + within(folder.path),
               node,
               folder,
             })
+          }
+          // Files keep the bundle's order. Each folder heads the first of its files and
+          // they sit one level inside it, as in v0.2.1; a folded folder hides them.
+          for (const file of loaded('files', node.id) as GroupingFile[]) {
+            for (const folder of shown)
+              if (!placed.has(folder.path) && file.path.startsWith(folder.path + '/'))
+                folderRow(folder)
+            if (!hidden(file.path))
+              rows.push({
+                kind: 'file',
+                key: `${node.id}:file:${file.id}`,
+                depth: depth + 1 + within(file.path),
+                node,
+                file,
+              })
+          }
+          // Folders whose files are not loaded yet
+          for (const folder of shown) if (!placed.has(folder.path)) folderRow(folder)
           tail('folders', node.id, depth + 1)
-          for (const file of (loaded('files', node.id) as GroupingFile[]).filter(
-            (item) =>
-              !folders.some(
-                (parent) => !parent.expanded && item.path.startsWith(parent.path + '/'),
-              ),
-          ))
-            rows.push({
-              kind: 'file',
-              key: `${node.id}:file:${file.id}`,
-              depth: depth + 1,
-              node,
-              file,
-            })
           tail('files', node.id, depth + 1)
         }
       }

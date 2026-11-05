@@ -67,6 +67,23 @@ def group_id(directory: str, subject: str) -> str:
     return stable_id(["discovery-group", directory, subject])
 
 
+def has_grouping_sources(db: sqlite3.Connection, run: str) -> bool:
+    """Settled libraries need no grouping index unless new files were found.
+
+    Existing provisional bundles still require review, even without new paths.
+    Repair/replacement candidates are independent and retain their normal lifecycle.
+    """
+    return bool(
+        db.execute(
+            "SELECT 1 FROM discovery_entries WHERE run=? AND handled=0 LIMIT 1", (run,)
+        ).fetchone()
+        or db.execute(
+            "SELECT 1 FROM catalog_rows WHERE family='asset_bundles' "
+            "AND json_extract(body,'$.grouping_state')='PROVISIONAL' LIMIT 1"
+        ).fetchone()
+    )
+
+
 # Index every fresh observation and settled owner before grouping any of their directory context
 def index_batch(
     store: CatalogStore, db: sqlite3.Connection, run: str, after: str, *, known: bool
@@ -333,7 +350,9 @@ def combine_additions(db: sqlite3.Connection, run: str, path: str) -> None:
 
 
 # Folder classification uses complete direct groups and already classified child subtrees
-def classify_directory(db: sqlite3.Connection, run: str, path: str) -> None:
+def classify_directory(
+    db: sqlite3.Connection, run: str, path: str, *, owns_directory: bool = True
+) -> None:
     direct = db.execute(
         "SELECT COUNT(*) AS groups,COALESCE(SUM(n=1),0) AS singles FROM ("
         "SELECT g.id,COUNT(f.path) AS n FROM discovery_plan_groups g "
@@ -401,7 +420,7 @@ def classify_directory(db: sqlite3.Connection, run: str, path: str) -> None:
         db.execute(
             "UPDATE discovery_plan_groups SET parent=?,title=CASE WHEN ?<>'' THEN ? ELSE title END,"
             "stage='classified' WHERE run=? AND directory=? AND target IS NULL",
-            (parent, path, PurePosixPath(path).name, run, path),
+            (parent, path if owns_directory else "", PurePosixPath(path).name, run, path),
         )
     db.execute(
         "UPDATE discovery_plan_directories SET phase='complete' WHERE run=? AND path=?", (run, path)

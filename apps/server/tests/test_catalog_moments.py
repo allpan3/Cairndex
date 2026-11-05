@@ -58,7 +58,7 @@ def creation(client, base, file_id, start, end):
 
 def test_moments_are_listed_and_edited_through_catalog_jobs(media_api):  # noqa: F811
     client, base, store, _, _ = media_api
-    assert client.get(base + "/replica/status").json()["moments_version"] == 4
+    assert client.get(base + "/replica/status").json()["moments_version"] == 5
     seeded = listed(client, base)
     assert [item["id"] for item in seeded["items"]] == ["media-moment"]
     assert seeded["items"][0]["comment"] == "Synthetic moment"
@@ -130,6 +130,28 @@ def bundle_tags(store):
                 (BUNDLE,),
             )
         ]
+
+
+def test_moment_tree_reads_one_exact_tag_with_its_current_guards(media_api):  # noqa: F811
+    client, base, store, _, _ = media_api
+    url = base + "/replica/catalog/moments/media-moment/tags"
+    page = client.get(url, params={"limit": 1}).json()
+    assert page["items"][0]["id"] == "tags-child"
+    assert page["next_cursor"] is not None
+    # A tree choice can be outside the first page. It must not pick the first
+    # similarly named tag or fabricate an empty lifetime basis.
+    exact = client.get(url, params={"limit": 1, "target": "tags-root"}).json()
+    assert exact["next_cursor"] is None
+    (choice,) = exact["items"]
+    assert choice["id"] == "tags-root"
+    assert choice["observed"]["tags/tags-root/$alive"]
+    assert choice["observed"]["moments/media-moment/$alive"]
+    assert choice["held"] is False
+    nested = client.get(url, params={"target": "tags-child"}).json()["items"][0]
+    assert nested["parent_id"] == "tags-root"
+    assert nested["path"] == ["Synthetic root", "Synthetic child"]
+    assert client.get(url, params={"target": "absent"}).json()["items"] == []
+    assert client.get(url, params={"target": "invalid/id"}).status_code == 422
 
 
 def moment_tag(client, base, store, operation, tag, *, assigned):

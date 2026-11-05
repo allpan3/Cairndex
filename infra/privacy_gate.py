@@ -168,6 +168,9 @@ _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _OBJECT_ID = re.compile(rb"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 _POSIX_HOME = re.compile(r"/(?:Users|home)/([^/\s'\"`]+)")
 _WINDOWS_HOME = re.compile(r"(?i)\b[A-Z]:\\Users\\([^\\\s'\"`]+)")
+# A private literal can be a proper substring of this fixed codesign field name.
+# Only the complete public token is exempt; its value and other occurrences are not.
+_SIGNING_METADATA_KEY = re.compile(r"(?<!\w)teamidentifier(?!\w)")
 _COMMIT_IDENTITY_EMAIL = re.compile(
     r"^(?P<prefix>(?:author|committer) .+ <)[^<>\r\n]+(?P<suffix>> \d+ [+-]\d{4})$",
     re.MULTILINE,
@@ -419,11 +422,20 @@ def scan_text(text: str, label: str, private_patterns: list[str]) -> list[str]:
             findings.append(f"{label}:{line}: non-placeholder email address")
 
     folded = text.casefold()
+    signing_keys = [match.span() for match in _SIGNING_METADATA_KEY.finditer(folded)]
     for index, private_pattern in enumerate(private_patterns, start=1):
-        start = folded.find(private_pattern.casefold())
-        if start >= 0:
+        needle = private_pattern.casefold()
+        start = folded.find(needle)
+        while start >= 0:
+            if any(
+                begin <= start and start + len(needle) <= end and len(needle) < end - begin
+                for begin, end in signing_keys
+            ):
+                start = folded.find(needle, start + 1)
+                continue
             line = text.count("\n", 0, start) + 1
             findings.append(f"{label}:{line}: private pattern #{index}")
+            break
     return findings
 
 

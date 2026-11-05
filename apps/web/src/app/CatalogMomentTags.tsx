@@ -3,11 +3,15 @@ import { createPortal } from 'react-dom'
 
 import type { Moment } from '../api/client'
 import { useMomentTagChoices, useSetMomentTag, type MomentTagChoice } from '../api/catalogMoments'
+import { useReplicaStatus } from '../api/useReplicaStatus'
+import { CatalogQueryContext } from '../api/catalogQuery'
+import { TagPickerPanel } from './TagPickerPanel'
 import { usePopover } from './usePopover'
 
 /**
  * A portable moment's tags: the first tag in full, a count for the rest, and a
- * chooser that searches the library's tags on the server.
+ * shared hierarchical chooser. Older servers keep their paged tag search until
+ * they support reading the bases of a single tree choice (moments version 5).
  *
  * Each choice is saved at once, like the other moment gestures in the viewer.
  * An added tag is also added to the bundle (ADR-0025); a removed one stays there.
@@ -31,8 +35,9 @@ export function CatalogMomentTags({
     if (!open) setSearch('')
   }
   const query = search.trim()
-  const assigned = useMomentTagChoices(library, moment.id, '', true, open)
-  const found = useMomentTagChoices(library, moment.id, query, false, open)
+  const tree = (useReplicaStatus(library).data?.moments_version ?? 0) >= 5
+  const assigned = useMomentTagChoices(library, moment.id, '', true, open && !tree)
+  const found = useMomentTagChoices(library, moment.id, query, false, open && !tree)
   const setTag = useSetMomentTag(library, moment.bundle_id)
   const labels = (moment.tag_ids ?? []).map((id) => names[id] ?? 'Tag')
   const [first, ...rest] = labels
@@ -87,7 +92,7 @@ export function CatalogMomentTags({
             <div
               className="picker__panel"
               ref={panelRef}
-              role="listbox"
+              role={tree ? 'dialog' : 'listbox'}
               aria-label="Moment tags"
               style={{
                 top: pos.top,
@@ -96,25 +101,44 @@ export function CatalogMomentTags({
                 maxHeight: pos.maxHeight,
               }}
             >
-              <input
-                className="edit picker__search"
-                placeholder="Search tags…"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                autoFocus
-                aria-label="Search tags"
-              />
-              {(assigned.data?.items.length ?? 0) > 0 && (
+              {tree ? (
+                <CatalogQueryContext value={library}>
+                  <TagPickerPanel
+                    assigned={new Set(moment.tag_ids)}
+                    disabled={setTag.isPending}
+                    onToggle={(target, assign) =>
+                      setTag.mutate({ momentId: moment.id, target, assigned: assign })
+                    }
+                    onCreated={(tag) =>
+                      setTag.mutate({ momentId: moment.id, target: tag.id, assigned: true })
+                    }
+                  />
+                </CatalogQueryContext>
+              ) : (
                 <>
-                  <div className="pick-group">Selected</div>
-                  {assigned.data?.items.map(row)}
+                  <input
+                    className="edit picker__search"
+                    placeholder="Search tags…"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    autoFocus
+                    aria-label="Search tags"
+                  />
+                  {(assigned.data?.items.length ?? 0) > 0 && (
+                    <>
+                      <div className="pick-group">Selected</div>
+                      {assigned.data?.items.map(row)}
+                    </>
+                  )}
+                  {found.data && others.length === 0 && (
+                    <div className="pick-group">No matching tags</div>
+                  )}
+                  {others.map(row)}
+                  {found.data?.next_cursor && (
+                    <div className="pick-group">Type to find more tags</div>
+                  )}
                 </>
               )}
-              {found.data && others.length === 0 && (
-                <div className="pick-group">No matching tags</div>
-              )}
-              {others.map(row)}
-              {found.data?.next_cursor && <div className="pick-group">Type to find more tags</div>}
               {(assigned.error || found.error || setTag.error) && (
                 <p role="alert" className="pick-group">
                   {(setTag.error ?? assigned.error ?? found.error)?.message}

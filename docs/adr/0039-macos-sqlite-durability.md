@@ -48,7 +48,7 @@ scopes; the existing lock already resolves a newer version.
 
 ## Cost and limits
 
-The synthetic measurements and VM qualification are in [STATUS](../STATUS.md).
+The synthetic measurements and VM qualification are in [the development guide](../development.md#macos-sqlite-durability).
 `devtools.benchmark_sqlite_durability` compares both previous synchronous
 policies with the new policy, alternating run order. It times one-row rating
 edits, 32-row discovery and 200-row legacy scan batches, and 1 MiB WAL

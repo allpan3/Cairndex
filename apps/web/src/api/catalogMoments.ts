@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog, operationId, runJob, type Entity } from './catalog'
 import { resolveAssetUrl, type FileRead, type Moment, type MomentCreate } from './client'
 import { replicaRequest } from './replicas'
+import { captureRequestScope } from './requestScope'
 import type { components } from './schema'
 
 type MomentPage = components['schemas']['CatalogMomentPage']
@@ -242,14 +243,37 @@ export function useMomentTagChoices(
 export function useSetMomentTag(library: string, bundleId: string | null) {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: ({ momentId, choice }: { momentId: string; choice: MomentTagChoice }) =>
-      previewAndCommit(library, {
+    mutationFn: async (
+      input: { momentId: string } & (
+        { choice: MomentTagChoice } | { target: string; assigned: boolean }
+      ),
+    ) => {
+      const current = captureRequestScope()
+      // The tree includes every tag. Read only the selected tag's current bases,
+      // including children beyond the first page and newly created paths.
+      const choice =
+        'choice' in input
+          ? input.choice
+          : (
+              await catalog<TagPage>(
+                library,
+                `/moments/${input.momentId}/tags?${new URLSearchParams({
+                  target: input.target,
+                  limit: '1',
+                })}`,
+              )
+            ).items.find((item) => item.id === input.target)
+      current()
+      if (!choice) throw new Error('This tag is no longer in the library.')
+      if (choice.held) throw new Error('This tag needs conflict review in the bundle inspector.')
+      await previewAndCommit(library, {
         action: 'moment_tag',
-        moment: momentId,
+        moment: input.momentId,
         target: choice.id,
-        assigned: !choice.assigned,
+        assigned: 'assigned' in input ? input.assigned : !choice.assigned,
         observed: choice.observed,
-      }),
+      })
+    },
     onSettled: () =>
       Promise.all(
         [
@@ -257,6 +281,8 @@ export function useSetMomentTag(library: string, bundleId: string | null) {
           ['catalog-moment-tags', library],
           ['catalog-memberships', library],
           ['catalog-browse', library],
+          ['catalog-tag-counts', library],
+          ['catalog-navigation', library],
         ].map((queryKey) => client.invalidateQueries({ queryKey })),
       ),
   })

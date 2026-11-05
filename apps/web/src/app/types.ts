@@ -135,3 +135,9 @@ export const SYSTEM_VIEWS: SystemViewDef[] = [
   { view: 'unbundled', label: 'Unbundled', icon: '⚟' },
   { view: 'missing', label: 'Missing Files', icon: '⚠' },
 ]
+
+/** A file a Locate request opens its bundle's album on; the path finds a folder member */
+export interface LocatedFile {
+  id: string
+  path: string
+}

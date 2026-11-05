@@ -143,5 +143,5 @@ test('locates the owning bundle without exposing unmapped host actions', async (
   expect(screen.queryByRole('menuitem', { name: 'Reveal in Finder' })).not.toBeInTheDocument()
   expect(screen.getAllByRole('separator')).toHaveLength(2)
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Locate in Bundle Browser' }))
-  expect(actions.onLocateBundle).toHaveBeenCalledWith('bundle-one')
+  expect(actions.onLocateBundle).toHaveBeenCalledWith('bundle-one', expect.anything())
 })

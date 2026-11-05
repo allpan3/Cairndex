@@ -1,11 +1,11 @@
 """Normal portable libraries isolate authored metadata and private SQLite."""
 
 import json
+import time
 from pathlib import Path
 from uuid import uuid4
 
 from cairndex.replicas import service
-from cairndex.replicas.catalog import jobs
 
 
 def create(client, root: Path):
@@ -22,10 +22,20 @@ def create(client, root: Path):
     return identity, base
 
 
-def collection(client, identity, base, name):
+def wait_job(client, base, operation):
+    deadline = time.monotonic() + 15
+    while True:
+        result = client.get(base + "/jobs/" + operation).json()
+        if result["state"] == "succeeded":
+            return result
+        assert result["state"] in {"queued", "running"}, result
+        assert time.monotonic() < deadline, result
+        time.sleep(0.01)
+
+
+def collection(client, base, name):
     cells = client.get(base + "/creation/collections").json()["cells"]
     cells["name"] = json.dumps(name)
-    store = service._handles[identity][0]
     preview = uuid4().hex
     response = client.post(
         base + "/jobs",
@@ -36,9 +46,9 @@ def collection(client, identity, base, name):
         },
     )
     assert response.status_code == 202, response.text
-    jobs.run_one(store)
-    result = client.get(base + "/jobs/" + preview).json()
-    assert result["state"] == "succeeded", result
+    # The live worker may have claimed the job before the POST returns. Wait for
+    # its receipt instead of racing it with a second runner in the test thread.
+    result = wait_job(client, base, preview)
     operation = uuid4().hex
     response = client.post(
         base + "/jobs",
@@ -49,8 +59,7 @@ def collection(client, identity, base, name):
         },
     )
     assert response.status_code == 202
-    jobs.run_one(store)
-    assert client.get(base + "/jobs/" + operation).json()["state"] == "succeeded"
+    wait_job(client, base, operation)
     return json.loads(cells["id"])
 
 
@@ -58,8 +67,8 @@ def test_collections_and_databases_are_library_scoped(isolated_client, tmp_path)
     client = isolated_client
     a, base_a = create(client, tmp_path / "A")
     b, base_b = create(client, tmp_path / "B")
-    entity = collection(client, a, base_a, "Only A")
-    collection(client, b, base_b, "Only B")
+    entity = collection(client, base_a, "Only A")
+    collection(client, base_b, "Only B")
     for identity, base, name in ((a, base_a, "Only A"), (b, base_b, "Only B")):
         rows = client.get(base + "/entities/collections").json()["items"]
         assert len(rows) == 1

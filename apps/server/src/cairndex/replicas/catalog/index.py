@@ -1,7 +1,10 @@
 """Derived catalog search index, preserved across private schema upgrades."""
 
 import sqlite3
+from contextlib import closing
+from functools import lru_cache
 
+from cairndex.replicas.private_schema import schema
 from cairndex.replicas.protocol import ReplicaError
 from cairndex.scanning.media_types import _AUDIO, _IMAGE, _SUBTITLE, _VIDEO
 
@@ -78,8 +81,17 @@ def _kind() -> str:
 
 
 COLUMNS = "bundle_id,title,notes,file_notes,moments,files,tags,collections"
-INDEX_SCHEMA = (
+
+
+def _index_schema(plus: str) -> str:
+    """The wide search layout; ``plus`` prefixes each correlated entity column.
+
+    A JSON expression index is usable only when the other side has no affinity. The
+    current layout writes ``+b.entity``; the previous one compared the TEXT column
+    directly, so every refreshed bundle scanned all files, moments and memberships.
     """
+    return (
+        f"""
 CREATE INDEX IF NOT EXISTS catalog_file_bundle ON catalog_rows(
  json_extract(body,'$.bundle_id')) WHERE family='asset_files';
 CREATE INDEX IF NOT EXISTS catalog_moment_file ON catalog_rows(
@@ -100,34 +112,48 @@ SELECT b.rowid AS id,b.entity AS bundle_id,
  coalesce((SELECT group_concat(value,' ')
  FROM json_each(json_extract(b.body,'$.notes'))),'') AS notes,
  coalesce((SELECT group_concat(json_extract(f.body,'$.note'),' ') FROM catalog_rows f
- WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')=b.entity),'') AS file_notes,
+ WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')={plus}b.entity),'')
+ AS file_notes,
  coalesce((SELECT group_concat(json_extract(m.body,'$.comment'),' ') FROM catalog_rows f
- JOIN catalog_rows m ON m.family='moments' AND json_extract(m.body,'$.file_id')=f.entity
- WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')=b.entity),'') AS moments,
+ JOIN catalog_rows m ON m.family='moments' AND json_extract(m.body,'$.file_id')={plus}f.entity
+ WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')={plus}b.entity),'')
+ AS moments,
  coalesce((SELECT group_concat(
  coalesce(json_extract(f.body,'$.display_title'),'')||' '||
  coalesce(json_extract(f.body,'$.original_filename'),'')||' '||
  json_extract(f.body,'$.relative_path')||' '||coalesce(json_extract(f.body,'$.source'),'')||' '||
  """
-    + _kind()
-    + """,' ') FROM catalog_rows f
- WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')=b.entity),'') AS files,
+        + _kind()
+        + f""",' ') FROM catalog_rows f
+ WHERE f.family='asset_files' AND json_extract(f.body,'$.bundle_id')={plus}b.entity),'')
+ AS files,
  coalesce((SELECT group_concat(json_extract(t.body,'$.name'),' ') FROM catalog_rows e
  JOIN catalog_rows t ON t.family='tags' AND t.entity=json_extract(e.body,'$.tag_id')
- WHERE e.family='asset_bundle_tags' AND json_extract(e.body,'$.bundle_id')=b.entity),'') AS tags,
+ WHERE e.family='asset_bundle_tags' AND json_extract(e.body,'$.bundle_id')={plus}b.entity),'')
+ AS tags,
  coalesce((SELECT group_concat(json_extract(c.body,'$.name'),' ') FROM catalog_rows e
  JOIN catalog_rows c ON c.family='collections' AND c.entity=json_extract(e.body,'$.collection_id')
- WHERE e.family='asset_bundle_collections' AND json_extract(e.body,'$.bundle_id')=b.entity),'')
+ WHERE e.family='asset_bundle_collections'
+ AND json_extract(e.body,'$.bundle_id')={plus}b.entity),'')
  AS collections
 FROM catalog_rows b WHERE b.family='asset_bundles';
 CREATE VIRTUAL TABLE IF NOT EXISTS catalog_search USING fts5(
  bundle_id UNINDEXED,title,notes,file_notes,moments,files,tags,collections,
  tokenize='unicode61 remove_diacritics 2');
 """
-)
+        "CREATE TRIGGER IF NOT EXISTS catalog_search_delete BEFORE DELETE ON catalog_rows "
+        "WHEN OLD.family='asset_bundles' BEGIN DELETE FROM catalog_search WHERE rowid=OLD.rowid; "
+        "END;"
+        "CREATE TRIGGER IF NOT EXISTS catalog_search_insert AFTER INSERT ON catalog_rows "
+        "WHEN NEW.family IN ('asset_bundles','asset_files','moments','tags','collections',"
+        "'asset_bundle_tags','asset_bundle_collections') BEGIN " + _refresh("NEW", plus) + "END;"
+        "CREATE TRIGGER IF NOT EXISTS catalog_search_remove AFTER DELETE ON catalog_rows "
+        "WHEN OLD.family IN ('asset_files','moments','tags','collections',"
+        "'asset_bundle_tags','asset_bundle_collections') BEGIN " + _refresh("OLD", plus) + "END;"
+    )
 
 
-def _owners(row: str) -> str:
+def _owners(row: str, plus: str) -> str:
     return (
         f"SELECT {row}.entity WHERE {row}.family='asset_bundles' "
         f"UNION SELECT json_extract({row}.body,'$.bundle_id') WHERE {row}.family IN "
@@ -137,17 +163,17 @@ def _owners(row: str) -> str:
         f"AND entity=json_extract({row}.body,'$.file_id') "
         "UNION SELECT json_extract(body,'$.bundle_id') FROM catalog_rows "
         f"WHERE {row}.family='tags' AND family='asset_bundle_tags' "
-        f"AND json_extract(body,'$.tag_id')={row}.entity "
+        f"AND json_extract(body,'$.tag_id')={plus}{row}.entity "
         "UNION SELECT json_extract(body,'$.bundle_id') FROM catalog_rows "
         f"WHERE {row}.family='collections' AND family='asset_bundle_collections' "
-        f"AND json_extract(body,'$.collection_id')={row}.entity"
+        f"AND json_extract(body,'$.collection_id')={plus}{row}.entity"
     )
 
 
-def _refresh(row: str) -> str:
+def _refresh(row: str, plus: str) -> str:
     rowids = (
         "(SELECT rowid FROM catalog_rows WHERE family='asset_bundles' "
-        f"AND entity IN ({_owners(row)}))"
+        f"AND entity IN ({_owners(row, plus)}))"
     )
     return (
         f"DELETE FROM catalog_search WHERE rowid IN {rowids}; "
@@ -156,16 +182,11 @@ def _refresh(row: str) -> str:
     )
 
 
-INDEX_SCHEMA += (
-    "CREATE TRIGGER IF NOT EXISTS catalog_search_delete BEFORE DELETE ON catalog_rows "
-    "WHEN OLD.family='asset_bundles' BEGIN DELETE FROM catalog_search WHERE rowid=OLD.rowid; END;"
-    "CREATE TRIGGER IF NOT EXISTS catalog_search_insert AFTER INSERT ON catalog_rows "
-    "WHEN NEW.family IN ('asset_bundles','asset_files','moments','tags','collections',"
-    "'asset_bundle_tags','asset_bundle_collections') BEGIN " + _refresh("NEW") + "END;"
-    "CREATE TRIGGER IF NOT EXISTS catalog_search_remove AFTER DELETE ON catalog_rows "
-    "WHEN OLD.family IN ('asset_files','moments','tags','collections',"
-    "'asset_bundle_tags','asset_bundle_collections') BEGIN " + _refresh("OLD") + "END;"
-)
+INDEX_SCHEMA = _index_schema("+")
+# Retained exactly for recognition of stores opened by earlier builds.
+PREVIOUS_INDEX_SCHEMA = _index_schema("")
+# Only these carry query plans; replacing them changes no indexed content.
+PLANS = ("catalog_search_source", "catalog_search_insert", "catalog_search_remove")
 
 INDEXES = (
     "catalog_file_bundle",
@@ -183,6 +204,19 @@ DROP_STATEMENTS = (
     + ("DROP VIEW IF EXISTS catalog_search_source", "DROP TABLE IF EXISTS catalog_search")
     + tuple(f"DROP INDEX IF EXISTS {name}" for name in INDEXES)
 )
+
+
+def _plans(db: sqlite3.Connection) -> dict[str, str]:
+    return {name: sql for name, sql in schema(db).items() if name in PLANS}
+
+
+@lru_cache
+def _current_plans() -> dict[str, str]:
+    from cairndex.replicas.catalog import projection
+
+    with closing(sqlite3.connect(":memory:")) as db:
+        db.executescript(projection.SCHEMA + INDEX_SCHEMA)
+        return _plans(db)
 
 
 def remove(db: sqlite3.Connection) -> None:
@@ -203,6 +237,12 @@ def install(db: sqlite3.Connection) -> None:
     upgrade = bool(columns and columns != COLUMNS.split(","))
     # Replacement and complete repopulation share one transaction, including DDL.
     drop = ";".join(DROP_STATEMENTS) + ";" if upgrade else ""
+    if columns and not upgrade and _plans(db) != _current_plans():
+        drop = (
+            "DROP VIEW IF EXISTS catalog_search_source;"
+            "DROP TRIGGER IF EXISTS catalog_search_insert;"
+            "DROP TRIGGER IF EXISTS catalog_search_remove;"
+        )
     db.executescript("BEGIN IMMEDIATE;" + drop + INDEX_SCHEMA)
     if columns and not upgrade:
         return

@@ -90,6 +90,12 @@ def create_playable(*, parent: Path | None = None, duration: int = 150) -> Path:
         encoding="utf-8",
     )
     with connect_writable(fixture.source / ".cairndex/library.db") as db:
+        # Keep both levels in the same group so the moment picker exposes a tree.
+        insert_row(
+            db,
+            "tag_group_memberships",
+            {"group_id": "group-one", "tag_id": "tags-root", "sort_order": 0},
+        )
         db.execute("UPDATE asset_bundles SET grouping_state='CONFIRMED'")
         db.execute("UPDATE asset_bundles SET title='Synthetic playback' WHERE id='bundle-000001'")
         for order, (identity, filename, role) in enumerate(

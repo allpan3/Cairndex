@@ -13,8 +13,8 @@ import { InspectorSection } from './InspectorSection'
 import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFileRow } from './CatalogBundleFileRow'
 import { useCatalogBundleMembers } from './useCatalogBundleMembers'
-import { ContextMenu } from './ContextMenu'
-import { useContextMenu, type MenuEntry, type MenuState } from './useContextMenu'
+import { TargetContextMenu } from './ContextMenu'
+import { useContextMenu, type MenuEntry } from './useContextMenu'
 import { hostFileMenuEntries } from './hostActions'
 import { useLocalContactSheet } from './useLocalContactSheet'
 import { ContactSheetDialog } from './ContactSheetDialog'
@@ -487,9 +487,9 @@ function FilePage(
         </div>
       )}
       {error && <p role="alert">{error}</p>}
-      <FileMenu
+      <TargetContextMenu
         state={menu.state}
-        item={menu.state ? items.find((row) => row.id === menuRow) : undefined}
+        target={menu.state ? items.find((row) => row.id === menuRow) : undefined}
         entries={entries}
         onClose={menu.close}
       />
@@ -501,30 +501,5 @@ function FilePage(
         />
       )}
     </div>
-  )
-}
-
-/**
- * The open menu follows its row, so a save that settles while it is open enables
- * its actions against the arrangement now shown. The opening snapshot remains
- * only when a refresh takes the row off this page.
- *
- * FileMenu, not FilePage, rebuilds the entries while rendering. A move reads a
- * ref, and the compiler must assume that any call FilePage makes while rendering
- * may run the moves the entries capture. Building the entries only creates their
- * click handlers, and only those handlers run a move.
- */
-function FileMenu(props: {
-  state: MenuState | null
-  item: Item | undefined
-  entries: (item: Item) => MenuEntry[]
-  onClose: () => void
-}) {
-  const { state, item } = props
-  return (
-    <ContextMenu
-      state={state && item ? { ...state, items: props.entries(item) } : state}
-      onClose={props.onClose}
-    />
   )
 }

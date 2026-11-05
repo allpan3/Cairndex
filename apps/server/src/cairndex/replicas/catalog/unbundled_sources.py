@@ -4,12 +4,15 @@ import sqlite3
 
 # A running/cancelled pass never replaces the last complete observation. Current
 # catalog paths exclude accepted files, replacements and repaired identities.
+# Both directory columns are the path's parent; matching them uses catalog_path_parent
+# instead of scanning every catalog path for each observed file.
 LATEST_RUN = (
     "(SELECT id FROM discovery_runs WHERE state='succeeded' ORDER BY sequence DESC LIMIT 1)"
 )
 FRESH_WHERE = (
     f"d.run={LATEST_RUN} AND d.owner IS NULL AND d.body<>'{{}}' "
-    "AND NOT EXISTS (SELECT 1 FROM catalog_paths p WHERE p.family='asset_files' AND p.path=d.path)"
+    "AND NOT EXISTS (SELECT 1 FROM catalog_paths p WHERE p.parent=d.directory "
+    "AND p.path=d.path AND p.family='asset_files')"
 )
 QUEUE = (
     "WITH unbundled_sources AS ("

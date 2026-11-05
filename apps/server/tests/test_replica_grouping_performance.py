@@ -2,12 +2,53 @@
 
 from types import SimpleNamespace
 
-from cairndex.replicas.grouping import regroup, storage, worker
+import pytest
+
+from cairndex.replicas.grouping import initialize, regroup, storage, worker
 from cairndex.replicas.recovery_validation import validate_snapshot
 from tests.test_replica_discovery import replicas as replicas
 from tests.test_replica_discovery import scan
 from tests.test_replica_discovery import specimen as specimen
 from tests.test_replica_grouping_workspace import build, edit
+
+
+def test_initial_review_batches_cached_pages_and_rolls_back_before_retry(replicas, monkeypatch):
+    store, root, _ = replicas[0]
+    folder = root / "Episodes"
+    folder.mkdir()
+    for index in range(120):
+        for suffix in ("mp4", "srt"):
+            (folder / f"episode{index:04}.{suffix}").write_bytes(
+                f"synthetic {index} {suffix}".encode()
+            )
+    run = scan(store, root)["id"]
+    storage.open_workspace(store, run)
+    frontier = store.frontier()
+    original = initialize.step
+    calls = 0
+
+    def interrupted(db, workspace):
+        nonlocal calls
+        original(db, workspace)
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("synthetic initial review interruption")
+
+    monkeypatch.setattr(initialize, "time", SimpleNamespace(monotonic=lambda: 0))
+    with monkeypatch.context() as patch:
+        patch.setattr(initialize, "step", interrupted)
+        with pytest.raises(RuntimeError, match="initial review interruption"):
+            worker.step(store)
+    with store.connection(readonly=True) as db:
+        assert db.execute("SELECT count(*) FROM grouping_nodes").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM grouping_files").fetchone()[0] == 0
+    # This draft fits in one bounded transaction, including roles and final counts.
+    worker.step(store)
+    result = storage.status(store, run)
+    assert result["state"] == "ready"
+    assert (result["files"], result["selected"], result["bundles"]) == (240, 240, 120)
+    assert store.frontier() == frontier
+    validate_snapshot(store.path, store.descriptor)
 
 
 def test_many_subject_conversion_keeps_selection_and_avoids_per_subject_commits(
