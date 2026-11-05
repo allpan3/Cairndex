@@ -53,7 +53,9 @@ phase/progress, review and result; completed receipts reference the catalog even
 and independent content versions. Immutable versions and receipts live under
 `.cairndex/source-operations/`; physical identities and credentials remain private.
 The format-three source capability is enabled only with the reviewed-operation
-API/worker/UI. See [file operations](file-operations.md).
+API/worker/UI. New Folder retains an empty directory version with a `mkdir`
+receipt and no catalog event; it creates no bundle or collection. See
+[file operations](file-operations.md).
 
 > Internal legacy model reference: the sections below describe the ORM used by
 > migration and model fixtures. Portable application contracts are in

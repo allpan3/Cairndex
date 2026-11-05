@@ -41,7 +41,7 @@ agents working in this repository.
   collections, tags, structured filters and retained drafts.
 - Local media observation, image/video playback and scoped library/server
   navigation.
-- Reviewed source Copy, Rename, Move, Replace, Trash and conditional Undo,
+- Reviewed source Copy, Rename, Move, Replace, Trash, New Folder and conditional Undo,
   independent retained versions and exact Retry after interruption. Source
   writes require explicit per-library and deployment permission.
 
