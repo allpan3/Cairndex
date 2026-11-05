@@ -64,6 +64,15 @@ def apply(
     info = root.stat(follow_symlinks=False)
     if [info.st_dev, info.st_ino] != review["root_identity"]:
         raise ReplicaError("Library root changed after review; source operations are stopped")
+    if "parent_identity" in review:
+        from cairndex.replicas.source_files import parent
+
+        with parent(root, review["destination"]) as (handle, _):
+            info = os.fstat(handle)
+            if [info.st_dev, info.st_ino] != review["parent_identity"]:
+                raise ReplicaError(
+                    "Destination parent changed after review; create a new operation"
+                )
     outputs = [(path, version) for path, version in review["versions_after"].items() if version]
     if not result.get("started"):
         from cairndex.replicas.source_claims import probe
@@ -122,7 +131,12 @@ def apply(
         if result.get(marker):
             continue
         publish_output(
-            root, request.operation, path, result["outputs"][path], f"output-stage-{index}"
+            root,
+            request.operation,
+            path,
+            result["outputs"][path],
+            f"output-stage-{index}",
+            parent_identity=review.get("parent_identity"),
         )
         store.fault("source_after_publication")
         result[marker] = True

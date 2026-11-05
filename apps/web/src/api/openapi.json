@@ -9661,6 +9661,11 @@
             ],
             "title": "Selection Version"
           },
+          "source_mkdir": {
+            "default": false,
+            "title": "Source Mkdir",
+            "type": "boolean"
+          },
           "source_operations_version": {
             "anyOf": [
               {
@@ -10206,7 +10211,8 @@
               "move",
               "trash",
               "undo",
-              "restore"
+              "restore",
+              "mkdir"
             ],
             "title": "Action",
             "type": "string"

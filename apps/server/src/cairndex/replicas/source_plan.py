@@ -73,6 +73,10 @@ def prepare(
     store: CatalogStore, root: Path, request: SourceRequest, progress: Callable[[int], None]
 ) -> dict[str, Any]:
     """Retain byte snapshots before preparing catalog changes with their observed bases."""
+    if request.action == "mkdir":
+        from cairndex.replicas.source_mkdir import prepare_directory
+
+        return prepare_directory(store, root, request, progress)
     if request.action == "undo":
         from cairndex.replicas.source_undo import prepare_undo
 

@@ -50,6 +50,7 @@ fi
 disk_tests=(
   tests/test_backup_restore_scripts.py
   tests/test_portable_source_operations.py
+  tests/test_portable_source_mkdir.py
 )
 ignore=()
 for module in "${disk_tests[@]}"; do
