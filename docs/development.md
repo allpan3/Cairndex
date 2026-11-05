@@ -285,14 +285,15 @@ native actions. File menu Open and Reveal follow the visible single selection.
 Bundle handoff chooses the first ordered regular file unless an album or
 inspector file is selected. It also supports files Cairndex cannot preview.
 
-**Add Files…** and file drops open portable source-operation review. The file
-picker and WebKit deliver File objects. Tauri's native drop interception stays
-off to preserve internal HTML drags. Copies target the current File Browser
-folder, or the library root on other surfaces. Select at most 128 regular files;
-each upload is limited to 128 GiB. File-operation permission is required before
-uploading. Prepare copies stages bytes and queues independent reviews. Apply
-is explicit for each file. Cancel upload aborts the in-flight request. Completed
-preparations remain in Saved file operations. Folder drops are refused.
+**Add Files…** and file drops open the incoming-files dialog. The file picker
+and WebKit deliver File objects. Tauri's native drop interception stays off to
+preserve internal HTML drags. Bundle Browser drops create a bundle or add to the
+target card; File Browser drops copy to the open folder. **Copy** starts a
+background task and accepts each exact prepared review. Occupied names pause
+for Keep Both, Replace or Skip. Progress and cancellation live in the sidebar;
+retained operations remain available through Review. Select at most 128 regular
+files, each no larger than 128 GiB. Write mode is required before uploading;
+folder drops are refused. See [file operations](file-operations.md).
 
 The frontend sends Files directly through its authenticated fetch transport.
 Do not convert a whole incoming video to an ArrayBuffer or reconnect the

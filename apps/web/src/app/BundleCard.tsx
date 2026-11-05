@@ -121,6 +121,7 @@ export function BundleCard({
       aria-selected={selected}
       data-bundle-id={item.id}
       data-file-drop={fileDropOver || undefined}
+      data-file-drop-bundle={onDropFiles ? item.id : undefined}
     >
       <HoverPreview
         source={previewSource}

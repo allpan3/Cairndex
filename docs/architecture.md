@@ -169,15 +169,23 @@ metadata. It requires one revision across pages and refuses bundles above
 
 The portable application uses HTML `File` drops and the browser file picker.
 The shipping window retains `dragDropEnabled: false` so Tauri does not consume
-internal HTML drags. A file drop opens source-operation review. Dialogs, menus,
+internal HTML drags. A file drop opens the incoming-files dialog. Dialogs, menus,
 viewer surfaces, self-drags and unsupported folder drops block new selections.
 No absolute source path crosses this workflow. Library mappings are needed for
 native Open, Reveal and drag-out; receiving chosen bytes needs no mapping.
 
-Add Files and dropped files copy to the File Browser's current directory, or
-the library root on other surfaces. Selection itself changes no source files.
-The owner enables source writes, chooses Prepare copies, reviews each saved
-operation and explicitly applies it. Uploads use the existing authenticated
+Where a drop lands decides what the files become: a new bundle from the Bundle
+Browser's empty space, more files for a bundle from its card, or plain copies in
+the File Browser's open folder. Selection itself changes no source files. Copy,
+and the File Browser's Rename, Copy to, Move to and Move to Trash, start a
+background task (`useSourceTasks`) and close their dialog. The task posts one
+operation per item and accepts the exact prepared review unchanged; the owner's
+click is the approval, and an occupied name stops the item for Keep Both,
+Replace or Skip. Bundling and collection membership run after every item lands,
+as catalog changes of their own. A copy is catalogued at once in its own
+provisional bundle, so the task bundles by the `output_id` each review reports.
+Bundling changes the copies' metadata, which the exact Undo refuses, so a
+bundled copy's Undo is a Trash operation instead. Uploads use the existing authenticated
 portable `source-operations/uploads` route. The frontend passes the `File`
 directly to fetch with an AbortSignal. It does not make an ArrayBuffer or a
 base64 copy. Copy preparation and application retain the existing worker,
@@ -338,7 +346,7 @@ chained for the same library after successful probe because eligibility and
 sampling need duration.
 
 A portable library's sidebar has the same shape: **Update** runs replica
-discovery, and its ⋯ menu holds **Add Files…**, **File Operations…**, **Scan
+discovery, and its ⋯ menu holds **Add Files…**, **Scan
 new files**, **Collect metadata**, **Suggest grouping…**, **Generate storyboards**
 and **Metadata Review**. Scan discovers privately without opening review; Suggest
 grouping opens the retained editable tree. Explicit metadata and storyboard passes

@@ -184,6 +184,7 @@ import {
   setBundleTags,
   setCoverFrame,
   setLibraryWriteMode,
+  fetchWriteMode,
   suggestBundleFromFiles,
   suggestTargetBundles,
   suggestUnbundledFilesForBundle,
@@ -559,6 +560,15 @@ export function useDeploymentWriteMode(): 'allowed' | 'disabled' | undefined {
   })
   const mode = health.data?.write_mode
   return mode === undefined ? undefined : mode === 'allowed' ? 'allowed' : 'disabled'
+}
+
+/** This server's file-operations switch for one library; useWriteModeMutation patches it. */
+export function useWriteMode(libraryId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['source-write-mode', libraryId],
+    queryFn: ({ signal }) => fetchWriteMode(libraryId, signal),
+    enabled,
+  })
 }
 
 /** Turn guarded file operations on or off for one library. */
