@@ -40,6 +40,18 @@ grouping, Update finishes without rebuilding the grouping index. Replacements
 and ambiguous moves retain their separate review candidates. Incremental reuse
 does not mean only added directories are visited.
 
+On macOS SMB mounts, reconnecting can change the native device number and
+invalidate every cached generation. Update still reads fresh fingerprints in
+that case. It retains checked directory descriptors, opens leaves relative to
+their held parents and overlaps at most sixteen source inspections per batch.
+Unchanged enumeration metadata avoids a leaf open; a metadata miss always reads
+content, even if a later SMB file stat returns the old generation. SQLite and
+verified-evidence lookup stay on the discovery worker. All readers finish and
+release their handles before a batch commits or fails. The 512-entry and 50 ms
+scheduling bounds remain; draining pending network reads can exceed the time
+target. Review, automatic repair and source operations retain their independent
+validation. Local filesystems keep sequential inspection.
+
 The footer names the current phase. Finding files reports the count found so far
 with an indeterminate bar. Catalog checks, moved-file checks and grouping indexes
 show completed/total with a determinate bar. Grouping and
@@ -260,6 +272,37 @@ avoid treating that timing variation as steady everyday cost. These few local
 VM runs do not predict NAS or representative-media performance. The earlier
 9,000-file initial measurement above used an unorganized library and built its
 grouping suggestions; it is a different workload.
+
+### SMB reconnect Update timing
+
+On a disposable macOS-to-Samba share, three cold-remount production-worker
+runs took **2.431–2.638 seconds**, compared with **19.545–20.436 seconds**
+before this change. Each run scanned the same 256 synthetic 512 KiB files in
+eight directories, using a settled private catalog. The share was remounted
+before every run and the implementation order alternated.
+
+| Run | Previous worker (seconds) | Bounded parallel worker (seconds) |
+| --- | ---: | ---: |
+| 1 | 19.545 | 2.638 |
+| 2 | 20.436 | 2.587 |
+| 3 | 20.098 | 2.431 |
+
+All six runs read the same 48 MiB of samples through 256 file opens and 768
+reads, retained equal evidence and produced no candidates or repairs. Directory
+opens fell from 529 to 9; observed concurrency reached sixteen. The production
+512-entry/50 ms bounds were unchanged. These calls exercised the complete
+discovery state machine, including catalog checks, durable commits and status
+reads. They exclude background scheduling, history exchange, browser polling
+and media probing. They are not owner-NAS or end-to-end browser timings.
+
+A further server-side edit while the client share was unmounted changed one
+sampled byte without changing file size or mtime. Both workers detected exactly
+one replacement candidate; the updated worker took 2.637 seconds. This does
+not extend sampling's ability to detect edits outside its sampled regions.
+The `smb-update-mac-20261104` receipt retains the harness, observations and raw
+results; its earlier failed metadata-cache prototypes and traversal-only probe
+are separate evidence. Neither native ctime nor Samba FileId/ChangeTime is
+accepted as cross-remount content proof.
 
 ### Conversion timing
 

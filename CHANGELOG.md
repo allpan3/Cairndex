@@ -401,6 +401,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Reduce Update overhead after a macOS SMB reconnect by retaining checked
+  directory handles and overlapping at most sixteen fingerprint reads. Native
+  device changes still require fresh evidence. Cancellation and failures discard
+  the uncommitted batch; review, repair and source-operation checks are unchanged.
+
 - Keep filename-based bundle titles when Narrow/Widen rebuilds groups inside a
   retained collection. A single widened group no longer takes its parent
   folder's name; collection titles, file selection and source observations stay
