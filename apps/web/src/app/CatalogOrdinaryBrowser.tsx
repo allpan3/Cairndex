@@ -27,8 +27,8 @@ import { AddToBundleDialog, CreateBundleDialog } from './ManualBundlingDialogs'
 import { IncomingDialog, type IncomingTarget } from './IncomingDialog'
 import { SourceTaskProgress } from './SourceTaskProgress'
 import { useSourceTasks } from './useSourceTasks'
-import { renameError, renameTask } from './sourceActions'
-import { NewFolderDialog, RelocateDialog, TrashDialog } from './SourceActionDialogs'
+import { newFolderTask, renameError, renameTask } from './sourceActions'
+import { RelocateDialog, TrashDialog } from './SourceActionDialogs'
 import { CatalogTrashBrowser } from './CatalogTrashBrowser'
 import { useTrash, useUnfinishedOperations } from './useSourceLists'
 import { UnfinishedOperationsDialog, UnfinishedOperationsNotice } from './UnfinishedOperations'
@@ -143,7 +143,6 @@ export function CatalogOrdinaryBrowser(props: {
     kind: 'copy' | 'move' | 'trash'
     paths: string[]
   } | null>(null)
-  const [newFolder, setNewFolder] = useState<string | null>(null)
   const [reviewUnfinished, setReviewUnfinished] = useState(false)
   const filePicker = useRef<HTMLInputElement>(null)
   // The Bundle Browser's open collection and the folder its bundles share
@@ -666,7 +665,11 @@ export function CatalogOrdinaryBrowser(props: {
                 onLocateBundle={locate}
                 onRename={rename}
                 onSourceAction={sourceAction}
-                onNewFolder={writable && status?.source_mkdir ? setNewFolder : undefined}
+                onNewFolder={
+                  writable && status?.source_mkdir
+                    ? (parent, name) => tasks.start(newFolderTask(parent, name))
+                    : undefined
+                }
               />
               <aside className="inspector" aria-label="File inspector">
                 {file ? (
@@ -742,13 +745,6 @@ export function CatalogOrdinaryBrowser(props: {
           selection={bundling.selection}
           onClose={() => setBundling(null)}
           onApplied={bundled}
-        />
-      )}
-      {newFolder !== null && writable && status?.source_mkdir && (
-        <NewFolderDialog
-          folder={newFolder}
-          onClose={() => setNewFolder(null)}
-          onStart={tasks.start}
         />
       )}
       <CatalogToast

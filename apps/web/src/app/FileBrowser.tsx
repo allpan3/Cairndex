@@ -36,6 +36,7 @@ import { fileEntryKey, useFileSelection } from './useFileSelection'
 import { contactSheetMenuItem, type ContactSheetTarget } from './contactSheetExport'
 import { ContactSheetDialog } from './ContactSheetDialog'
 import { useFileWriteActions } from './fileWriteActions'
+import { newFolderError } from './sourceActions'
 import { ConflictDialog, DeleteDialog, DirectoryPicker, NameEditor } from './FileWriteDialogs'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
@@ -140,7 +141,7 @@ interface FileBrowserProps {
   /** Portable Rename runs a journaled source operation instead of a legacy write. */
   onRename?: (relativePath: string, newName: string) => void
   /** Portable directory creation uses the current library source journal. */
-  onNewFolder?: (parent: string) => void
+  onNewFolder?: (parent: string, name: string) => void
   /** Portable Copy to…, Move to… and Move to Trash, in place of the legacy writes. */
   onSourceAction?: (action: 'copy' | 'move' | 'trash', relativePaths: string[]) => void
   // Transient message, with an Undo action when the operation has an inverse.
@@ -680,9 +681,15 @@ function FileList({
   // New Folder needs a directory to create *in*, which the flat unbundled queue
   // does not have. Renaming works in both scopes — a path is a path.
   const canCreateFolder = (Boolean(onNewFolder) || writeMode) && scope === 'browse'
+  if (!canCreateFolder && write.creatingFolder) write.cancelNewFolder()
   const startNewFolder = () => {
-    if (onNewFolder) onNewFolder(currentPath)
-    else if (writeMode) write.startNewFolder()
+    if (canCreateFolder) write.startNewFolder()
+  }
+  const submitNewFolder = (name: string) => {
+    if (onNewFolder) {
+      write.cancelNewFolder()
+      onNewFolder(currentPath, name.trim())
+    } else if (writeMode) write.submitNewFolder(name)
   }
   const canRename = Boolean(onRename) || writeMode
   if (!canRename && write.renamingPath) write.cancelRename()
@@ -1435,16 +1442,26 @@ function FileList({
         {/* Above the listing rather than inside it: the new folder has no
             position in the current sort until it has a name. */}
         {write.creatingFolder && (
-          <div className="file-newfolder">
-            <span className="file-row__icon">
-              <IconFolder />
-            </span>
-            <NameEditor
-              initial="New Folder"
-              label="New folder name"
-              onSubmit={write.submitNewFolder}
-              onCancel={write.cancelNewFolder}
-            />
+          <div
+            className="file-newfolder"
+            role={prefs.layout === 'list' ? 'row' : 'option'}
+            aria-selected="true"
+          >
+            <div
+              className="file-newfolder__name"
+              role={prefs.layout === 'list' ? 'gridcell' : undefined}
+            >
+              <span className="file-row__icon">
+                <IconFolder />
+              </span>
+              <NameEditor
+                initial="Untitled"
+                label="New folder name"
+                validate={newFolderError}
+                onSubmit={submitNewFolder}
+                onCancel={write.cancelNewFolder}
+              />
+            </div>
           </div>
         )}
         {isError && (
@@ -1464,7 +1481,7 @@ function FileList({
         {isLoading ? (
           <div className="empty">Loading…</div>
         ) : isError && entries.length === 0 ? null : entries.length === 0 ? (
-          <div className="empty">{emptyText}</div>
+          !write.creatingFolder && <div className="empty">{emptyText}</div>
         ) : visible.length === 0 ? (
           <div className="empty">No files match “{search}”.</div>
         ) : (

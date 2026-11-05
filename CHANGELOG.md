@@ -294,6 +294,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Name new File Browser folders inline with **Untitled** selected, replacing
+  the popup. Enter or clicking outside confirms; Escape cancels.
+
 - **Dropped files become a bundle, join a bundle or land in a folder.** Files
   dropped in the Bundle Browser's empty space, or chosen with Add Files…, open
   **Add N files as a new bundle**, with a name taken from the files, the open

@@ -155,6 +155,17 @@ export function trashRowTask(row: TrashRow): NewTask {
   }
 }
 
+/** Keep invalid folder names editable before starting a source operation. */
+export function newFolderError(name: string): string | null {
+  if (!name) return 'Enter a folder name.'
+  return (
+    renameError(name) ??
+    (name.startsWith('.') || name.endsWith('.')
+      ? 'A folder name cannot start or end with a dot.'
+      : null)
+  )
+}
+
 /** Create only a vacant folder; an occupied name is never replaced. */
 export function newFolderTask(folder: string, name: string): NewTask {
   return {

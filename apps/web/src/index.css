@@ -3323,6 +3323,13 @@ code {
 }
 /* Contact-sheet options: two rows of choices and a line saying what they add up
    to. `.modal--narrow` because the widest thing in it is three short buttons. */
+.file-newfolder__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
 .modal--narrow {
   width: min(400px, 92vw);
 }

@@ -21,8 +21,10 @@ runs as a background task. Turning write mode off removes these actions.
 Existing directory-size and source-safety limits still apply.
 
 In File Browser, **New Folder** in the toolbar, context menu or desktop File
-menu creates an empty folder in the current directory. Enter a name and press
-Enter or **Create**. It requires Write Mode and a server that advertises
+menu inserts an inline row with **Untitled** selected. Type a name and press
+Enter or click outside to create it in the current directory; Escape cancels
+without creating a folder. Invalid names stay editable. It requires Write Mode
+and a server that advertises
 `source_mkdir`. Existing names are refused without replacement. Undo is available
 while the folder still matches the recorded empty tree; adding files prevents
 Undo from removing them. Creating a folder does not create a bundle or collection.

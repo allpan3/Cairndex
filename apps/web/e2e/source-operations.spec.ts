@@ -1,5 +1,5 @@
 import { expect as playwrightExpect, test, type Locator, type Page } from '@playwright/test'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apiPost, proxyApi, startBackend, stopBackend } from './realBackend'
@@ -238,14 +238,29 @@ test('New Folder creates in the current folder and Undo preserves later files @f
     const files = page.getByRole('grid', { name: 'Files', exact: true })
     await files.getByRole('row').filter({ hasText: 'Parent' }).dblclick()
     await page.getByRole('button', { name: 'New Folder', exact: true }).click()
-    const dialog = page.getByRole('dialog', { name: 'New Folder', exact: true })
-    const name = dialog.getByLabel('Folder name')
+    await expect(page.getByRole('dialog', { name: 'New Folder', exact: true })).toHaveCount(0)
+    const name = files.getByRole('textbox', { name: 'New folder name' })
+    await expect(name).toHaveValue('Untitled')
+    await expect(name).toBeFocused()
+    expect(
+      await name.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd]),
+    ).toEqual([0, 8])
+    await page.screenshot({ path: test.info().outputPath('synthetic-inline-folder.png') })
+    await name.press('Escape')
+    await expect(name).toHaveCount(0)
+    expect(await readdir(join(root, 'Parent'))).toEqual([])
+    await files.click({ button: 'right', position: { x: 20, y: 20 } })
+    await page.getByRole('menuitem', { name: 'New Folder', exact: true }).click()
+    await expect(name).toBeFocused()
     await name.fill('../escape')
-    await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeDisabled()
+    await name.press('Enter')
+    await expect(name).toBeVisible()
+    await expect(name).toHaveAttribute('aria-invalid', 'true')
+    expect(await readdir(join(root, 'Parent'))).toEqual([])
     await name.fill('Child')
     await expect(files.getByRole('row').filter({ hasText: 'Child' })).toHaveCount(0)
     await name.press('Enter')
-    await expect(dialog).toBeHidden()
+    await expect(name).toHaveCount(0)
     await expect(page.getByText('Created folder “Child”.')).toBeVisible()
     await expect(files.getByRole('row').filter({ hasText: 'Child' })).toBeVisible()
     await page.getByRole('button', { name: 'Undo', exact: true }).click()
@@ -253,8 +268,9 @@ test('New Folder creates in the current folder and Undo preserves later files @f
     await expect(files.getByRole('row').filter({ hasText: 'Child' })).toHaveCount(0)
     await files.click({ button: 'right', position: { x: 20, y: 20 } })
     await page.getByRole('menuitem', { name: 'New Folder', exact: true }).click()
-    await dialog.getByLabel('Folder name').fill('Kept')
-    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await name.fill('Kept')
+    // Clicking outside confirms once, just like inline Rename.
+    await files.click({ position: { x: 20, y: 70 } })
     await expect(page.getByText('Created folder “Kept”.')).toBeVisible()
     await writeFile(join(root, 'Parent', 'Kept', 'later.txt'), 'Synthetic later work')
     await page.getByRole('button', { name: 'Undo', exact: true }).click()

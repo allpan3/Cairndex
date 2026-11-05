@@ -71,7 +71,10 @@ removes the task-created bundle. Replace bundling has no Undo. The old storage
 budget, saved-draft and recent-operation panels are removed; the default budget
 remains. Waiting operations cover only the newest page. Native-drop Move remains
 deferred. New Folder is installed with journaled creation and conditional Undo;
-owner testing is next. See its source-operation documentation for details.
+The inline naming follow-up replaces the popup with an editable Untitled row;
+macOS frontend gates (1,439 units) and four source/Rename browser cases pass.
+The updated installation is in progress. See its
+source-operation documentation for details.
 
 ## Qualification and evidence
 
