@@ -350,7 +350,9 @@ def combine_additions(db: sqlite3.Connection, run: str, path: str) -> None:
 
 
 # Folder classification uses complete direct groups and already classified child subtrees
-def classify_directory(db: sqlite3.Connection, run: str, path: str) -> None:
+def classify_directory(
+    db: sqlite3.Connection, run: str, path: str, *, owns_directory: bool = True
+) -> None:
     direct = db.execute(
         "SELECT COUNT(*) AS groups,COALESCE(SUM(n=1),0) AS singles FROM ("
         "SELECT g.id,COUNT(f.path) AS n FROM discovery_plan_groups g "
@@ -418,7 +420,7 @@ def classify_directory(db: sqlite3.Connection, run: str, path: str) -> None:
         db.execute(
             "UPDATE discovery_plan_groups SET parent=?,title=CASE WHEN ?<>'' THEN ? ELSE title END,"
             "stage='classified' WHERE run=? AND directory=? AND target IS NULL",
-            (parent, path, PurePosixPath(path).name, run, path),
+            (parent, path if owns_directory else "", PurePosixPath(path).name, run, path),
         )
     db.execute(
         "UPDATE discovery_plan_directories SET phase='complete' WHERE run=? AND path=?", (run, path)

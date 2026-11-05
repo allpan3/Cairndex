@@ -8,9 +8,9 @@ Widen title repair and SMB source-read improvement. This is an owner-test
 installation, not a published release. Rollback copies and private profiles
 are preserved. Owner acceptance remains a release checkpoint.
 
-The incoming-files redesign is on a separate branch. It is not installed and
-has not been qualified together with the installed changes. The branches below
-are unpushed; consolidation and publication checks are in progress.
+The incoming-files redesign is prepared on a dependent branch. It is not
+installed, and its combined runtime has not yet been qualified. The preparation
+branches below are unpushed; publication remains blocked by the history gate.
 
 ## Implementation and decisions
 
@@ -46,13 +46,16 @@ Do not restore cross-device metadata reuse as a shortcut for SMB remounts.
 ## Work awaiting consolidation
 
 Original branches remain available as local implementation and evidence records.
-Prepare dependent PRs in this order, without merging duplicate checkpoint history.
+The prepared stack has six audit commits, one SMB commit and one incoming-files
+commit. Application files match the tested audit and installed SMB snapshots;
+the incoming application tree matches a merge of the original branches. Open
+dependent PRs in this order after qualification and publication clearance.
 
-| Scope | Original branch | Integration boundary |
+| Scope | Original branch | Prepared branch |
 | --- | --- | --- |
-| Audit and owner findings | `fix/audit-build-owner-findings` | UI, metadata, Update, Rename, Accept and Widen fixes |
-| SMB source reads | `fix/smb-reconnect-update` | Unique scanner implementation, tests and measurements; omit copied Accept/Widen commits |
-| Incoming files | `fix/incoming-copy-dialog` | Apply the incoming-only change after both prior scopes |
+| Audit, metadata, Update, Rename, Accept and Widen | `fix/audit-build-owner-findings` | `prepare/audit-owner-findings` |
+| Unique SMB scanner implementation and measurements | `fix/smb-reconnect-update` | `prepare/smb-reconnect-update` |
+| Incoming-only workflow after both prior scopes | `fix/incoming-copy-dialog` | `prepare/incoming-copy-dialog` |
 
 The incoming branch adds background copies, bundle-aware drops, per-action menus,
 Library-only Write Mode and Trash. Immediate Apply uses the exact prepared
@@ -103,12 +106,16 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
-- Complete source-preserving history cleanup, inspect reachable objects and
-  publication metadata, and run all required privacy gates before any push or PR.
-  A previous literal finding overlaps ordinary signing output; do not weaken
-  private patterns or treat a range pass as whole-history clearance.
-- Integrate the three scopes in order. Run proportional regression checks after
-  the incoming integration and qualify any later combined package before install.
+- Each prepared range passes the privacy gate. Whole-history scanning still
+  reports 740 inherited literal findings: 351 overlap a standard signing key
+  and 389 match a generic temporary-directory prefix in synthetic test records.
+  Inspection confirms these false positives are already reachable from main.
+  Publication remains blocked until the required gate can pass without weakening
+  private patterns. No push, PR, tag or release has been made by this cleanup.
+- Review the prepared PR summaries and complete proportional VM regressions for
+  the incoming combination. Qualify any later combined package before install.
+  This cleanup verified source equivalence and documentation; it did not rerun
+  unchanged application suites or qualify the combined incoming runtime.
 - Complete owner acceptance and representative NAS/media timing. Synthetic
   measurements do not establish large-library readiness on the owner's storage.
 - Provider/cloud delivery, offline delivery, hydration, conflicts, large-scale use

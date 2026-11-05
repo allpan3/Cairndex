@@ -98,7 +98,11 @@ it does not version the library format.
 
 Rename and drag commands change private rows only. Narrow/Widen prepares bounded
 planner pages for the chosen folder before replacing that folder's suggestions
-atomically. Bundle-to-collection conversion splits video subjects with strict
+atomically. Rebuilt bundles inside a retained collection take their titles from
+their filenames, even when only one group remains. Widening a standalone bundle
+keeps the folder as a collection rather than using its name for the widened
+subject. The initial scan still uses the folder name for an ordinary whole-folder
+bundle. Bundle-to-collection conversion splits video subjects with strict
 sidecar matching within each source folder; repeated filenames in separate
 folders remain independent. A one-subject subfolder keeps its folder title.
 The inverse keeps file identities and folder display choices.

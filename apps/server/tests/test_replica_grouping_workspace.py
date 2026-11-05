@@ -512,6 +512,117 @@ def test_stem_levels_match_established_subject_groups(replicas, level):
     assert confidence == expected_confidence
 
 
+@pytest.mark.parametrize("split_first", [False, True])
+def test_widened_single_subject_keeps_its_filename_title_inside_collection(replicas, split_first):
+    store, root, _ = replicas[0]
+    folder = root / "Contributor"
+    folder.mkdir()
+    names = ("SCENE-204 - edit.mp4", "SCENE-204-cover.jpg", "SCENE-204.srt")
+    for name in names:
+        (folder / name).write_bytes(("synthetic " + name).encode())
+    original_bytes = {path: path.read_bytes() for path in folder.iterdir()}
+    run = scan(store, root)["id"]
+    build(store, run)
+    frontier = store.frontier()
+    original = node_id(store, run, "Contributor")
+    with store.connection(readonly=True) as db:
+        initial = db.execute(
+            "SELECT kind,title FROM grouping_nodes WHERE workspace=? AND id=?", (run, original)
+        ).fetchone()
+        assert tuple(initial) == ("bundle", "Contributor")
+        files = [
+            tuple(row)
+            for row in db.execute(
+                "SELECT id,path,body FROM grouping_files WHERE workspace=? ORDER BY id", (run,)
+            )
+        ]
+    if split_first:
+        result = edit(
+            store, run, "split-subject", {"action": "kind", "node": original, "kind": "container"}
+        )
+        assert result["state"] == "succeeded", result
+    skipped = file_id(store, run, "Contributor/SCENE-204-cover.jpg")
+    result = edit(
+        store, run, "skip-cover", {"action": "select", "file": skipped, "selected": False}
+    )
+    assert result["state"] == "succeeded", result
+    header = original
+    for index, level in enumerate((2, 3, 1)):
+        result = edit(
+            store, run, f"subject-stem-{index}", {"action": "stem", "node": header, "level": level}
+        )
+        assert result["state"] == "succeeded", result
+        with store.connection(readonly=True) as db:
+            collection = db.execute(
+                "SELECT id,title FROM grouping_nodes WHERE workspace=? AND directory=? "
+                "AND kind='container'",
+                (run, "Contributor"),
+            ).fetchone()
+            assert collection is not None
+            if split_first or index:
+                assert collection["id"] == header
+            header = collection["id"]
+            assert collection["title"] == "Contributor"
+            children = pages.nodes(db, run, storage.status(store, run)["revision"], header)["items"]
+            assert len(children) == 1
+            assert children[0]["title"] == "SCENE"
+            assert children[0]["files"] == 3
+            assert (
+                db.execute(
+                    "SELECT selected FROM grouping_files WHERE workspace=? AND id=?", (run, skipped)
+                ).fetchone()[0]
+                == 0
+            )
+            assert [
+                tuple(row)
+                for row in db.execute(
+                    "SELECT id,path,body FROM grouping_files WHERE workspace=? ORDER BY id", (run,)
+                )
+            ] == files
+    assert store.frontier() == frontier
+    assert all(path.read_bytes() == content for path, content in original_bytes.items())
+
+
+def test_widened_subjects_merge_under_retained_collection_with_shared_stem_title(replicas):
+    store, root, _ = replicas[0]
+    folder = root / "Series"
+    folder.mkdir()
+    for name in ("Episode-one.mp4", "Episode-one.srt", "Episode-two.mp4", "Episode-two.srt"):
+        (folder / name).write_bytes(("synthetic " + name).encode())
+    run = scan(store, root)["id"]
+    build(store, run)
+    with store.connection(readonly=True) as db:
+        header = db.execute(
+            "SELECT id FROM grouping_nodes WHERE workspace=? AND directory='Series' "
+            "AND kind='container'",
+            (run,),
+        ).fetchone()[0]
+    result = edit(
+        store,
+        run,
+        "name-collection",
+        {"action": "rename", "node": header, "title": "Reviewed series"},
+    )
+    assert result["state"] == "succeeded", result
+    for index, (level, titles) in enumerate(
+        ((2, ["Episode"]), (1, ["Episode-one", "Episode-two"]))
+    ):
+        result = edit(
+            store, run, f"series-stem-{index}", {"action": "stem", "node": header, "level": level}
+        )
+        assert result["state"] == "succeeded", result
+        with store.connection(readonly=True) as db:
+            children = pages.nodes(db, run, storage.status(store, run)["revision"], header)["items"]
+            assert sorted(child["title"] for child in children) == titles
+            assert sum(child["files"] for child in children) == 4
+            assert (
+                db.execute(
+                    "SELECT title FROM grouping_nodes WHERE workspace=? AND id=?", (run, header)
+                ).fetchone()[0]
+                == "Reviewed series"
+            )
+
+
 def test_existing_collection_placement_is_shared_readonly_and_pruned(review):
     from cairndex.replicas.recovery_validation import validate_snapshot
 

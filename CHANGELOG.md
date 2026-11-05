@@ -397,6 +397,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Keep filename-based bundle titles when Narrow/Widen rebuilds groups inside a
+  retained collection. A single widened group no longer takes its parent
+  folder's name; collection titles, file selection and source observations stay
+  intact. Widening a standalone bundle keeps the folder as a collection.
+
 - Open Review Discoveries on the latest completed Update. Earlier edited or
   prepared drafts no longer take precedence over freshly scanned files, which
   could cause a file-change error after an SMB remount. Earlier drafts retain
