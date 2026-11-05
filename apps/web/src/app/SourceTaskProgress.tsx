@@ -1,16 +1,21 @@
-import { folderLabel, noun, parentFolder, taskProgress, type SourceTask } from './sourceTasks'
+import { useState } from 'react'
+import { formatBytes } from '../lib/format'
+import { newFolderError } from './sourceActions'
+import {
+  folderLabel,
+  noun,
+  parentFolder,
+  taskProgress,
+  transferProgress,
+  type SourceTask,
+} from './sourceTasks'
 import type { SourceTasks } from './useSourceTasks'
 
-/**
- * Background source tasks in the sidebar foot, beside Update's progress: a
- * running task with Stop, then whatever a task needs from the owner (an
- * occupied name to resolve, a failure to retry). A task that ends cleanly
- * leaves the sidebar and reports in the browser's message instead.
- */
+/** Visible file activity, including direct actions for stopped items. */
 export function SourceTaskProgress({ tasks }: { tasks: SourceTasks }) {
   if (tasks.tasks.length === 0) return null
   return (
-    <div className="sidebar__job-progress" aria-label="File tasks">
+    <div className="source-tasks" aria-label="File tasks">
       {tasks.tasks.map((task) => (
         <TaskRow key={task.id} task={task} tasks={tasks} />
       ))}
@@ -29,7 +34,17 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
   )
   const failed = task.items.filter((item) => item.state.kind === 'failed')
   const waiting = task.items.filter((item) => item.state.kind === 'waiting').length
-  const percent = Math.round(taskProgress(task) * 100)
+  const transfer = transferProgress(task)
+  const percent = Math.round(
+    transfer && transfer.total
+      ? (transfer.received / transfer.total) * 100
+      : taskProgress(task) * 100,
+  )
+  const state = current?.state
+  const speed = state && 'speed' in state ? state.speed : undefined
+  const phase =
+    state?.kind === 'sending' ? 'Transferring' : state?.kind === 'checking' ? 'Verifying' : 'Saving'
+
   if (task.running)
     return (
       <div className="job-progress source-task" role="status" aria-live="polite">
@@ -37,11 +52,9 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
           <span className="job-progress__label" title={task.title}>
             {task.stopping ? 'Stopping…' : task.title}
           </span>
-          {total > 1 && (
-            <span className="job-progress__count">
-              {Math.min(done + 1, total)}/{total}
-            </span>
-          )}
+          <span className="job-progress__count">
+            {done} of {total} complete
+          </span>
           <button
             type="button"
             className="job-progress__cancel"
@@ -54,7 +67,7 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
           </button>
         </div>
         <div
-          className={`job-progress__track${current?.state.kind === 'sending' ? ' job-progress__track--indeterminate' : ''}`}
+          className="job-progress__track"
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
@@ -62,9 +75,23 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
         >
           <div className="job-progress__bar" style={{ width: `${percent}%` }} />
         </div>
+        <div className="source-task__metrics">
+          {transfer && (
+            <span>
+              {transfer.received === 0 ? '0 B' : formatBytes(transfer.received)} of{' '}
+              {transfer.total === 0 ? '0 B' : formatBytes(transfer.total)} transferred · {percent}%
+            </span>
+          )}
+          <span>
+            {speed !== undefined && speed > 0 ? `${formatBytes(speed)}/s` : 'Measuring speed…'}
+          </span>
+        </div>
         {current && (
-          <div className="import-progress__name" title={current.name}>
-            {current.state.kind === 'sending' ? `Sending ${current.name}` : current.name}
+          <div className="source-task__filename" title={current.name}>
+            {phase}: {current.name}
+            {state && 'bytes' in state && state.kind !== 'sending' && state.bytes !== undefined && (
+              <> · {formatBytes(state.bytes)} processed</>
+            )}
           </div>
         )}
       </div>
@@ -78,34 +105,51 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
         <button
           type="button"
           className="job-progress__cancel"
-          onClick={() => tasks.dismiss(task.id)}
-          title="Dismiss"
-          aria-label={`Dismiss ${task.title}`}
+          disabled={task.busy}
+          onClick={() => void tasks.dismiss(task.id)}
+          title="Cancel remaining items"
+          aria-label={`Cancel ${task.title}`}
         >
-          ×
+          Cancel
         </button>
       </div>
       {conflicts.map(({ item, index }) => (
         <div key={index} className="source-task__question" role="group" aria-label={item.name}>
           <span>
             “{item.name}” already exists in{' '}
-            {folderLabel(parentFolder(item.request.destination ?? ''))}.
+            {folderLabel(parentFolder(item.request.destination ?? ''))}. Nothing was replaced.
           </span>
-          <span className="source-task__choices">
-            <button className="btn btn--sm" onClick={() => tasks.decide(task.id, index, 'suffix')}>
-              Keep Both
-            </button>
-            <button
-              className="btn btn--sm"
-              title="The existing file is kept as a recoverable version"
-              onClick={() => tasks.decide(task.id, index, 'replace')}
-            >
-              Replace
-            </button>
-            <button className="btn btn--sm" onClick={() => tasks.decide(task.id, index, 'skip')}>
-              Skip
-            </button>
-          </span>
+          <ChangeName
+            disabled={task.busy}
+            name={item.name}
+            onChange={(name) => void tasks.rename(task.id, index, name)}
+          />
+          {item.request.action !== 'mkdir' && (
+            <span className="source-task__choices">
+              <button
+                className="btn btn--sm"
+                disabled={task.busy}
+                onClick={() => void tasks.decide(task.id, index, 'suffix')}
+              >
+                Keep Both
+              </button>
+              <button
+                className="btn btn--sm"
+                title="The existing file is kept as a recoverable version"
+                disabled={task.busy}
+                onClick={() => void tasks.decide(task.id, index, 'replace')}
+              >
+                Replace
+              </button>
+              <button
+                className="btn btn--sm"
+                disabled={task.busy}
+                onClick={() => void tasks.decide(task.id, index, 'skip')}
+              >
+                Skip
+              </button>
+            </span>
+          )}
         </div>
       ))}
       {failed.map((item, index) => (
@@ -119,11 +163,54 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
           {waiting > 0 && failed.length === 0 && (
             <span className="source-task__note">Stopped · {noun(waiting)} not started</span>
           )}
-          <button className="btn btn--sm" onClick={() => tasks.resume(task.id)}>
+          <button
+            className="btn btn--sm"
+            disabled={task.busy}
+            onClick={() => tasks.resume(task.id)}
+          >
             {failed.length > 0 || task.error ? 'Try Again' : 'Continue'}
           </button>
         </div>
       )}
     </div>
+  )
+}
+
+export function ChangeName({
+  name,
+  onChange,
+  disabled = false,
+}: {
+  name: string
+  onChange: (name: string) => void
+  disabled?: boolean
+}) {
+  const [value, setValue] = useState(name)
+  const error = newFolderError(value.trim())
+  return (
+    <form
+      className="source-task__choices"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (!disabled && !error && value.trim() !== name) onChange(value.trim())
+      }}
+    >
+      <label>
+        New name{' '}
+        <input
+          disabled={disabled}
+          aria-label="New name"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      </label>
+      <button
+        className="btn btn--sm"
+        disabled={disabled || Boolean(error) || value.trim() === name}
+      >
+        Use this name
+      </button>
+      {error && <span role="alert">{error}</span>}
+    </form>
   )
 }

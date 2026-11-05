@@ -100,6 +100,15 @@ def test_picker_upload_copies_with_exact_retry(isolated_client, registry_session
     run_one(store, root, lambda: ensure_portable_write_mode(registry_session, identity))
     assert isolated_client.get(path + "/copy-upload").json()["state"] == "succeeded"
     assert (root / "uploaded.txt").read_bytes() == content
+    assert not (root / ".cairndex/source-operations/copy-upload/source").exists()
+    assert prepared["review"]["versions_after"]["uploaded.txt"]["operation"] == "upload-one"
+    progress = isolated_client.get(path + "/uploads/upload-one").json()
+    assert progress == {"state": "ready", "received": len(content), "size": len(content)}
+    from cairndex.replicas.source_receipts import validate_private
+
+    with store.connection(readonly=True) as db:
+        validate_private(db, store)
+    (root / "uploaded.txt").write_bytes(b"Synthetic edited output")
     assert (root / ".cairndex/source-operations/upload-one/source").read_bytes() == content
 
 
@@ -214,3 +223,21 @@ def test_source_login_failure_survives_exchange_and_authorization_preserves_inte
     run_one(store, root, lambda: ensure_portable_write_mode(registry_session, identity))
     assert isolated_client.get(target).json()["state"] == "succeeded"
     assert (root / "Nested").is_dir()
+
+
+def test_interrupted_folder_collision_can_be_cancelled(isolated_client, tmp_path):
+    root = tmp_path / "library"
+    identity, _ = create(isolated_client, root)
+    base = f"/api/v1/libraries/{identity}"
+    isolated_client.put(base + "/write-mode", json={"enabled": True})
+    (root / "Taken").mkdir()
+    path = base + "/source-operations"
+    isolated_client.post(
+        path, json={"operation": "folder", "action": "mkdir", "destination": "Taken"}
+    )
+    store = service._handles[identity][0]
+    run_one(store, root, lambda: None)
+    assert isolated_client.get(path + "/folder").json()["state"] == "interrupted"
+    assert isolated_client.delete(path + "/folder").status_code == 204
+    assert isolated_client.get(path + "/folder").json()["state"] == "cancelled"
+    assert (root / "Taken").is_dir()

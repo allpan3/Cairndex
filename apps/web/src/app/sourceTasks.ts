@@ -3,9 +3,9 @@ import type { SourceRequest } from '../api/sourceOperations'
 /** Where one item of a background source task stands. */
 export type TaskItemState =
   | { kind: 'waiting' }
-  | { kind: 'sending' }
-  | { kind: 'checking'; percent: number | null }
-  | { kind: 'applying'; percent: number | null }
+  | { kind: 'sending'; bytes?: number; speed?: number }
+  | { kind: 'checking'; percent: number | null; bytes?: number; speed?: number }
+  | { kind: 'applying'; percent: number | null; bytes?: number; speed?: number }
   | {
       kind: 'done'
       destination: string
@@ -25,6 +25,7 @@ export interface TaskItem {
   file?: File
   request: SourceRequest
   state: TaskItemState
+  uploaded?: number
 }
 
 /** What happens once every item of a task has landed. */
@@ -37,7 +38,7 @@ export type TaskFinish =
 /**
  * A group of source operations the owner started with one click: files copied
  * in from this computer, a move, a trash or an undo. It runs in the background
- * and reports in the sidebar; only a question (an occupied name) or a failure
+ * and reports above the browser; only a question (an occupied name) or a failure
  * keeps it there after it ends.
  */
 export interface SourceTask {
@@ -52,6 +53,7 @@ export interface SourceTask {
   finish: TaskFinish
   running: boolean
   stopping: boolean
+  busy?: boolean
   /** A failure of the finishing step, after every item landed. */
   error: string
 }
@@ -104,6 +106,18 @@ export function mostCommonFolder(paths: (string | null | undefined)[]): string |
   for (const [folder, count] of counts)
     if (best === null || count > counts.get(best)!) best = folder
   return best
+}
+
+/** Transfer bytes are separate from verification and final publication. */
+export function transferProgress(task: SourceTask) {
+  const items = task.items.filter((item) => item.file)
+  if (!items.length) return null
+  const total = items.reduce((sum, item) => sum + item.file!.size, 0)
+  const received = items.reduce(
+    (sum, item) => sum + Math.min(item.file!.size, item.uploaded ?? 0),
+    0,
+  )
+  return { total, received }
 }
 
 /** How far along a task is, from 0 to 1, counting the item in progress by its percent. */
