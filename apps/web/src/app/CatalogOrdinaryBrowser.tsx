@@ -105,7 +105,7 @@ export function CatalogOrdinaryBrowser(props: {
   deepLink?: PendingDeepLink | null
   onDeepLinkHandled?: () => void
   /** The sidebar's Update button; absent when this server cannot run Update. */
-  update?: { running: boolean; disabled: boolean; onClick: () => void }
+  update?: { running: boolean; initialScan?: boolean; disabled: boolean; onClick: () => void }
   /** The ⋯ menu's library-wide entries, after this browser's file entries. */
   libraryMenu: MenuEntry[]
   /** Update's progress and status that needs the owner, in the sidebar footer;

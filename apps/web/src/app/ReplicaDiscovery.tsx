@@ -8,7 +8,28 @@ import { useModalDialog } from './useModalDialog'
 import type { ReplicaDiscoveryState } from './useReplicaDiscovery'
 
 function completeStatus(run: DiscoveryRun): string {
-  return `Update complete · ${run.observed} files checked · ${run.repaired} links repaired`
+  return `${run.initial_scan ? 'Initial scan' : 'Update'} complete · ${run.observed} files checked · ${run.repaired} links repaired`
+}
+
+function InitialScanInfo({ idle = false }: { idle?: boolean }) {
+  return (
+    <div className="discovery-setup">
+      <strong>{idle ? 'Files not scanned on this server yet' : 'Initial library scan'}</strong>
+      <p>
+        {idle
+          ? 'Run Update to check local files. Your saved organization is already available.'
+          : 'First file scan on this server. Large libraries can take several minutes.'}
+      </p>
+      <details>
+        <summary>About initial setup</summary>
+        <p>
+          The catalog and media cache are stored on the server. Browsers using this server share
+          them. A different server, including the desktop app’s local server, prepares its own copy.
+          Later Updates check all folders again and reuse unchanged file information.
+        </p>
+      </details>
+    </div>
+  )
 }
 
 function phaseLabel(run: DiscoveryRun | undefined): string {
@@ -50,9 +71,9 @@ function runStatus(run: ReplicaDiscoveryState['run']): string {
     case 'succeeded':
       return completeStatus(run.data)
     case 'cancelled':
-      return 'Update cancelled. Run Update to retry.'
+      return `${run.data.initial_scan ? 'Initial scan' : 'Update'} cancelled. Run Update to retry.`
     case 'failed':
-      return 'Update could not finish. Run Update to retry.'
+      return `${run.data.initial_scan ? 'Initial scan' : 'Update'} could not finish. Run Update to retry.`
     default:
       return 'Update discovers local files when you choose it.'
   }
@@ -80,6 +101,9 @@ export function DiscoveryControls({ discovery: d }: { discovery: ReplicaDiscover
   }, [finished, clearFinished])
   return (
     <section className="replica-discovery" aria-label="Library Update">
+      {d.run.data?.initial_scan && d.run.data.state !== 'succeeded' && (
+        <InitialScanInfo idle={d.run.data.state === 'idle'} />
+      )}
       <button disabled={!d.canStart} onClick={() => void d.start()}>
         Update
       </button>
@@ -115,6 +139,7 @@ export function DiscoveryNotice({
   const completed = d.run.data?.completed ?? 0
   const determinate = d.running && total != null
   const stopped = state === 'failed' || state === 'cancelled'
+  const initial = d.run.data?.initial_scan && state !== 'succeeded'
   // The hook forgets the run once it is reported, not this row: the row
   // unmounts with the sidebar, and showing it again must not repeat the result
   const { finished, clearFinished } = d
@@ -124,9 +149,10 @@ export function DiscoveryNotice({
     onComplete(completeStatus(finished))
   }, [finished, clearFinished, onComplete])
   const problem = Boolean(d.error || d.run.error || d.run.data?.error)
-  if (!d.running && !stopped && !problem && !d.pending) return null
+  if (!initial && !d.running && !stopped && !problem && !d.pending) return null
   return (
     <section className="sidebar__job-progress" aria-label="Library Update">
+      {initial && <InitialScanInfo idle={state === 'idle'} />}
       {(d.running || stopped) && (
         <div className="job-progress" role="status" aria-live="polite">
           <div className="job-progress__row">
@@ -134,8 +160,8 @@ export function DiscoveryNotice({
               {d.running
                 ? phaseLabel(d.run.data)
                 : state === 'cancelled'
-                  ? 'Update cancelled'
-                  : 'Update failed'}
+                  ? `${initial ? 'Initial scan' : 'Update'} cancelled`
+                  : `${initial ? 'Initial scan' : 'Update'} failed`}
             </span>
             {d.running && <span className="job-progress__count">{phaseCount(d.run.data)}</span>}
             {d.running && (

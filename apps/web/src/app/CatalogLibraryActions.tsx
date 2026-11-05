@@ -11,7 +11,7 @@ export function CatalogLibraryActions({
   items,
 }: {
   /** Absent when this server cannot run Update for the library. */
-  update?: { running: boolean; disabled: boolean; onClick: () => void }
+  update?: { running: boolean; initialScan?: boolean; disabled: boolean; onClick: () => void }
   items: MenuEntry[]
 }) {
   const menu = useContextMenu()
@@ -26,7 +26,7 @@ export function CatalogLibraryActions({
             title="Find new, moved and missing files in this library"
           >
             <span aria-hidden="true">⟳ </span>
-            {update.running ? 'Updating…' : 'Update'}
+            {update.running ? (update.initialScan ? 'Initial scan…' : 'Updating…') : 'Update'}
           </button>
         )}
         <button

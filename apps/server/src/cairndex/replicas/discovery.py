@@ -27,6 +27,10 @@ def media_kind(path: str) -> MediaKind:
 
 
 BATCH = 32
+# File observations are small. Amortize durable commits while limiting both
+# memory and time between cancellation/save opportunities on slower storage.
+SCAN_BATCH = 512
+SCAN_SECONDS = 0.05
 _walks: dict[CatalogStore, tuple[str, Iterator[str | None]]] = {}
 
 
@@ -53,7 +57,8 @@ def baseline(db: sqlite3.Connection, identity: str, observation: dict[str, Any])
         db, identity, observation["path"], observation["evidence"]["size"], observation["mtime"]
     )
     db.execute(
-        "INSERT OR REPLACE INTO discovery_baselines VALUES (?,?)",
+        "INSERT INTO discovery_baselines VALUES (?,?) ON CONFLICT(file_id) DO UPDATE SET "
+        "body=excluded.body WHERE discovery_baselines.body<>excluded.body",
         (identity, value_text(observation)),
     )
 
@@ -196,7 +201,10 @@ def enumerate_batch(store: CatalogStore, root: Path, run: str) -> None:
     found = []
     complete = False
     with store.connection(readonly=True) as db:
-        for _ in range(BATCH):
+        deadline = time.monotonic() + SCAN_SECONDS
+        for index in range(SCAN_BATCH):
+            if index and time.monotonic() >= deadline:
+                break
             try:
                 path = next(walker)
             except StopIteration:
@@ -236,21 +244,25 @@ def enumerate_batch(store: CatalogStore, root: Path, run: str) -> None:
 # Cataloged paths are checked independently; incomplete delivery never becomes a shared absence
 def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
     with store.connection() as db:
+        if not db.execute(
+            "SELECT 1 FROM discovery_runs WHERE id=? AND state='running' "
+            "AND phase='known' AND cursor=?",
+            (run, after),
+        ).fetchone():
+            return
+        deadline = time.monotonic() + SCAN_SECONDS
         rows = db.execute(
             (
-                "SELECT entity,path FROM catalog_paths WHERE family='asset_files' "
-                "AND entity>? ORDER BY entity LIMIT ?"
+                "SELECT f.entity,p.path FROM catalog_rows f JOIN catalog_paths p "
+                "ON p.owner='asset_files/'||f.entity WHERE f.family='asset_files' "
+                "AND f.entity>? ORDER BY f.entity LIMIT ?"
             ),
-            (after, BATCH),
+            (after, SCAN_BATCH),
         ).fetchall()
-        advance(
-            db,
-            run,
-            "known",
-            len(rows),
-            "SELECT count(*) FROM catalog_paths WHERE family='asset_files'",
-        )
+        completed, cursor = 0, after
         for row in rows:
+            if completed and time.monotonic() >= deadline:
+                break
             identity, path = row
             old_row = db.execute(
                 "SELECT body FROM discovery_baselines WHERE file_id=?", (identity,)
@@ -342,9 +354,18 @@ def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
                         "INSERT OR REPLACE INTO discovery_missing VALUES (?,?,?)",
                         (run, identity, value_text(body)),
                     )
+            completed += 1
+            cursor = identity
+        advance(
+            db,
+            run,
+            "known",
+            completed,
+            "SELECT count(*) FROM catalog_paths WHERE family='asset_files'",
+        )
         db.execute(
             "UPDATE discovery_runs SET cursor=?,phase=? WHERE id=?",
-            (rows[-1][0] if rows else "", "known" if rows else "repair", run),
+            (cursor if rows else "", "known" if rows else "repair", run),
         )
 
 
@@ -444,6 +465,8 @@ def propose_batch(store: CatalogStore, run: str) -> None:
             if job["state"] != "running":
                 return
             phase = job["phase"]
+            if phase == "propose" and not job["cursor"] and not plan.has_grouping_sources(db, run):
+                phase = "export"
             if phase in ("propose", "plan_known"):
                 done = plan.index_batch(store, db, run, job["cursor"], known=phase == "plan_known")
             else:

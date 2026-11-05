@@ -91,13 +91,37 @@ def test_update_reports_phase_totals_and_resets_after_restart(replicas):
     discovery.known_batch(store, root, "phase-counts", "")
     progress = state.run(store)
     assert progress["total"] > 0
-    assert progress["completed"] == min(discovery.BATCH, progress["total"])
+    assert 0 < progress["completed"] <= min(discovery.SCAN_BATCH, progress["total"])
     assert progress["observed"] > 0
     reopened = CatalogStore(store.path.parent, store.descriptor)
     restarted = state.run(reopened)
     assert restarted["phase"] == "walk"
     assert restarted["total"] is None
     assert restarted["completed"] == 0
+
+
+def test_initial_scan_survives_retry_and_is_private_to_server(replicas):
+    store, root, _ = replicas[0]
+    peer, _, _ = replicas[1]
+    assert state.run(store) == {"state": "idle", "initial_scan": True}
+    assert state.enqueue(store, "cancelled-setup")["initial_scan"]
+    state.cancel(store, "cancelled-setup")
+    assert state.run(store)["initial_scan"]
+    state.enqueue(store, "failed-setup")
+    with store.connection() as db:
+        db.execute("UPDATE discovery_runs SET state='failed' WHERE id='failed-setup'")
+    assert state.run(store)["initial_scan"]
+    first = scan(store, root)
+    assert first["initial_scan"]
+    reopened = CatalogStore(store.path.parent, store.descriptor)
+    assert state.run(reopened)["initial_scan"]
+    assert not state.enqueue(reopened, "ordinary-update")["initial_scan"]
+    assert state.run(reopened, first["id"])["initial_scan"]
+    state.cancel(reopened, "ordinary-update")
+    assert not state.run(reopened)["initial_scan"]
+    assert not state.enqueue(reopened, "ordinary-retry")["initial_scan"]
+    # Authored metadata is shared, but the other server has not scanned its files.
+    assert state.run(peer) == {"state": "idle", "initial_scan": True}
 
 
 # First/repeated Update keep candidates private; reviewed grouping becomes one causal transaction
@@ -406,6 +430,10 @@ def test_api_backup_restore_requires_revalidation(specimen, tmp_path, raw_client
         if ready["ready"]:
             break
     assert ready["ready"]
+    assert raw_client.get(base + "/replica/discovery/status").json() == {
+        "state": "idle",
+        "initial_scan": True,
+    }
     assert (
         raw_client.post(
             base + "/replica/discovery/runs", json={"operation": "recovery-scan"}
@@ -418,6 +446,7 @@ def test_api_backup_restore_requires_revalidation(specimen, tmp_path, raw_client
         if completed["state"] != "running":
             break
     assert completed["state"] == "succeeded", completed
+    assert completed["initial_scan"] is True
     candidate = raw_client.get(base + "/replica/discovery/candidates").json()["items"][0]
     assert (
         raw_client.post(

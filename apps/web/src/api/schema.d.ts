@@ -5754,6 +5754,61 @@ export interface components {
             /** Verification */
             verification?: string | null;
         };
+        /**
+         * DiscoveryRun
+         * @description Server-local scan state; absent progress fields stay absent while idle.
+         */
+        DiscoveryRun: {
+            /**
+             * Completed
+             * @default 0
+             */
+            completed: number;
+            /**
+             * Cursor
+             * @default
+             */
+            cursor: string;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /**
+             * Initial Scan
+             * @description No earlier Update succeeded in this private store
+             */
+            initial_scan: boolean;
+            /**
+             * Observed
+             * @default 0
+             */
+            observed: number;
+            /**
+             * Phase
+             * @default
+             */
+            phase: string;
+            /**
+             * Repaired
+             * @default 0
+             */
+            repaired: number;
+            /**
+             * Sequence
+             * @default 0
+             */
+            sequence: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "idle" | "running" | "succeeded" | "failed" | "cancelled";
+            /** Total */
+            total?: number | null;
+        };
         /** DiscoveryStart */
         DiscoveryStart: {
             /** Operation */
@@ -15651,9 +15706,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DiscoveryRun"];
                 };
             };
             /** @description Validation Error */
@@ -15722,9 +15775,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DiscoveryRun"];
                 };
             };
             /** @description Validation Error */

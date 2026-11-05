@@ -286,6 +286,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Library preparation and the first file scan now explain their server scope.
+  Initial scans retain their label across refresh, cancellation and retry;
+  later Updates keep the compact progress display. Existing libraries opened
+  on a new server can need preparation, while browsers on the same server share
+  the working catalog and cache.
+
 - **The side panels' scrollbars hide until you scroll.** As macOS overlay
   scrollbars do, the sidebar's and inspector's thumb appears while the panel
   scrolls and fades a second later; it stays while the pointer is on it or
@@ -390,6 +396,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Reduce repeat Update overhead by batching file observations and catalog checks
+  in bounded transactions, paging known files through existing indexes and
+  avoiding unchanged baseline writes. Settled libraries with no new files skip
+  grouping-index construction. Complete enumeration, content-change detection,
+  moved-file repair, cancellation and durable commits are retained.
 
 - Reduce Update and Collect metadata overhead with read-only SQLite snapshots,
   indexed bundle-member export and bounded observation commits. Export resumes

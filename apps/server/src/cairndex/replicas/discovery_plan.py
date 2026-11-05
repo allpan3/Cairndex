@@ -67,6 +67,23 @@ def group_id(directory: str, subject: str) -> str:
     return stable_id(["discovery-group", directory, subject])
 
 
+def has_grouping_sources(db: sqlite3.Connection, run: str) -> bool:
+    """Settled libraries need no grouping index unless new files were found.
+
+    Existing provisional bundles still require review, even without new paths.
+    Repair/replacement candidates are independent and retain their normal lifecycle.
+    """
+    return bool(
+        db.execute(
+            "SELECT 1 FROM discovery_entries WHERE run=? AND handled=0 LIMIT 1", (run,)
+        ).fetchone()
+        or db.execute(
+            "SELECT 1 FROM catalog_rows WHERE family='asset_bundles' "
+            "AND json_extract(body,'$.grouping_state')='PROVISIONAL' LIMIT 1"
+        ).fetchone()
+    )
+
+
 # Index every fresh observation and settled owner before grouping any of their directory context
 def index_batch(
     store: CatalogStore, db: sqlite3.Connection, run: str, after: str, *, known: bool

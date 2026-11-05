@@ -1,6 +1,7 @@
 // Private Update progress and review intent never enter the authored catalog until accepted
 import { replicaRequest } from './replicas'
 import type { Save } from './catalog'
+import type { components } from './schema'
 
 export type DiscoveryFile = {
   id?: string
@@ -41,16 +42,10 @@ export type DiscoveryCandidate = {
     choices_next?: string | null
   }
 }
-export type DiscoveryRun = {
-  id?: string
-  state: 'idle' | 'running' | 'succeeded' | 'failed' | 'cancelled'
-  phase?: string
-  completed?: number
-  total?: number | null
-  observed?: number
-  repaired?: number
-  error?: string | null
-}
+// Idle responses omit progress; older servers also omit initial_scan.
+// Never infer setup state from browser storage.
+export type DiscoveryRun = Pick<components['schemas']['DiscoveryRun'], 'state'> &
+  Partial<components['schemas']['DiscoveryRun']>
 export type DiscoveryVerification = {
   id: string
   candidate: string

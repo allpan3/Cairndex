@@ -1,6 +1,6 @@
 """Bounded private Update and reviewed grouping routes for capable replicas"""
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Query, Response
 from pydantic import Field
@@ -17,6 +17,22 @@ router = APIRouter(prefix="/libraries/{library_id}/replica/discovery", tags=["re
 # A request starts work without enumerating a directory or inspecting media
 class DiscoveryStart(StrictModel):
     operation: Token
+
+
+class DiscoveryRun(StrictModel):
+    """Server-local scan state; absent progress fields stay absent while idle."""
+
+    state: Literal["idle", "running", "succeeded", "failed", "cancelled"]
+    initial_scan: bool = Field(description="No earlier Update succeeded in this private store")
+    id: str = ""
+    sequence: int = 0
+    phase: str = ""
+    cursor: str = ""
+    observed: int = 0
+    repaired: int = 0
+    error: str | None = None
+    completed: int = 0
+    total: int | None = None
 
 
 # Ordering edits refer only to files already held in the private candidate
@@ -54,13 +70,15 @@ class DiscoveryAccept(StrictModel):
 
 
 # Progress includes completed observations and repairs, never a guessed directory total
-@router.get("/status")
+@router.get("/status", response_model=DiscoveryRun, response_model_exclude_unset=True)
 def status(store: Catalog) -> dict[str, Any]:
     return state.run(store)
 
 
 # Stable enqueue identities preserve safe retries after a lost response
-@router.post("/runs", status_code=202)
+@router.post(
+    "/runs", status_code=202, response_model=DiscoveryRun, response_model_exclude_unset=True
+)
 def start(payload: DiscoveryStart, store: Catalog) -> dict[str, Any]:
     run = state.enqueue(store, payload.operation)
     wake()

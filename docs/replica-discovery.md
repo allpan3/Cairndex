@@ -1,7 +1,7 @@
 # Manual replica Update
 
 Format-three libraries advertise `discovery_version: 1`. **Update** starts a
-private, cancellable job against the serving device's library root. Normal
+private, cancellable job against the serving server's library root. Normal
 metadata exchange remains automatic. Earlier formats retain their existing
 capabilities; old libraries use the [reviewed conversion workflow](replica-migration.md).
 
@@ -18,6 +18,27 @@ workspace is ready. Its pending files remain available for review, without
 opening the grouping dialog automatically. Registration and ordinary reopening
 do not schedule a scan. Native creates retain their request across the server
 switch, scoped to the intended server and library.
+
+Before the catalog is ready, the workspace says **Preparing this library on the
+server** and opens automatically when complete metadata arrives. This also
+applies to an existing library on a new server. The working catalog, file
+observations and media cache belong to the backend, not a browser. Browsers on
+the same server share them; the desktop app's local server has its own copy.
+Media probing and preview generation remain separate from Update.
+
+The first Update on that server says **Initial library scan** and explains that
+large libraries can take several minutes. Status exposes `initial_scan`, derived
+from the absence of an earlier successful private discovery run. Cancellation,
+failure and browser refresh retain this label; later runs use ordinary Update
+progress. Older servers without this field retain the ordinary display. No
+library-format or private-schema migration is needed.
+
+Later Updates still enumerate the complete directory tree. They reuse unchanged
+file fingerprints and keep confirmed bundles settled, while new and still
+unbundled files remain eligible for grouping. If neither population needs
+grouping, Update finishes without rebuilding the grouping index. Replacements
+and ambiguous moves retain their separate review candidates. Incremental reuse
+does not mean only added directories are visited.
 
 The footer names the current phase. Finding files reports the count found so far
 with an indeterminate bar. Catalog checks, moved-file checks and grouping indexes
@@ -163,7 +184,13 @@ macOS. Walking fell from 21.534 to 8.142 seconds; export fell from 27.866 to 7.2
 seconds. These runs include profiling overhead and status reads, but exclude
 browser polling and exchange scheduling.
 
-Enumeration shares one read snapshot per 32-entry batch. Ordinary bundle
+Enumeration shares one read snapshot per batch, capped at 512 directory entries
+or 50 ms of source work; hidden and unsupported entries also consume that budget.
+Catalog checks use the same bounds and existing indexes for stable file paging.
+Their progress cursor advances only through processed files, in the same durable
+transaction as the observations. Cancellation discards an uncommitted source
+batch, and interruption rolls back the complete catalog batch. A slow source
+operation or commit can exceed the time target. Ordinary bundle
 exports select that bundle directly; collection exports retain all descendants.
 Each export page resumes from the last committed group and member instead of
 numbering the complete candidate again. Candidate order, complete checksums,
@@ -174,6 +201,57 @@ Update now advances up to 32 bounded steps or 0.25 seconds before the next
 exchange pass. Initial review construction batches cached pages within one
 transaction, capped at 32 steps or 50 ms. It performs no source I/O and rolls
 back the entire batch on failure, retaining the last committed cursor for retry.
+
+### Established-library Update timing
+
+The isolated macOS browser comparison on 2026-11-03 reduced unchanged Update
+from **26.453–27.396 seconds to 4.228–4.896 seconds**. The median fell from 26.570
+to 4.585 seconds, about 83% less waiting. Ten new generated PNGs took 5.288
+seconds, with editable grouping review ready at 6.929 seconds. These results
+describe an established library with confirmed groupings. Unreviewed files can
+still add substantial grouping work on later Updates.
+
+| Operation | Before (seconds) | After (seconds) |
+| --- | ---: | ---: |
+| Register on a fresh server until the settled fixture is available | 44.221 | 42.741 |
+| First local file scan of that existing library | 34.539 | 7.390 |
+| Unchanged Update, run 1 | 27.396 | 4.585 |
+| Unchanged Update, run 2 | 26.570 | 4.896 |
+| Unchanged Update, run 3 | 26.453 | 4.228 |
+| Update after ten new images | 27.696 | 5.288 |
+| Same addition run through editable review | 29.322 | 6.929 |
+
+A worker-only profile before the repair spent 8.327 seconds committing SQLite
+transactions and 5.028 seconds closing connections, out of 17.385 seconds.
+Inspecting all 8,911 eligible sources took 0.536 seconds. Enumeration and catalog
+checks used about 600 small transactions. The repair amortizes those durable
+writes, uses existing indexes for catalog paging, avoids unchanged baseline
+writes and omits grouping-index construction when there is nothing to group.
+The profile excludes browser polling and metadata-exchange scheduling; its
+timings are not directly comparable to the browser table.
+
+The copied synthetic fixture contained 9,285 visible physical files and 9,018
+catalog file entries. Its 120 provisional bundles were confirmed before timing,
+leaving 2,389 confirmed bundles and no Unbundled files. The admission snapshot
+reported one missing-file indicator before and zero after. Each unchanged scan
+in both measurements observed 8,911 eligible files,
+produced no pending candidates and repaired no links; additions raised the
+observed count to 8,921. Every click was matched to its newly returned operation
+ID, with one-second status polling. Copying, fixture confirmation and server
+startup are excluded. Registration, first scanning and later Updates are timed
+separately on one persistent private server store.
+
+Receipts `repeat-update-isolated-1793707474675` and
+`repeat-update-isolated-1793709317712` retain the before/after per-phase timings,
+fixture counts and synthetic review captures. The latter exercised the source
+subsequently committed and checked byte-for-byte as `558f63ad`.
+Other qualification work was idle during these measurements.
+An earlier run during concurrent qualification measured 84.118 seconds for an
+unchanged Update and 30.386 seconds for ten additions; the isolated repetitions
+avoid treating that timing variation as steady everyday cost. These few local
+VM runs do not predict NAS or representative-media performance. The earlier
+9,000-file initial measurement above used an unorganized library and built its
+grouping suggestions; it is a different workload.
 
 ### Conversion timing
 

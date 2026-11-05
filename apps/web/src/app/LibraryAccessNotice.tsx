@@ -22,7 +22,7 @@ export function LibraryAccessNotice({
   libraries: LibraryRead[]
   libraryId: string
   onChangeLibrary: (id: string) => void
-  title: string
+  title: ReactNode
   message: string
   children?: ReactNode
 }) {

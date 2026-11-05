@@ -233,6 +233,12 @@ zero failures and 488 skipped entries. Its bounded probe page reuses read
 connections and saves observations with progress in one durable transaction;
 cancellation remains live and newer playback observations take precedence.
 These runs qualify the local synthetic repair, not representative media or NAS.
+The established-library follow-up reduces unchanged Update from
+26.453–27.396 seconds to 4.228–4.896 seconds by amortizing durable commits and
+skipping unnecessary grouping work. Ten new images take 5.288 seconds, with
+review ready at 6.929 seconds. The [repeat timing record](replica-discovery.md#established-library-update-timing)
+states the fixture, preparation costs and limits. The UI now distinguishes
+server-local catalog preparation and initial file scanning from ordinary Update.
 
 Still open from this round:
 

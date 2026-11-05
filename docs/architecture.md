@@ -36,7 +36,12 @@ selection are unchanged. SQLite falls back to `fsync` if a filesystem rejects
 
 Private-store readers open SQLite in read-only mode and retain transaction
 snapshots without writer setup or close-time writer checkpoints. Update shares
-one read snapshot across each 32-entry enumeration batch. Media maintenance
+one read snapshot across each enumeration batch, capped at 512 directory entries
+or 50 ms of source work. Catalog checks use the same bounds, resume after the
+last processed file and commit observations with their progress. A slow source
+operation or durable commit can exceed the time target. Unchanged baselines are
+not rewritten; a settled catalog with no new files needs no grouping index.
+Media maintenance
 inspects sources outside writer transactions, then commits at most 32 local
 observations and their progress cursor together. Cancellation discards the
 uncommitted batch. A delayed observation cannot replace a newer cached result
@@ -46,8 +51,8 @@ exchange, so each small batch does not repeat a full history walk. Maintenance
 uses lifecycle admission and the same guarded media adapter as playback;
 source-write operations retain the exchange lock and permission checks.
 Local maintenance alone leaves history polling at its idle interval.
-Update also advances several existing transactions per exchange pass, yielding
-after 32 steps or 0.25 seconds. Each transaction keeps its original bound.
+Update also advances several bounded transactions per exchange pass, yielding
+after 32 steps or 0.25 seconds.
 
 Durable `conversion_tasks` hold global owner-setup inspection, preparation,
 activation and Undo. One worker executes slow metadata work outside HTTP handlers.

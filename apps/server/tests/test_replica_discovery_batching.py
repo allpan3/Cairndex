@@ -54,7 +54,10 @@ def test_enumeration_shares_one_read_snapshot_per_source_batch(replicas, monkeyp
     store, root, _ = replicas[0]
     sources = subjects(root)
     state.enqueue(store, "enumeration")
-    discovery.enumerate_batch(store, root, "enumeration")
+    clock = count()
+    with monkeypatch.context() as patch:
+        patch.setattr(discovery, "time", SimpleNamespace(monotonic=lambda: next(clock)))
+        discovery.enumerate_batch(store, root, "enumeration")
     original = store.connection
     reads, writes = 0, 0
 
@@ -68,8 +71,10 @@ def test_enumeration_shares_one_read_snapshot_per_source_batch(replicas, monkeyp
 
     with monkeypatch.context() as patch:
         patch.setattr(store, "connection", measured_connection)
+        patch.setattr(discovery, "time", SimpleNamespace(monotonic=lambda: 0))
         discovery.enumerate_batch(store, root, "enumeration")
     assert (reads, writes) == (1, 1)
+    assert state.run(store, "enumeration")["observed"] >= len(sources)
     assert all(path.read_bytes() == content for path, content in sources.items())
 
 

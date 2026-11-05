@@ -6131,6 +6131,35 @@ code {
   color: var(--error);
   overflow-wrap: anywhere;
 }
+.discovery-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.discovery-setup strong {
+  color: var(--text-strong);
+}
+.discovery-setup__title {
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+}
+.discovery-setup p {
+  margin: 0;
+}
+.discovery-setup summary {
+  cursor: pointer;
+}
+.discovery-setup details[open] summary {
+  margin-bottom: 6px;
+}
+.replica-discovery .discovery-setup {
+  max-width: 440px;
+  margin-bottom: 8px;
+}
 .sidebar__job-error {
   /* Sits inside the sidebar foot beside the job rows, so it carries their
      padding rather than the standalone margin it had further up the panel. */
