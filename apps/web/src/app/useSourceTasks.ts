@@ -180,7 +180,8 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
             created: !review?.skipped && !review?.destination_id,
           },
         })
-      else if (isCollision(job)) setItem(id, index, { state: { kind: 'exists' } })
+      else if (isCollision(job) && !job.result?.started)
+        setItem(id, index, { state: { kind: 'exists' } })
       else
         setItem(id, index, {
           state: { kind: 'failed', message: job.error ?? `It stopped (${job.state}).` },
@@ -271,13 +272,14 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
     queue.current = queue.current.then(() => run(id, indexes)).catch(() => undefined)
   }
 
-  function start(task: NewTask) {
+  function start(task: NewTask, inline = false) {
     const id = operationId()
     commit([
       ...tasks.current,
       {
         ...task,
         id,
+        inline,
         undoable: task.undoable ?? true,
         items: task.items.map((item) => ({ ...item, state: { kind: 'waiting' } })),
         running: false,
@@ -328,6 +330,26 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
   return {
     tasks: list,
     start,
+    async name(task: NewTask): Promise<void> {
+      const id = start(task, true)
+      await queue.current
+      const stopped = find(id)
+      if (!stopped) return
+      if (stopped.items[0]?.state.kind === 'exists') {
+        // A rejected name has changed no files. Retire that intent; a corrected
+        // name gets a fresh one. Older rejected intents are also omitted from
+        // the recovery list if cancellation could not reach the server.
+        await sourceRequest(library, `/${stopped.items[0].request.operation}`, 'DELETE').catch(
+          () => undefined,
+        )
+        commit(tasks.current.filter((task) => task.id !== id))
+        throw new Error('That name already exists.')
+      }
+      // Real interruptions still need the existing recovery path.
+      patch(id, (task) => ({ ...task, inline: false }))
+      const state = stopped.items[0]?.state
+      throw new Error(state?.kind === 'failed' ? state.message : 'The operation did not finish.')
+    },
     stop(id: string) {
       patch(id, (task) => ({ ...task, stopping: true }))
       controllers.current.get(id)?.abort()

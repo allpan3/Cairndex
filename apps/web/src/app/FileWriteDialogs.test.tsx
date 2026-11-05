@@ -2,7 +2,12 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import type { FileRead, TargetSuggestion } from '../api/client'
-import { BundleDropDestination, ConflictDialog, DirectoryPicker } from './FileWriteDialogs'
+import {
+  BundleDropDestination,
+  ConflictDialog,
+  DirectoryPicker,
+  NameEditor,
+} from './FileWriteDialogs'
 
 // The bundle whose files decide where the picker opens.
 let bundleFiles: FileRead[] = []
@@ -422,4 +427,33 @@ test('a settled listing is navigable as usual', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Beta' }))
   fireEvent.click(screen.getByRole('button', { name: 'Move here' }))
   expect(onChoose).toHaveBeenCalledWith('Studios/Beta', null)
+})
+
+test('server rejection keeps the name editable without submitting twice on blur', async () => {
+  let reject!: (error: Error) => void
+  const onSubmit = vi.fn(
+    () =>
+      new Promise<void>((_, fail) => {
+        reject = fail
+      }),
+  )
+  const onCancel = vi.fn()
+  render(<NameEditor initial="Untitled" label="Name" onSubmit={onSubmit} onCancel={onCancel} />)
+  const input = screen.getByRole('textbox')
+  fireEvent.change(input, { target: { value: 'Taken' } })
+  fireEvent.keyDown(input, { key: 'Enter' })
+  fireEvent.blur(input)
+  expect(onSubmit).toHaveBeenCalledTimes(1)
+  expect(input).toHaveAttribute('readonly')
+  await act(async () => reject(new Error('That name already exists.')))
+  expect(screen.getByRole('alert')).toHaveTextContent('That name already exists.')
+  expect(input).toHaveFocus()
+  expect(input).not.toHaveAttribute('readonly')
+  fireEvent.blur(input)
+  expect(onSubmit).toHaveBeenCalledTimes(1)
+  fireEvent.change(input, { target: { value: 'Vacant' } })
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  fireEvent.keyDown(input, { key: 'Escape' })
+  expect(onCancel).toHaveBeenCalledTimes(1)
+  expect(onSubmit).toHaveBeenCalledTimes(1)
 })

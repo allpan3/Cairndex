@@ -139,9 +139,9 @@ interface FileBrowserProps {
   // the browser exactly as it was before write mode existed.
   writeMode?: boolean
   /** Portable Rename runs a journaled source operation instead of a legacy write. */
-  onRename?: (relativePath: string, newName: string) => void
+  onRename?: (relativePath: string, newName: string) => void | Promise<void>
   /** Portable directory creation uses the current library source journal. */
-  onNewFolder?: (parent: string, name: string) => void
+  onNewFolder?: (parent: string, name: string) => void | Promise<void>
   /** Portable Copy to…, Move to… and Move to Trash, in place of the legacy writes. */
   onSourceAction?: (action: 'copy' | 'move' | 'trash', relativePaths: string[]) => void
   // Transient message, with an Undo action when the operation has an inverse.
@@ -685,18 +685,18 @@ function FileList({
   const startNewFolder = () => {
     if (canCreateFolder) write.startNewFolder()
   }
-  const submitNewFolder = (name: string) => {
+  const submitNewFolder = async (name: string) => {
     if (onNewFolder) {
+      await onNewFolder(currentPath, name.trim())
       write.cancelNewFolder()
-      onNewFolder(currentPath, name.trim())
     } else if (writeMode) write.submitNewFolder(name)
   }
   const canRename = Boolean(onRename) || writeMode
   if (!canRename && write.renamingPath) write.cancelRename()
-  const submitRename = (path: string, name: string) => {
+  const submitRename = async (path: string, name: string) => {
     if (onRename) {
+      await onRename(path, name)
       write.cancelRename()
-      onRename(path, name)
     } else if (writeMode) write.submitRename(path, name)
   }
   /**
@@ -1676,7 +1676,7 @@ function FileRow({
   onContextMenu: (e: React.MouseEvent) => void
   dragProps: FileDragProps
   renaming: boolean
-  onRename: (name: string) => void
+  onRename: (name: string) => void | Promise<void>
   onCancelRename: () => void
 }) {
   const isDir = entry.kind === 'directory'
@@ -1767,7 +1767,7 @@ function FileCard({
   previewDisabled: boolean
   dragProps: FileDragProps
   renaming: boolean
-  onRename: (name: string) => void
+  onRename: (name: string) => void | Promise<void>
   onCancelRename: () => void
 }) {
   const isDir = entry.kind === 'directory'

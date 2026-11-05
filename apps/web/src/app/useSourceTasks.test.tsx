@@ -241,3 +241,40 @@ test('upload reports received bytes before the operation is queued', async () =>
   })
   await waitFor(() => expect(notices).toHaveLength(1))
 })
+
+test('an occupied rename rejects the editor and retires its intent without a task', async () => {
+  const { renameTask } = await import('./sourceActions')
+  server(['Trips/Taken'])
+  const { hook, notices } = mount()
+  await act(async () => {
+    await expect(hook.result.current.name(renameTask('Trips/Vacant', 'Taken'))).rejects.toThrow(
+      'That name already exists.',
+    )
+  })
+  expect(hook.result.current.tasks).toEqual([])
+  expect(notices).toEqual([])
+  expect(sourceRequest).toHaveBeenCalledWith('synthetic', expect.any(String), 'DELETE')
+  await act(async () => {
+    await hook.result.current.name(renameTask('Trips/Vacant', 'Available'))
+  })
+  expect(hook.result.current.tasks).toEqual([])
+  expect(notices[0]?.action?.label).toBe('Undo')
+})
+
+test('a naming collision after mutation started keeps recovery instead of cancelling', async () => {
+  const { renameTask } = await import('./sourceActions')
+  vi.mocked(sourceRequest).mockResolvedValue({
+    id: 'started',
+    state: 'interrupted',
+    error: 'Destination exists',
+    result: { started: true },
+  })
+  const { hook } = mount()
+  await act(async () => {
+    await expect(hook.result.current.name(renameTask('Trips/Vacant', 'Taken'))).rejects.toThrow(
+      'Destination exists',
+    )
+  })
+  expect(hook.result.current.tasks[0]?.inline).toBe(false)
+  expect(sourceRequest).not.toHaveBeenCalledWith('synthetic', expect.any(String), 'DELETE')
+})
