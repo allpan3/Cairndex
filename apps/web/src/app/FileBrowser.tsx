@@ -137,6 +137,8 @@ interface FileBrowserProps {
   // (ADR-0013: the per-library opt-in *and* the deployment switch). False keeps
   // the browser exactly as it was before write mode existed.
   writeMode?: boolean
+  /** Portable Rename prepares a reviewed source operation instead of a legacy write. */
+  onRename?: (relativePath: string, newName: string) => void
   // Transient message, with an Undo action when the operation has an inverse.
   onFlash?: (message: string, undo?: () => void) => void
   // App-owned so an upload survives navigation and reports in the sidebar
@@ -651,6 +653,7 @@ function FileList({
   scope,
   path: currentPath,
   writeMode = false,
+  onRename,
   onFlash,
   onImportFiles,
   libraryName,
@@ -671,6 +674,14 @@ function FileList({
   // New Folder needs a directory to create *in*, which the flat unbundled queue
   // does not have. Renaming works in both scopes — a path is a path.
   const canCreateFolder = writeMode && scope === 'browse'
+  const canRename = Boolean(onRename) || writeMode
+  if (!canRename && write.renamingPath) write.cancelRename()
+  const submitRename = (path: string, name: string) => {
+    if (onRename) {
+      write.cancelRename()
+      onRename(path, name)
+    } else if (writeMode) write.submitRename(path, name)
+  }
   /**
    * The sort in force here, and how changing it is stored.
    *
@@ -711,12 +722,18 @@ function FileList({
       selectedPath,
     )
   // Keep the inspector and host actions on the refreshed path of the selected indexed file
-  const refreshSelectedEntry = useEffectEvent((entry: FileBrowserEntry) => {
-    if (catalogLibrary || selectedPath !== entry.relative_path) onSelectEntry(entry)
+  const refreshSelectedEntry = useEffectEvent((entry: FileBrowserEntry | null) => {
+    if (catalogLibrary || selectedPath !== entry?.relative_path) onSelectEntry(entry)
   })
   useEffect(() => {
     if (selectedEntry && !stale) refreshSelectedEntry(selectedEntry)
-  }, [selectedEntry, stale])
+    else if (
+      complete &&
+      selectedPath &&
+      !entries.some((entry) => entry.relative_path === selectedPath)
+    )
+      refreshSelectedEntry(null)
+  }, [selectedEntry, stale, complete, selectedPath, entries])
   const matchSearch = usePinyinSearch(search)
 
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
@@ -825,10 +842,11 @@ function FileList({
         onClick: () => onCollectionFromFolder(entry.relative_path),
       })
     }
+    if (canRename) {
+      items.push(null, { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) })
+    }
     if (writeMode) {
       items.push(
-        null,
-        { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
         { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
         // A folder's own delete takes everything inside it, in one operation.
         { label: 'Move to Trash', onClick: () => write.askToDelete([entry.relative_path], 0) },
@@ -866,10 +884,10 @@ function FileList({
       )
       if (hostItems.length > 0) items.push(...hostItems)
     }
-    if (writeMode) {
+    if (canRename || writeMode) {
       const writeItems: MenuEntry[] = []
       // Rename acts on one entry; a multi-selection has no single new name.
-      if (n === 1)
+      if (canRename && n === 1)
         writeItems.push({
           label: 'Rename…',
           onClick: () => write.startRename(targets[0] as string),
@@ -877,15 +895,17 @@ function FileList({
       // Move takes the whole selection, directories included — unlike bundling,
       // which is a files-only action.
       const moveTargets = selectionTargets(entry.relative_path, selected)
-      writeItems.push({
-        label: moveTargets.length > 1 ? `Move ${moveTargets.length} Items…` : 'Move to…',
-        onClick: () => write.askToMove(moveTargets),
-      })
-      writeItems.push({
-        label: n > 1 ? `Move ${n} Files to Trash` : 'Move to Trash',
-        onClick: () => write.askToDelete(targets, linkedCount(targets)),
-      })
-      if (canCreateFolder) writeItems.push({ label: 'New Folder', onClick: write.startNewFolder })
+      if (writeMode) {
+        writeItems.push({
+          label: moveTargets.length > 1 ? `Move ${moveTargets.length} Items…` : 'Move to…',
+          onClick: () => write.askToMove(moveTargets),
+        })
+        writeItems.push({
+          label: n > 1 ? `Move ${n} Files to Trash` : 'Move to Trash',
+          onClick: () => write.askToDelete(targets, linkedCount(targets)),
+        })
+        if (canCreateFolder) writeItems.push({ label: 'New Folder', onClick: write.startNewFolder })
+      }
       if (writeItems.length > 0) {
         if (items.length > 0) items.push(null)
         items.push(...writeItems)
@@ -1134,15 +1154,15 @@ function FileList({
   // F2 (and Enter, the macOS convention) renames the single selected entry;
   // Delete / ⌘⌫ moves the selection to the trash.
   const listKeyDown = (e: React.KeyboardEvent) => {
-    if (!writeMode || write.renamingPath || write.creatingFolder) return
-    if (e.key === 'F2' || e.key === 'Enter') {
+    if (write.renamingPath || write.creatingFolder) return
+    if (canRename && (e.key === 'F2' || e.key === 'Enter')) {
       const only = selected.size === 1 ? [...selected][0] : null
       if (!only) return
       e.preventDefault()
       write.startRename(only)
       return
     }
-    if (e.key === 'Delete' || (e.key === 'Backspace' && (e.metaKey || e.ctrlKey))) {
+    if (writeMode && (e.key === 'Delete' || (e.key === 'Backspace' && (e.metaKey || e.ctrlKey)))) {
       if (selected.size === 0) return
       e.preventDefault()
       const paths = [...selected]
@@ -1467,8 +1487,8 @@ function FileList({
                       onDoubleClick={() => openEntry(entry)}
                       onContextMenu={(e) => contextRow(entry, e)}
                       dragProps={entryDragProps(entry)}
-                      renaming={write.renamingPath === entry.relative_path}
-                      onRename={(name) => write.submitRename(entry.relative_path, name)}
+                      renaming={canRename && write.renamingPath === entry.relative_path}
+                      onRename={(name) => submitRename(entry.relative_path, name)}
                       onCancelRename={write.cancelRename}
                     />
                   ))}
@@ -1486,8 +1506,8 @@ function FileList({
                       onContextMenu={(e) => contextRow(entry, e)}
                       previewDisabled={marqueeRect !== null || menu.state !== null}
                       dragProps={entryDragProps(entry)}
-                      renaming={write.renamingPath === entry.relative_path}
-                      onRename={(name) => write.submitRename(entry.relative_path, name)}
+                      renaming={canRename && write.renamingPath === entry.relative_path}
+                      onRename={(name) => submitRename(entry.relative_path, name)}
                       onCancelRename={write.cancelRename}
                     />
                   ))}

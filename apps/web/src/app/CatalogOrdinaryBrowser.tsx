@@ -24,6 +24,8 @@ import { CatalogToast, type CatalogNotice } from './CatalogToast'
 import { useCatalogCollections } from './useCatalogCollections'
 import { useNavigationHistory } from './useNavigationHistory'
 import { AddToBundleDialog, CreateBundleDialog } from './ManualBundlingDialogs'
+import { useSourceRename } from './useSourceRename'
+import { SourceRenameDialog } from './SourceRenameDialog'
 
 /** One navigable place, for Back/Forward. */
 interface Place {
@@ -317,6 +319,9 @@ export function CatalogOrdinaryBrowser(props: {
     onDeepLinkHandled?.()
   }, [deepLink, onDeepLinkHandled, onSelect])
   const sourceEnabled = Boolean(props.sourceOperationsEnabled && !props.blocked)
+  const sourceRename = useSourceRename(props.library, sourceEnabled, (text) =>
+    setNotice({ text, alert: true }),
+  )
   const libraryName = props.libraries.find((item) => item.id === props.library)?.name ?? 'Library'
   const incomingDrop = useIncomingFileDrop(sourceEnabled, setIncoming, (text) =>
     setNotice(text ? { text, alert: true } : null),
@@ -427,6 +432,9 @@ export function CatalogOrdinaryBrowser(props: {
               onClose={() => setFileOperations(false)}
             />
           )}
+          {sourceRename.prepare.variables && (
+            <SourceRenameDialog library={props.library} rename={sourceRename} />
+          )}
           <div hidden={mode !== 'collection'} className="catalog-bundle-surface">
             <CatalogBundleBrowser
               {...props}
@@ -475,6 +483,7 @@ export function CatalogOrdinaryBrowser(props: {
               headerLeading={headerLeading}
               headerTrailing={headerTrailing}
               bundling={manualBundling}
+              onRename={sourceRename.rename}
             />
           )}
           {mode === 'file' && !unbundled && (
@@ -508,6 +517,7 @@ export function CatalogOrdinaryBrowser(props: {
                 playerPrefs={player}
                 onPlayerPrefs={setPlayer}
                 onLocateBundle={locate}
+                onRename={sourceRename.rename}
               />
               <aside className="inspector" aria-label="File inspector">
                 {file ? (
@@ -526,6 +536,7 @@ export function CatalogOrdinaryBrowser(props: {
                           )
                       }}
                       locatable={Boolean(file.bundle_id && !file.unbundled)}
+                      onRename={sourceRename.rename}
                     />
                     {!file.linked && status?.path_media_version !== 1 && (
                       <p>Update the server to preview unindexed files.</p>

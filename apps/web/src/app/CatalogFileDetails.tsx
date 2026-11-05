@@ -21,6 +21,7 @@ export function CatalogFileDetails({
   hostFiles,
   onLocate,
   locatable = true,
+  onRename,
 }: {
   library: string
   file: string | null
@@ -29,6 +30,7 @@ export function CatalogFileDetails({
   onLocate?: () => void
   /** False greys Locate out: the file is not in a bundle the browser shows */
   locatable?: boolean
+  onRename?: (relativePath: string, newName: string) => void
 }) {
   const detail = useQuery({
     queryKey: ['catalog-local-file', library, file, entry?.local_state],
@@ -71,6 +73,7 @@ export function CatalogFileDetails({
           locateLabel="Locate in Bundle Browser"
           onLocate={onLocate && (() => onLocate())}
           locateDisabled={!locatable}
+          onRename={onRename}
         />
       )}
     </section>

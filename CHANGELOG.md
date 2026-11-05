@@ -397,6 +397,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Restore file and folder Rename in the portable File Browser and Unbundled
+  list, including keyboard and inspector editing. Write Mode changes take
+  effect without restarting. Names enter the existing reviewed source-operation
+  workflow; permission checks, retained recovery copies and explicit Apply remain.
+
 - Reduce repeat Update overhead by batching file observations and catalog checks
   in bounded transactions, paging known files through existing indexes and
   avoiding unchanged baseline writes. Settled libraries with no new files skip

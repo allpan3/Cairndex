@@ -11,6 +11,13 @@ libraries must be reopened before enabling writes. A read-only deployment keeps
 the control visible and explains why it is blocked. Library **Settings…** opens
 in its own dialog; closing it restores the list and its keyboard focus.
 
+The File Browser and Unbundled list respond to Write Mode changes without a
+restart. To rename a file or folder, use **Rename…** in its context menu, press
+**F2** or **Enter** on a single selected item, or double-click its name in the
+inspector. Submitting the name prepares a saved review; **Apply reviewed
+operation** performs the rename. Turning Write Mode off removes the editors
+and blocks Apply. Existing directory-size and source-safety limits still apply.
+
 ![Write mode in two synthetic libraries](screenshots/library-write-mode.png)
 
 Generated temporary paths are masked. Settings also fits a short window; its

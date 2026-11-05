@@ -85,6 +85,7 @@ export function FileInspector({
   }, [editing])
 
   const canRename = onRename !== undefined
+  if (!canRename && editing) setEditing(false)
   const startEditing = () => {
     if (!canRename || !entry) return
     setDraft(entry.name)

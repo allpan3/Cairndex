@@ -10,6 +10,40 @@ vi.mock('../api/replicas', () => ({ replicaRequest: vi.fn() }))
 const fact = (name: string) =>
   screen.getByText(name, { selector: 'dt' }).parentElement?.querySelector('dd')?.textContent
 
+test('inspector Rename follows live permission for files and folders', () => {
+  const client = new QueryClient()
+  const onRename = vi.fn()
+  const view = (enabled: boolean, directory = false) => (
+    <QueryClientProvider client={client}>
+      <CatalogFileDetails
+        library="library"
+        file={null}
+        entry={
+          directory
+            ? { ...entry, kind: 'directory', name: 'Folder', relative_path: 'Folder' }
+            : entry
+        }
+        onRename={enabled ? onRename : undefined}
+      />
+    </QueryClientProvider>
+  )
+  const { rerender } = render(view(false))
+  fireEvent.doubleClick(screen.getByText(entry.name, { exact: true }))
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  rerender(view(true))
+  fireEvent.doubleClick(screen.getByText(entry.name, { exact: true }))
+  const input = screen.getByRole('textbox', { name: `Rename ${entry.name}` })
+  fireEvent.change(input, { target: { value: 'clip.mp4' } })
+  fireEvent.keyDown(input, { key: 'Enter' })
+  expect(onRename).toHaveBeenCalledExactlyOnceWith(entry.relative_path, 'clip.mp4')
+  rerender(view(true, true))
+  fireEvent.doubleClick(screen.getByText('Folder', { exact: true, selector: '.inspector__title' }))
+  expect(screen.getByRole('textbox', { name: 'Rename Folder' })).toBeInTheDocument()
+  rerender(view(false, true))
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  expect(onRename).toHaveBeenCalledTimes(1)
+})
+
 const observed = {
   state: 'available',
   generation: 'synthetic',

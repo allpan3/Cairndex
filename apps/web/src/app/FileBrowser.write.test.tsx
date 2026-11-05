@@ -92,6 +92,7 @@ function renderBrowser(
   writeMode = true,
   onSelectEntry: () => void = () => undefined,
   onCollectionFromFolder?: (directory: string) => void,
+  onRename?: (path: string, name: string) => void,
 ) {
   flashes = []
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -113,12 +114,29 @@ function renderBrowser(
         onFlash={(message, undoAction) => flashes.push({ message, undo: undoAction })}
         onImportFiles={importFiles}
         onCollectionFromFolder={onCollectionFromFolder}
+        onRename={onRename}
       />
     </QueryClientProvider>,
   )
 }
 
 const row = (name: string) => screen.getByText(name).closest('[data-relpath]') as HTMLElement
+
+test('portable file and folder Rename uses reviewed operations without enabling legacy writes', () => {
+  const reviewedRename = vi.fn()
+  renderBrowser(false, undefined, undefined, reviewedRename)
+  for (const entry of [FILE, FOLDER]) {
+    fireEvent.contextMenu(row(entry.name))
+    expect(screen.queryByText('Move to Trash')).not.toBeInTheDocument()
+    expect(screen.queryByText('New Folder')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
+    const input = screen.getByRole('textbox', { name: `Rename ${entry.name}` })
+    fireEvent.change(input, { target: { value: 'New name' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(reviewedRename).toHaveBeenLastCalledWith(entry.relative_path, 'New name')
+  }
+  expect(rename).not.toHaveBeenCalled()
+})
 
 let libraryIndex = 0
 beforeEach(() => {
