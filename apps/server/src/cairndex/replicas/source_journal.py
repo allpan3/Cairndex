@@ -142,22 +142,34 @@ def cancel(store: CatalogStore, operation: str) -> None:
     with store.connection() as db:
         db.execute(
             "UPDATE source_operations SET state='cancelled' WHERE id=? "
-            "AND (state IN ('queued','preparing','prepared','accepted') "
-            "OR (state IN ('applying','interrupted') "
-            "AND COALESCE(json_extract(result,'$.started'),0)=0))",
+            "AND state IN ('queued','preparing','prepared','accepted','applying','interrupted') "
+            "AND COALESCE(json_extract(result,'$.started'),0)=0",
             (operation,),
         )
+        row = db.execute("SELECT state FROM source_operations WHERE id=?", (operation,)).fetchone()
+        if row and row[0] not in {"cancelled", "succeeded"}:
+            raise ReplicaError("Files have already changed; finish recovery before cancelling")
 
 
 def retain_version(
-    store: CatalogStore, operation: str, path: str, version: str, evidence: dict[str, Any]
+    store: CatalogStore,
+    operation: str,
+    path: str,
+    version: str,
+    evidence: dict[str, Any],
+    *,
+    version_operation: str | None = None,
 ) -> None:
     """Expose completed preparation versions even when later review or application stops."""
     with store.connection() as db:
         row = db.execute("SELECT result FROM source_operations WHERE id=?", (operation,)).fetchone()
         result = json.loads(row[0]) if row and row[0] else {}
         versions = result.setdefault("retained_versions", {})
-        value = {"operation": operation, "version": version, "evidence": evidence}
+        value = {
+            "operation": version_operation or operation,
+            "version": version,
+            "evidence": evidence,
+        }
         if path in versions and versions[path] != value:
             raise ReplicaError("Retained version differs from the original operation")
         versions[path] = value

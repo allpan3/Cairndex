@@ -78,6 +78,18 @@ after saved-login authorization. The installed fix exposes source-worker
 authorization failures through the existing Allow Access notice and retains
 the intent for explicit retry. See its source-operation documentation.
 
+Copy performance and activity UI follow-up is qualified on the incoming branch
+and awaits packaging and installation. It batches upload writes, removes a
+redundant retained copy and throttles progress-only commits. File activity moves
+above the browser and collision cancellation persists. macOS passed 108 source
+cases. Linux passed 2,071 memory and 81 disk cases, then 19 final upload/API cases
+covering the last cancellation and immutable-upload guards. Both platforms passed
+1,443 frontend units, static checks, production web builds and four affected
+browser scenarios (two passed initially; two passed after correcting test setup).
+Synthetic screenshots were inspected. Component measurements and the full-SMB
+publication qualification limit are in [file operations](file-operations.md).
+Owner-NAS timing remains open. The installed build above is unchanged.
+
 ## Qualification and evidence
 
 These results qualify the named snapshots. The latest New Folder installation

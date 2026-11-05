@@ -6,7 +6,7 @@ import {
   type SourcePage,
 } from '../api/sourceOperations'
 import { trashRows } from './sourceActions'
-import { isCollision, type SourceTasks } from './useSourceTasks'
+import { type SourceTasks } from './useSourceTasks'
 
 /**
  * The library's Trash, newest first. The open Trash view polls for other
@@ -27,8 +27,7 @@ export function useTrash(library: string, enabled: boolean, open: boolean) {
 
 /**
  * Saved operations that wait for the owner and belong to no task in this
- * window: one prepared but never applied, or one that stopped for a reason
- * other than an occupied name (that question ends with its task). They come
+ * window, including occupied names and prepared but unapplied items. They come
  * from a reload, another window or an earlier version's review panel. Only
  * the newest page is read; older ones stay listed by the server.
  */
@@ -37,13 +36,13 @@ export function useUnfinishedOperations(library: string, enabled: boolean, tasks
     queryKey: ['source-operations', library, 0],
     queryFn: () => sourceRequest<SourcePage>(library, '?after=0'),
     enabled,
+    refetchInterval: 2000,
   })
   const own = new Set(
     tasks.tasks.flatMap((task) => task.items.map((item) => item.request.operation)),
   )
   return (page.data?.items ?? []).filter(
     (job: SourceJob) =>
-      !own.has(job.id) &&
-      (job.state === 'prepared' || (job.state === 'interrupted' && !isCollision(job))),
+      !own.has(job.id) && (job.state === 'prepared' || job.state === 'interrupted'),
   )
 }

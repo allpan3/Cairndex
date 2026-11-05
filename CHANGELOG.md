@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Show file activity above browser content with received bytes, speed, transfer
+  percentage and completed-file counts. Resolve occupied names directly with
+  a new name or collision choice; persist cancellation across reloads.
+
 - Add New Folder to portable File Browser in Write Mode, using journaled
   no-replace directory publication, exact retry and conditional Undo. Reject
   occupied names and unsafe paths; preserve files added after creation.
@@ -426,6 +430,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Batch small upload fragments into 4 MiB writes, reuse the completed upload as
+  its recovery version and throttle progress-only commits. Keep independent,
+  digest-verified outputs, durable operation intent and per-block permission
+  and cancellation checks.
 
 - Show **Allow Access…** when a source operation cannot use the saved network
   login, including after a successful metadata exchange. Authorization preserves

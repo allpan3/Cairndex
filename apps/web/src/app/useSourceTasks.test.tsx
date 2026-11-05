@@ -49,6 +49,7 @@ function server(taken: string[] = []) {
         review: { destination, output_id: `file-${destination}`, destination_id: null },
       }
     }
+    if (method === 'DELETE') return undefined
     throw new Error(`unexpected ${method} ${path}`)
   })
   return posted
@@ -139,7 +140,7 @@ test('an occupied name waits in the sidebar, and Keep Both reuses the received b
   await waitFor(() => expect(hook.result.current.tasks[0]?.items[0]?.state.kind).toBe('exists'))
   expect(notices).toHaveLength(0)
   const id = hook.result.current.tasks[0]!.id
-  act(() => hook.result.current.decide(id, 0, 'suffix'))
+  await act(() => hook.result.current.decide(id, 0, 'suffix'))
   await waitFor(() => expect(notices).toHaveLength(1))
   const [first, retry] = posted
   expect(retry).toMatchObject({ upload: first!.upload, collision: 'suffix' })
@@ -181,4 +182,62 @@ test('Undo of a new bundle moves its copies to the Trash, then removes the bundl
   expect(deleteBundles).toHaveBeenCalledWith('synthetic', ['bundle-1'])
   expect(notices[1]).toMatchObject({ text: 'Moved 2 files to the Trash.' })
   expect(notices[1]!.action).toBeUndefined()
+})
+
+test('a changed collision name cancels the saved intent and reuses its upload', async () => {
+  const posted = server(['Trips/poster.jpg'])
+  const { hook, notices } = mount()
+  act(() => {
+    hook.result.current.start(copies(['poster.jpg'], { kind: 'none' }))
+  })
+  await waitFor(() => expect(hook.result.current.tasks[0]?.items[0]?.state.kind).toBe('exists'))
+  const id = hook.result.current.tasks[0]!.id
+  await act(() => hook.result.current.rename(id, 0, 'other.jpg'))
+  await waitFor(() => expect(notices).toHaveLength(1))
+  expect(sourceRequest).toHaveBeenCalledWith('synthetic', '/op-poster.jpg', 'DELETE')
+  expect(posted[1]).toMatchObject({ destination: 'Trips/other.jpg', upload: 'up-poster.jpg' })
+  expect(uploadSource).toHaveBeenCalledTimes(1)
+})
+
+test('dismiss cancels persisted collisions and keeps failed recovery visible', async () => {
+  server(['Trips/poster.jpg'])
+  const { hook, notices } = mount()
+  act(() => {
+    hook.result.current.start(copies(['poster.jpg'], { kind: 'none' }))
+  })
+  await waitFor(() => expect(hook.result.current.tasks[0]?.items[0]?.state.kind).toBe('exists'))
+  const id = hook.result.current.tasks[0]!.id
+  vi.mocked(sourceRequest).mockRejectedValueOnce(
+    new Error('Files have already changed; finish recovery before cancelling'),
+  )
+  await act(() => hook.result.current.dismiss(id))
+  expect(hook.result.current.tasks).toHaveLength(1)
+  expect(notices[0]?.alert).toBe(true)
+  await act(() => hook.result.current.dismiss(id))
+  expect(hook.result.current.tasks).toHaveLength(0)
+  expect(sourceRequest).toHaveBeenLastCalledWith('synthetic', '/op-poster.jpg', 'DELETE')
+})
+
+test('upload reports received bytes before the operation is queued', async () => {
+  let finish!: () => void
+  vi.mocked(uploadSource).mockImplementation(
+    async (_library, _upload, _file, _signal, progress) => {
+      progress?.(4)
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    },
+  )
+  server()
+  const { hook, notices } = mount()
+  act(() => {
+    hook.result.current.start(copies(['clip.mp4'], { kind: 'none' }))
+  })
+  await waitFor(() => expect(hook.result.current.tasks[0]?.items[0]?.uploaded).toBe(4))
+  expect(sourceRequest).not.toHaveBeenCalled()
+  expect(hook.result.current.tasks[0]?.items[0]?.state).toMatchObject({ kind: 'sending', bytes: 4 })
+  await act(async () => {
+    finish()
+  })
+  await waitFor(() => expect(notices).toHaveLength(1))
 })

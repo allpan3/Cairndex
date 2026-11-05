@@ -3,6 +3,7 @@
 import errno
 import json
 import os
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -275,9 +276,16 @@ def run_one(
         db.execute("UPDATE source_operations SET state=? WHERE id=?", (state, row["id"]))
     request = SourceRequest.model_validate_json(row["intent"])
 
+    reported_at = 0.0
+    latest_count = row["progress"]
+
     def progress(count: int) -> None:
+        nonlocal reported_at, latest_count
         authorize()
-        with store.connection() as db:
+        latest_count = count
+        # Progress is display telemetry, not a recovery checkpoint. Keep the
+        # cancellation read on every block without a durable commit per MiB.
+        with store.connection(readonly=True) as db:
             current = db.execute(
                 "SELECT state FROM source_operations WHERE id=?", (request.operation,)
             ).fetchone()[0]
@@ -285,9 +293,13 @@ def run_one(
                 raise ReplicaError(
                     "Source operation was cancelled; completed versions remain available"
                 )
-            db.execute(
-                "UPDATE source_operations SET progress=? WHERE id=?", (count, request.operation)
-            )
+        now = time.monotonic()
+        if now - reported_at >= 0.25:
+            with store.connection() as db:
+                db.execute(
+                    "UPDATE source_operations SET progress=? WHERE id=?", (count, request.operation)
+                )
+            reported_at = time.monotonic()
 
     step = "authorization"
     try:
@@ -384,4 +396,10 @@ def run_one(
                 "UPDATE source_operations SET state='interrupted',error=? "
                 "WHERE id=? AND state!='cancelled'",
                 (message, request.operation),
+            )
+    finally:
+        with store.connection() as db:
+            db.execute(
+                "UPDATE source_operations SET progress=? WHERE id=?",
+                (latest_count, request.operation),
             )

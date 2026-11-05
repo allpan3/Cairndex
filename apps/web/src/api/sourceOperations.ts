@@ -60,23 +60,64 @@ export async function uploadSource(
   upload: string,
   file: File,
   signal: AbortSignal,
+  onProgress?: (received: number) => void,
 ): Promise<void> {
   const current = captureRequestScope()
-  const response = await hostFetch(
-    resolveApiUrl(
-      `/api/v1/libraries/${library}/source-operations/uploads/${upload}?size=${file.size}`,
-    ),
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/octet-stream' },
-      body: file,
-      signal,
-    },
+  const progressUrl = resolveApiUrl(
+    `/api/v1/libraries/${library}/source-operations/uploads/${upload}`,
   )
-  current()
-  if (!response.ok) {
-    const error = (await response.json().catch(() => ({}))) as { message?: string }
+  let finished = false
+  const monitor = new AbortController()
+  const polling = onProgress
+    ? (async () => {
+        while (!finished && !signal.aborted) {
+          try {
+            const response = await hostFetch(progressUrl, { signal: monitor.signal })
+            current()
+            if (response.ok) {
+              const progress = (await response.json()) as { received: number }
+              current()
+              if (!finished) onProgress(progress.received)
+            }
+          } catch {
+            // Telemetry failure must not interrupt a healthy upload.
+          }
+          if (!finished)
+            await new Promise<void>((resolve) => {
+              const done = () => {
+                clearTimeout(timer)
+                monitor.signal.removeEventListener('abort', done)
+                resolve()
+              }
+              const timer = setTimeout(done, 500)
+              monitor.signal.addEventListener('abort', done, { once: true })
+              if (monitor.signal.aborted) done()
+            })
+        }
+      })()
+    : Promise.resolve()
+  try {
+    const response = await hostFetch(
+      resolveApiUrl(
+        `/api/v1/libraries/${library}/source-operations/uploads/${upload}?size=${file.size}`,
+      ),
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: file,
+        signal,
+      },
+    )
     current()
-    throw new Error(error.message ?? `Copy upload failed (${response.status})`)
+    if (!response.ok) {
+      const error = (await response.json().catch(() => ({}))) as { message?: string }
+      current()
+      throw new Error(error.message ?? `Copy upload failed (${response.status})`)
+    }
+    onProgress?.(file.size)
+  } finally {
+    finished = true
+    monitor.abort()
+    await polling
   }
 }

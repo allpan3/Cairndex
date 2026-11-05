@@ -11,8 +11,15 @@ from cairndex.replicas import source_journal as journal
 from cairndex.replicas.protocol import Token
 from cairndex.replicas.service import wake
 from cairndex.replicas.source_journal import SourceAccept, SourceJob, SourcePage, SourceRequest
+from cairndex.replicas.source_uploads import UploadProgress, progress
 
 router = APIRouter(prefix="/libraries/{library_id}/source-operations", tags=["source-operations"])
+
+
+@router.get("/uploads/{upload}", response_model=UploadProgress)
+def upload_progress(upload: Token, store: Catalog) -> UploadProgress:
+    """Bytes received by the server, without inspecting the source filesystem."""
+    return progress(store, upload)
 
 
 @router.put("/uploads/{upload}", status_code=201)

@@ -31,7 +31,7 @@ import { newFolderTask, renameError, renameTask } from './sourceActions'
 import { RelocateDialog, TrashDialog } from './SourceActionDialogs'
 import { CatalogTrashBrowser } from './CatalogTrashBrowser'
 import { useTrash, useUnfinishedOperations } from './useSourceLists'
-import { UnfinishedOperationsDialog, UnfinishedOperationsNotice } from './UnfinishedOperations'
+import { UnfinishedOperations } from './UnfinishedOperations'
 import { isBlockingSurfaceOpen } from '../desktop/fileDrop'
 
 /** One navigable place, for Back/Forward. */
@@ -143,7 +143,6 @@ export function CatalogOrdinaryBrowser(props: {
     kind: 'copy' | 'move' | 'trash'
     paths: string[]
   } | null>(null)
-  const [reviewUnfinished, setReviewUnfinished] = useState(false)
   const filePicker = useRef<HTMLInputElement>(null)
   // The Bundle Browser's open collection and the folder its bundles share
   const dropContext = useRef<{ collection: string | null; folder: string | null }>({
@@ -464,16 +463,7 @@ export function CatalogOrdinaryBrowser(props: {
             onRenameCollectionHandled={() => setRenameCollection(null)}
             collections={collections}
             onNotice={setNotice}
-            activity={
-              <>
-                <SourceTaskProgress tasks={tasks} />
-                <UnfinishedOperationsNotice
-                  count={unfinished.length}
-                  onReview={() => setReviewUnfinished(true)}
-                />
-                {props.libraryNotices?.(setNotice)}
-              </>
-            }
+            activity={<>{props.libraryNotices?.(setNotice)}</>}
             libraryActions={
               <CatalogLibraryActions
                 update={
@@ -498,6 +488,17 @@ export function CatalogOrdinaryBrowser(props: {
           />
         )}
         <div className="catalog-ordinary-content">
+          {(tasks.tasks.length > 0 || unfinished.length > 0) && (
+            <div className="file-activity" aria-label="File activity">
+              <SourceTaskProgress tasks={tasks} />
+              <UnfinishedOperations
+                library={props.library}
+                operations={unfinished}
+                enabled={writable}
+                tasks={tasks}
+              />
+            </div>
+          )}
           {sourceEnabled && (
             <input
               ref={filePicker}
@@ -529,15 +530,6 @@ export function CatalogOrdinaryBrowser(props: {
               paths={action.paths}
               onClose={() => setAction(null)}
               onStart={tasks.start}
-            />
-          )}
-          {reviewUnfinished && (
-            <UnfinishedOperationsDialog
-              library={props.library}
-              operations={unfinished}
-              enabled={writable}
-              tasks={tasks}
-              onClose={() => setReviewUnfinished(false)}
             />
           )}
           {incoming && (

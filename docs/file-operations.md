@@ -67,8 +67,10 @@ location. Move from the desktop app needs native drop paths and is a separate st
 ## Background tasks
 
 **Copy**, and each library action above, closes its dialog at once. The work runs
-as a task with its progress in the sidebar foot, beside Update, and the rest of the
-app stays usable. **×** stops a task: files not yet applied are cancelled, a file
+as a task above the browser content, visible with the sidebar closed. It shows
+completed-file counts, received bytes, transfer percentage, speed and the current
+transfer, verification or saving phase. Transfer completion does not mean final
+publication has finished. The rest of the app stays usable. **×** stops a task: files not yet applied are cancelled, a file
 already being applied finishes, and **Continue** resumes the rest. A task that ends
 cleanly leaves a message with **Undo** at the foot of the window. Undo is one new
 journaled operation per changed item. A plain copy, move, rename or trash has an
@@ -80,15 +82,19 @@ version offers no Undo; Trash's **Restore a Copy** brings that version back.
 Each file is still its own saved operation with its own review. The task prepares
 each review and accepts it unchanged: the click that named the files, the action
 and the destination is the approval. An occupied name stops that file in the
-sidebar with **Keep Both**, **Replace** or **Skip**. Keep Both selects a vacant
+activity panel with **New name**, **Keep Both**, **Replace** or **Skip**.
+New Folder offers a new name or Cancel, because it never replaces a folder. Keep Both selects a vacant
 suffix during preparation and checks that absence again during application, so it
 cannot overwrite a new arrival. Replace keeps the displaced file as a recoverable
 version. The chosen answer becomes a new operation over the same received bytes,
 and it is accepted the same way.
 
-Saved operations that still wait for the owner, from a reload, another window or
-an earlier version, show as "N file operations wait for you" in the sidebar.
-**Review…** lists them with their saved reviews, to apply, retry or cancel.
+Stopped operations from a reload, another window or an earlier version show
+their name, reason and available actions directly above the browser. No separate
+Review dialog is needed. **Cancel** persists in the operation journal; it does not
+return after reload. An operation that already changed files must finish recovery
+and cannot be dismissed as cancelled. Changing a collision choice or name cancels
+the old intent before preparing the new one.
 
 Saved operations have stable identities. A retry uses the same paths, collision choice
 and review. Changed input requires a new operation. Interrupted operations retain their
@@ -145,6 +151,28 @@ operation-aware reader; an older strict reader refuses them.
 Private journals and uploads are included in private recovery validation. Source
 versions stay in the library and are not included in private database snapshots.
 Recovered unfinished operations require exact Retry after Reopen.
+
+Uploads coalesce incoming fragments into bounded 4 MiB writes. Preparation uses
+that completed upload as the retained source version instead of copying it again.
+Publication still creates and hashes an independent output, verifies its digest
+against the received bytes and uses no-replace publication. Later output edits
+cannot change the retained upload. An unsuccessful retry of a completed upload
+leaves its original ready evidence intact. Progress commits are limited to four
+per second plus phase completion; permission and cancellation checks still run
+between every copy block. Recovery does not use progress counts as checkpoints. Interrupted operations
+prepared by the previous copier keep their original retained-version identity.
+
+A synthetic 64 MiB local worker-pipeline comparison measured 2.48–2.80 seconds
+before these changes and 0.39–0.45 seconds after, including upload, preparation
+and application. This excludes HTTP/UI scheduling and real authorization work.
+On a disposable macOS SMB mount, a separate 32 MiB transfer-loop test measured
+45–57 MiB/s with 8 KiB fragments and 174–182 MiB/s after batching; 64 KiB
+fragments measured 141–148 and 157–164 MiB/s respectively. Both retained exact
+bytes, bounded writes and fsync. This component test excludes journaling,
+publication, HTTP and authorization. It ran over VM forwarding with synthetic
+data, not the owner's NAS. Full SMB pipeline qualification stopped at a
+publication identity check on the disposable share; that check remains intact.
+These results do not establish Finder parity or full-app SMB throughput.
 
 The current implementation accepts regular files and directories with at most 128
 visible entries and 128 catalog identities per affected tree. A review also has a

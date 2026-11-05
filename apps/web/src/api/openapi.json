@@ -11016,6 +11016,43 @@
         "title": "UnlockRequest",
         "type": "object"
       },
+      "UploadProgress": {
+        "additionalProperties": false,
+        "properties": {
+          "received": {
+            "title": "Received",
+            "type": "integer"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "state": {
+            "enum": [
+              "waiting",
+              "receiving",
+              "ready",
+              "interrupted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "received",
+          "size"
+        ],
+        "title": "UploadProgress",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -31626,6 +31663,89 @@
       }
     },
     "/api/v1/libraries/{library_id}/source-operations/uploads/{upload}": {
+      "get": {
+        "description": "Bytes received by the server, without inspecting the source filesystem.",
+        "operationId": "upload_progress_api_v1_libraries__library_id__source_operations_uploads__upload__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Upload",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadProgress"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Progress",
+        "tags": [
+          "source-operations"
+        ]
+      },
       "put": {
         "operationId": "upload_bytes_api_v1_libraries__library_id__source_operations_uploads__upload__put",
         "parameters": [

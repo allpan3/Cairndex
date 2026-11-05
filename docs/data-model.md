@@ -52,6 +52,10 @@ Portable source work uses the already-provisioned private `source_operations`,
 phase/progress, review and result; completed receipts reference the catalog event
 and independent content versions. Immutable versions and receipts live under
 `.cairndex/source-operations/`; physical identities and credentials remain private.
+An uploaded copy may reference its ready upload's `source` version directly.
+Private recovery validates the request's upload identity and exact recorded
+evidence; ordinary versions retain their operation identity. No schema change is
+needed. Active received-byte counters are transient display state.
 The format-three source capability is enabled only with the reviewed-operation
 API/worker/UI. New Folder retains an empty directory version with a `mkdir`
 receipt and no catalog event; it creates no bundle or collection. See

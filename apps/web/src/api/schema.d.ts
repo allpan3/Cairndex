@@ -4013,7 +4013,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Upload Progress
+         * @description Bytes received by the server, without inspecting the source filesystem.
+         */
+        get: operations["upload_progress_api_v1_libraries__library_id__source_operations_uploads__upload__get"];
         /** Upload Bytes */
         put: operations["upload_bytes_api_v1_libraries__library_id__source_operations_uploads__upload__put"];
         post?: never;
@@ -7976,6 +7980,18 @@ export interface components {
         UnlockRequest: {
             /** Passphrase */
             passphrase: string;
+        };
+        /** UploadProgress */
+        UploadProgress: {
+            /** Received */
+            received: number;
+            /** Size */
+            size: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "waiting" | "receiving" | "ready" | "interrupted";
         };
         /** ValidationError */
         ValidationError: {
@@ -16787,6 +16803,42 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_progress_api_v1_libraries__library_id__source_operations_uploads__upload__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                upload: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadProgress"];
                 };
             };
             /** @description Validation Error */
