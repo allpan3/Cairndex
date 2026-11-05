@@ -128,9 +128,22 @@ def prepare(
         raise ReplicaError("Source and destination paths must not overlap")
     if destination_seen and is_tree != (destination_seen.get("kind") == "directory"):
         raise ReplicaError("Replace requires matching file or directory types")
+    version_operation = request.upload or request.operation
+    if request.upload:
+        with store.connection(readonly=True) as db:
+            row = db.execute(
+                "SELECT result FROM source_operations WHERE id=?", (request.operation,)
+            ).fetchone()
+        retained = json.loads(row[0] or "{}").get("retained_versions", {}).get("") if row else None
+        # An interrupted review made by the older copier already owns this
+        # independent version. Preserve its identity through an exact retry.
+        if retained and retained["operation"] == request.operation:
+            version_operation = request.operation
     # Count independent versions, captured originals and the output copy. The
     # upload remains retained as well. This is logical storage, before compression.
-    source_versions = 3 if request.upload or request.action in {"move", "rename"} else 2
+    source_versions = 3 if request.action in {"move", "rename"} else 2
+    if request.upload and version_operation == request.operation:
+        source_versions = 3
     total = source_versions * source_seen["size"] + 2 * (
         destination_seen["size"] if destination_seen else 0
     )
@@ -138,11 +151,9 @@ def prepare(
         raise ReplicaError("Reviewed files exceed the operation byte budget")
     # Snapshot code verifies a retained partial prefix on an exact restart.
     if request.upload is not None:
-        from cairndex.replicas.source_uploads import snapshot_upload
+        from cairndex.replicas.source_uploads import uploaded_version
 
-        source_evidence = snapshot_upload(
-            store, root, request.upload, request.operation, progress, request.byte_limit
-        )
+        source_evidence = uploaded_version(store, root, request.upload, request.byte_limit)
     else:
         source_evidence = snapshot(
             root,
@@ -154,7 +165,14 @@ def prepare(
             limit=request.byte_limit,
         )
     destination_evidence = None
-    retain_version(store, request.operation, source, "source", source_evidence)
+    retain_version(
+        store,
+        request.operation,
+        source,
+        "source",
+        source_evidence,
+        version_operation=version_operation,
+    )
     if destination_seen:
         destination_evidence = snapshot(
             root,
@@ -252,7 +270,7 @@ def prepare(
             "before": before,
         }
         source_version = {
-            "operation": request.operation,
+            "operation": version_operation,
             "version": "source",
             "evidence": source_evidence,
         }

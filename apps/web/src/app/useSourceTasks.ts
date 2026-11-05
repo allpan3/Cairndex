@@ -9,7 +9,11 @@ import { noun, type SourceTask, type TaskItem, type TaskItemState } from './sour
 
 // The server's collision refusal (`source_plan.py`); its job stops as interrupted
 export const isCollision = (job: Pick<SourceJob, 'error'>) =>
-  Boolean(job.error?.includes('Destination exists'))
+  Boolean(
+    job.error?.includes('Destination exists') ||
+    job.error?.includes('Folder name is already in use') ||
+    job.error?.includes('Folder path has catalog entries'),
+  )
 const PREPARING = ['queued', 'preparing']
 const APPLYING = ['accepted', 'applying']
 
@@ -108,13 +112,28 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
     const { request, file, size } = item
     let queued: SourceJob | null = null
     let accepted = false
+    let sampled = performance.now()
+    let previousBytes = 0
+    const reading = (bytes: number) => {
+      const now = performance.now()
+      const elapsed = (now - sampled) / 1000
+      const speed = elapsed > 0 ? Math.max(0, bytes - previousBytes) / elapsed : 0
+      sampled = now
+      previousBytes = bytes
+      return { bytes, speed }
+    }
     try {
       if (file && request.upload && !uploaded.current.has(request.upload)) {
         setItem(id, index, { state: { kind: 'sending' } })
-        await uploadSource(library, request.upload, file, signal)
+        await uploadSource(library, request.upload, file, signal, (bytes) => {
+          const measured = reading(bytes)
+          setItem(id, index, { uploaded: bytes, state: { kind: 'sending', ...measured } })
+        })
         uploaded.current.add(request.upload)
         scope()
       }
+      sampled = performance.now()
+      previousBytes = 0
       setItem(id, index, { state: { kind: 'checking', percent: null } })
       queued = await sourceRequest<SourceJob>(library, '', 'POST', request)
       scope()
@@ -122,7 +141,9 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
       if (queued.state === 'interrupted' && !isCollision(queued))
         queued = await sourceRequest<SourceJob>(library, `/${queued.id}/retry`, 'POST')
       let job = await settle(queued, PREPARING, signal, (next) =>
-        setItem(id, index, { state: { kind: 'checking', percent: percent(next, size) } }),
+        setItem(id, index, {
+          state: { kind: 'checking', percent: percent(next, size), ...reading(next.progress) },
+        }),
       )
       if (job.state === 'prepared') {
         setItem(id, index, { state: { kind: 'applying', percent: null } })
@@ -133,8 +154,12 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
       // Also reached when a repeated request was accepted before its reply was lost
       if (APPLYING.includes(job.state)) {
         accepted = true
+        sampled = performance.now()
+        previousBytes = 0
         job = await settle(job, APPLYING, new AbortController().signal, (next) =>
-          setItem(id, index, { state: { kind: 'applying', percent: percent(next, size) } }),
+          setItem(id, index, {
+            state: { kind: 'applying', percent: percent(next, size), ...reading(next.progress) },
+          }),
         )
       }
       scope()
@@ -219,6 +244,11 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
   }
 
   async function run(id: string, indexes: number[]) {
+    if (!find(id)) return
+    if (find(id)?.stopping) {
+      patch(id, (task) => ({ ...task, running: false, stopping: false }))
+      return
+    }
     const scope = captureRequestScope()
     const controller = new AbortController()
     controllers.current.set(id, controller)
@@ -237,6 +267,7 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
   }
 
   const enqueue = (id: string, indexes: number[]) => {
+    patch(id, (task) => ({ ...task, running: true, busy: false }))
     queue.current = queue.current.then(() => run(id, indexes)).catch(() => undefined)
   }
 
@@ -302,28 +333,83 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
       controllers.current.get(id)?.abort()
     },
     /** Answer an occupied name with a new intent over the same received bytes. */
-    decide(id: string, index: number, collision: 'suffix' | 'replace' | 'skip') {
+    async decide(id: string, index: number, collision: 'suffix' | 'replace' | 'skip') {
       const item = find(id)?.items[index]
-      if (!item) return
+      if (!item || item.state.kind !== 'exists' || find(id)?.running || find(id)?.busy) return
+      patch(id, (task) => ({ ...task, busy: true }))
+      try {
+        await sourceRequest(library, `/${item.request.operation}`, 'DELETE')
+      } catch (error) {
+        patch(id, (task) => ({ ...task, busy: false }))
+        onNotice({ text: (error as Error).message, alert: true })
+        return
+      }
       setItem(id, index, {
         request: { ...item.request, operation: operationId(), collision },
         state: { kind: 'waiting' },
       })
       enqueue(id, [index])
     },
+    async rename(id: string, index: number, name: string) {
+      const item = find(id)?.items[index]
+      if (!item || item.state.kind !== 'exists' || find(id)?.running || find(id)?.busy) return
+      patch(id, (task) => ({ ...task, busy: true }))
+      try {
+        await sourceRequest(library, `/${item.request.operation}`, 'DELETE')
+        const destination = item.request.destination ?? ''
+        const slash = destination.lastIndexOf('/')
+        setItem(id, index, {
+          name,
+          request: {
+            ...item.request,
+            operation: operationId(),
+            destination: destination.slice(0, slash + 1) + name,
+            collision: 'fail',
+          },
+          state: { kind: 'waiting' },
+        })
+        if (find(id)?.items.length === 1)
+          patch(id, (task) => ({
+            ...task,
+            title: task.title.replaceAll(item.name, name),
+            summary: task.summary.replaceAll(item.name, name),
+          }))
+        enqueue(id, [index])
+      } catch (error) {
+        patch(id, (task) => ({ ...task, busy: false }))
+        onNotice({ text: (error as Error).message, alert: true })
+      }
+    },
     /** Try the stopped, failed or unfinished items again, or the bundle step. */
     resume(id: string) {
       const task = find(id)
-      if (!task || task.running) return
+      if (!task || task.running || task.busy) return
       const open = task.items.flatMap((item, index) =>
         item.state.kind === 'waiting' || item.state.kind === 'failed' ? [index] : [],
       )
       if (open.length > 0) enqueue(id, open)
       else if (task.items.every((item) => item.state.kind === 'done')) void finish(id)
     },
-    dismiss(id: string) {
-      if (find(id)?.running) return
-      commit(tasks.current.filter((task) => task.id !== id))
+    async dismiss(id: string) {
+      const task = find(id)
+      if (!task || task.running || task.busy) return
+      patch(id, (task) => ({ ...task, busy: true }))
+      try {
+        for (const item of task.items) {
+          if (
+            item.state.kind === 'done' ||
+            item.state.kind === 'waiting' ||
+            (item.request.upload && !uploaded.current.has(item.request.upload))
+          )
+            continue
+          await sourceRequest(library, `/${item.request.operation}`, 'DELETE')
+        }
+        commit(tasks.current.filter((task) => task.id !== id))
+        await cache.invalidateQueries({ queryKey: ['source-operations', library] })
+      } catch (error) {
+        patch(id, (task) => ({ ...task, busy: false }))
+        onNotice({ text: (error as Error).message, alert: true })
+      }
     },
   }
 }

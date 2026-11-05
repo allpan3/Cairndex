@@ -190,7 +190,17 @@ def validate_private(db: sqlite3.Connection, store: CatalogStore) -> None:
                     source_path(path)
                 version = SourceVersion.model_validate(raw)
                 if version.operation != request.operation:
-                    raise ReplicaError("Private retained version belongs to another operation")
+                    uploaded = db.execute(
+                        "SELECT evidence FROM source_uploads WHERE id=? AND state='ready'",
+                        (request.upload,),
+                    ).fetchone()
+                    if (
+                        version.operation != request.upload
+                        or version.version != "source"
+                        or uploaded is None
+                        or json.loads(uploaded[0]) != version.evidence.model_dump()
+                    ):
+                        raise ReplicaError("Private retained version belongs to another operation")
         if (
             row["state"] == "succeeded"
             and row["result"] != "{}"

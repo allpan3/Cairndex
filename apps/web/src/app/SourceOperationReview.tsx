@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { operationId } from '../api/catalog'
+import { isCollision } from './useSourceTasks'
+import { ChangeName } from './SourceTaskProgress'
+import { parentFolder, joinPath } from './sourceTasks'
 import {
   sourceRequest,
   type SourceJob,
@@ -41,9 +44,21 @@ export function SourceOperationReview({
       setBusy(false)
     }
   }
+  async function change(request: SourceRequest) {
+    setBusy(true)
+    setError('')
+    try {
+      await sourceRequest(library, `/${operation}`, 'DELETE')
+      onPrepare({ ...request, operation: operationId() })
+      await cache.invalidateQueries()
+    } catch (reason) {
+      setError((reason as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
   function collision(policy: SourceRequest['collision']) {
-    if (!job.data) return
-    onPrepare({ ...job.data.request, operation: operationId(), collision: policy })
+    if (job.data) void change({ ...job.data.request, collision: policy })
   }
   const value = job.data
   const retained = value?.result?.retained_versions as Record<string, Version> | undefined
@@ -56,24 +71,26 @@ export function SourceOperationReview({
     skipped?: boolean
     versions_before?: Record<string, { evidence: { size: number } } | null>
   } | null
+  if (value && ['cancelled', 'succeeded'].includes(value.state)) return null
+  const collisionError = value && isCollision(value)
   return (
-    <section aria-label="File operation review">
-      {job.isPending && <p role="status">Loading operation review…</p>}
+    <section aria-label="Stopped file operation">
+      {job.isPending && <p role="status">Loading stopped operation…</p>}
       {job.error && <p role="alert">{job.error.message}</p>}
       {value && (
         <>
           <h3>
-            {value.action}: {value.state}
+            {value.action === 'mkdir'
+              ? 'Create folder'
+              : value.action === 'copy'
+                ? 'Copy'
+                : value.action === 'rename'
+                  ? 'Rename'
+                  : 'File operation'}
+            : {value.request.destination || value.request.source}
           </h3>
-          <p>
-            {value.request.source || 'Selected bytes'}
-            {value.request.destination ? ` → ${value.request.destination}` : ''}
-          </p>
-          <p role="status">
-            {value.phase} · {value.progress.toLocaleString()} bytes processed
-          </p>
           {value.error && <p role="alert">{value.error}</p>}
-          {value.error?.includes('Destination exists') && (
+          {collisionError && !value.result?.started && value.action !== 'mkdir' && (
             <div className="modal__actions">
               <button disabled={busy || !enabled} onClick={() => void collision('replace')}>
                 Replace
@@ -86,12 +103,29 @@ export function SourceOperationReview({
               </button>
             </div>
           )}
+          {collisionError && !value.result?.started && (
+            <>
+              <p>Nothing was replaced. Choose a different name or cancel this item.</p>
+              <ChangeName
+                disabled={busy || !enabled}
+                name={(value.request.destination ?? '').split('/').at(-1) ?? ''}
+                onChange={(name) => {
+                  if (enabled && !busy)
+                    void change({
+                      ...value.request,
+                      destination: joinPath(parentFolder(value.request.destination ?? ''), name),
+                      collision: 'fail',
+                    })
+                }}
+              />
+            </>
+          )}
           {value.state === 'prepared' && (
             <>
               <p>
                 {reviewed?.skipped
                   ? 'Skip this item. Source files stay unchanged.'
-                  : 'The review retains the current bytes and metadata conditions. Apply uses this exact review.'}
+                  : 'This item was paused before it changed files. Continue to finish it, or cancel.'}
               </p>
               {reviewed?.destination && <p>Destination: {reviewed.destination}</p>}
               {Object.entries(reviewed?.versions_before ?? {})
@@ -106,16 +140,16 @@ export function SourceOperationReview({
                 disabled={busy || !enabled}
                 onClick={() => void act('/accept', { receipt: value.receipt })}
               >
-                Apply reviewed operation
+                Continue
               </button>
             </>
           )}
-          {value.state === 'interrupted' && (
+          {value.state === 'interrupted' && (!collisionError || value.result?.started) && (
             <button disabled={busy || !enabled} onClick={() => void act('/retry')}>
-              Retry exact operation
+              Try Again
             </button>
           )}
-          {['interrupted', 'cancelled'].includes(value.state) && retained && (
+          {value.state === 'interrupted' && value.result?.started && retained && (
             <section aria-label="Interrupted operation recovery">
               <p>
                 Completed versions remain available. A recovery copy leaves the interrupted
@@ -154,13 +188,10 @@ export function SourceOperationReview({
             </section>
           )}
           {(['queued', 'preparing', 'prepared', 'accepted'].includes(value.state) ||
-            (value.state === 'applying' && !value.result?.started)) && (
+            (['applying', 'interrupted'].includes(value.state) && !value.result?.started)) && (
             <button disabled={busy} onClick={() => void act('', undefined, 'DELETE')}>
-              Cancel operation
+              Cancel item
             </button>
-          )}
-          {value.state === 'succeeded' && (
-            <p>Saved here. Delivery to other copies is not confirmed.</p>
           )}
         </>
       )}

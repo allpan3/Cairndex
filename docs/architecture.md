@@ -193,7 +193,12 @@ Bundling changes the copies' metadata, which the exact Undo refuses, so a
 bundled copy's Undo is a Trash operation instead. Uploads use the existing authenticated
 portable `source-operations/uploads` route. The frontend passes the `File`
 directly to fetch with an AbortSignal. It does not make an ArrayBuffer or a
-base64 copy. Copy preparation and application retain the existing worker,
+base64 copy. The library-scoped GET `source-operations/uploads/{upload}` reports
+server-received bytes, with an active-request counter and existing durable upload
+state; no source filesystem polling is needed. Incoming fragments become bounded
+4 MiB writes. Preparation references the completed retained upload; application
+hashes an independent output before publication. Display progress updates are
+throttled without throttling cancellation or permission checks. Copy preparation and application retain the existing worker,
 collision, storage-budget and exact-review constraints. Each file has its own
 operation identity. Retrying the same selected File retains its upload and
 operation identities. A new selection gets new identities. Switching library
