@@ -2,8 +2,9 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `99fa9bcd`, qualified on
-2026-11-05. It includes inline New Folder naming, incoming-files dialogs and background tasks on top of
+The local desktop and web test installation is `6ecbb98a`, qualified on
+2026-11-05. It includes inline New Folder naming, source-write network access
+recovery, incoming-files dialogs and background tasks on top of
 the merged historical audit, latest-Update acceptance, Widen title repair and
 SMB source-read improvement. This is an owner-test installation, not a release.
 Rollback copies and private profiles are preserved. Incoming-files remains
@@ -72,10 +73,10 @@ budget, saved-draft and recent-operation panels are removed; the default budget
 remains. Waiting operations cover only the newest page. Native-drop Move remains
 deferred. New Folder is installed with journaled creation and conditional Undo.
 It uses an inline row with Untitled selected; Enter or clicking outside confirms,
-and Escape cancels. An owner-network folder request completed after saved-login
-authorization. Source-worker failures now expose that authorization requirement
-through the existing library notice; final qualification and installation of
-this recovery fix are in progress. See its source-operation documentation.
+and Escape cancels. A folder request on the owner's network library completed
+after saved-login authorization. The installed fix exposes source-worker
+authorization failures through the existing Allow Access notice and retains
+the intent for explicit retry. See its source-operation documentation.
 
 ## Qualification and evidence
 
@@ -93,6 +94,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 | Installed incoming combination | Full frontend gates with 1,439 units and 14 combined browser cases on each platform; production web/app-only builds, sidecar smoke, four frozen integrations, signature/distribution and installed identity/startup/shutdown checks |
 | Installed New Folder follow-up | Linux 2,061 memory plus 77 disk backend cases; macOS 91 source-operation cases; both-platform backend static and full frontend gates with 1,439 units, seven browser cases per platform; packaged New Folder/Undo smoke, four frozen integrations, app-only build, signature/distribution and installed desktop/web checks |
 | Installed inline naming follow-up | macOS full frontend gate with 1,439 units and four source/Rename browser cases; synthetic screenshot inspected; app-only build, sidecar smoke, signature/distribution and installed desktop/web checks. Backend, Rust, Linux and frozen-integration evidence retained for unchanged source areas |
+| Installed source-access recovery | Linux 2,063 memory plus 81 disk backend cases; macOS 90 source/API/exchange/Keychain cases; backend static checks on both platforms; sidecar smoke, four frozen integrations, app-only build, signature/distribution and installed desktop/web checks. Frontend and Rust evidence retained for unchanged sources |
 
 The full Linux backend runs retain the known ARM manifest exclusion, covered by
 hosted x86 CI. Unchanged Rust, dependency and frontend gates were retained where
@@ -105,7 +107,7 @@ Installed desktop/web identity, health, startup and shutdown checks passed using
 disposable private data. Package bytes, modes and symlinks matched. Profiles and
 private files retained names, modes, sizes and modification times; credentials
 were untouched. Receipts are retained locally under
-`20261105-inline-folder`, `20261105-new-folder`, `20261105-incoming-files`, `20261104-smb-update-combined` and
+`20261105-folder-access`, `20261105-inline-folder`, `20261105-new-folder`, `20261105-incoming-files`, `20261104-smb-update-combined` and
 `20261104-widen-title`. The local testing
 checklist records rollback and installation details. Do not publish private
 receipt contents wholesale. Failed attempts remain evidence, not passing gates.
