@@ -2,8 +2,9 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `6ecbb98a`, qualified on
-2026-11-05. It includes inline New Folder naming, source-write network access
+The local desktop and web test installation is `9f802152`, qualified on
+2026-11-05. It includes copy throughput/progress and persistent collision controls,
+inline New Folder naming, source-write network access
 recovery, incoming-files dialogs and background tasks on top of
 the merged historical audit, latest-Update acceptance, Widen title repair and
 SMB source-read improvement. This is an owner-test installation, not a release.
@@ -78,17 +79,17 @@ after saved-login authorization. The installed fix exposes source-worker
 authorization failures through the existing Allow Access notice and retains
 the intent for explicit retry. See its source-operation documentation.
 
-Copy performance and activity UI follow-up is qualified on the incoming branch
-and awaits packaging and installation. It batches upload writes, removes a
-redundant retained copy and throttles progress-only commits. File activity moves
+Copy performance and activity UI follow-up is installed from the incoming branch.
+It batches upload writes, removes a redundant retained copy and throttles progress-only commits. File activity moves
 above the browser and collision cancellation persists. macOS passed 108 source
 cases. Linux passed 2,071 memory and 81 disk cases, then 19 final upload/API cases
 covering the last cancellation and immutable-upload guards. Both platforms passed
 1,443 frontend units, static checks, production web builds and four affected
 browser scenarios (two passed initially; two passed after correcting test setup).
-Synthetic screenshots were inspected. Component measurements and the full-SMB
-publication qualification limit are in [file operations](file-operations.md).
-Owner-NAS timing remains open. The installed build above is unchanged.
+Synthetic screenshots were inspected. Sidecar smoke, four frozen integrations,
+app-only build, signature/distribution and installed desktop/web checks passed.
+Component measurements and the full-SMB publication qualification limit are in [file operations](file-operations.md).
+Owner-NAS timing remains open; no Finder-parity claim is made.
 
 ## Qualification and evidence
 
@@ -116,13 +117,18 @@ failed during the Rename round; the later combined round qualified an app-only
 package and did not rerun DMG creation.
 
 Installed desktop/web identity, health, startup and shutdown checks passed using
-disposable private data. Package bytes, modes and symlinks matched. Profiles and
-private files retained names, modes, sizes and modification times; credentials
-were untouched. Receipts are retained locally under
-`20261105-folder-access`, `20261105-inline-folder`, `20261105-new-folder`, `20261105-incoming-files`, `20261104-smb-update-combined` and
+disposable private data. Package bytes, modes and symlinks matched. Earlier
+installations retained private-file names, modes, sizes and modification times;
+the current shutdown comparison is qualified below. Credentials were untouched. Receipts are retained locally under
+`20261105-copy-progress`, `20261105-folder-access`, `20261105-inline-folder`, `20261105-new-folder`, `20261105-incoming-files`, `20261104-smb-update-combined` and
 `20261104-widen-title`. The local testing
 checklist records rollback and installation details. Do not publish private
-receipt contents wholesale. Failed attempts remain evidence, not passing gates.
+receipt contents wholesale. Failed attempts remain evidence, not passing gates. The copy
+installation's initial snapshot preceded graceful app shutdown: two settings/window
+records and transient SQLite files changed, while ordinary database-file metadata
+was unchanged. The subsequent installed smoke used disposable data and preserved
+the stopped private profile exactly. Both snapshots and the failed initial
+comparison are retained; the initial comparison is not counted as a pass.
 
 The established synthetic 8,911-file library's unchanged Update fell from
 26.453–27.396 seconds to 4.228–4.896 seconds. Ten additions took 5.288 seconds,
