@@ -205,7 +205,27 @@ def pending(library_id: str) -> bool:
 
 def storage_access(library_id: str) -> Literal["authorization", "login"] | None:
     """What the owner must do before exchange can reach the library's network share."""
-    return _storage_access.get(library_id)
+    problem = _storage_access.get(library_id)
+    if problem is not None:
+        return problem
+    with _lock:
+        handle = _handles.get(library_id)
+    if handle is None or not isinstance(handle[0], CatalogStore):
+        return None
+    # Source workers retain failures instead of raising through exchange. Keep
+    # their access request visible even when ordinary metadata exchange succeeds.
+    with handle[0].connection(readonly=True) as db:
+        row = db.execute(
+            "SELECT json_extract(result,'$.storage_failure.access') FROM source_operations "
+            "WHERE state='interrupted' AND "
+            "json_extract(result,'$.storage_failure.access') IN ('authorization','login') "
+            "ORDER BY sequence DESC LIMIT 1"
+        ).fetchone()
+    if row and row[0] == "authorization":
+        return "authorization"
+    if row and row[0] == "login":
+        return "login"
+    return None
 
 
 def authorize_storage(library_id: str) -> None:
@@ -219,6 +239,16 @@ def authorize_storage(library_id: str) -> None:
     except OSError as error:
         raise ReplicaError(smb_transport.access_message(error)) from None
     _storage_access.pop(library_id, None)
+    if isinstance(handle[0], CatalogStore):
+        with handle[0].connection() as db:
+            # Authorization clears only the prompt, never the stopped intent or
+            # its recovery checkpoints. The owner still explicitly retries it.
+            db.execute(
+                "UPDATE source_operations SET result="
+                "json_remove(result,'$.storage_failure.access') "
+                "WHERE state='interrupted' AND "
+                "json_extract(result,'$.storage_failure.access') IN ('authorization','login')"
+            )
 
 
 def serving(library_id: str, store: Store | CatalogStore) -> bool:
