@@ -3,8 +3,11 @@
 import hashlib
 import os
 import stat
+import sys
 from collections.abc import Iterator
+from concurrent.futures import Executor, Future
 from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +17,27 @@ from cairndex.replicas.media import generation, open_source
 from cairndex.replicas.protocol import ReplicaError, checksum
 
 SAMPLE = 64 * 1024
+
+
+@dataclass(frozen=True)
+class Entry:
+    """A walk observation; its borrowed parent is valid only until the next step."""
+
+    path: str
+    info: os.stat_result
+    parent: int
+    directory: Path
+    network: bool
+
+
+def directory_path(handle: int) -> Path:
+    """Check the held directory's kernel path without reopening its ancestors."""
+    if sys.platform == "darwin":
+        import fcntl
+
+        raw = fcntl.fcntl(handle, 50, bytes(1024))  # F_GETPATH
+        return Path(os.fsdecode(raw.split(b"\0", 1)[0]))
+    return Path(os.readlink(f"/proc/self/fd/{handle}"))
 
 
 # Directory descriptors reject every symlink component, including a replaced root
@@ -36,31 +60,117 @@ def directory(root: Path, relative: str = "") -> Iterator[int]:
 
 
 # Yield once per directory entry so hidden files and deep folders also consume the step budget
-def walk(root: Path, relative: str = "", depth: int = 0) -> Iterator[str | None]:
+def walk(root: Path) -> Iterator[Entry | None]:
+    with directory(root) as handle:
+        resolved = root.resolve(strict=True)
+        if directory_path(handle) != resolved:
+            raise ReplicaError("Discovery root changed; retry Update")
+        yield from _walk(handle, resolved, "", 0, network=mounted_smb(root))
+
+
+def _walk(
+    handle: int, root: Path, relative: str, depth: int, *, network: bool
+) -> Iterator[Entry | None]:
     if depth > 64:
         raise ReplicaError("Discovery reached the directory depth limit; no repairs were applied")
-    with directory(root, relative) as handle, os.scandir(handle) as entries:
+    with os.scandir(handle) as entries:
         for entry in entries:
             if entry.name.startswith(".") or entry.is_symlink():
                 yield None
                 continue
-            path = f"{relative}/{entry.name}" if relative else entry.name
             info = entry.stat(follow_symlinks=False)
+            path = f"{relative}/{entry.name}" if relative else entry.name
             if stat.S_ISDIR(info.st_mode):
                 yield None
-                yield from walk(root, path, depth + 1)
+                with _child(handle, entry.name) as child:
+                    current = os.fstat(child)
+                    if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+                        raise ReplicaError("Discovery directory changed; retry Update")
+                    yield from _walk(child, root, path, depth + 1, network=network)
             elif stat.S_ISREG(info.st_mode):
-                yield path
+                yield Entry(path, info, handle, root / relative, network)
             else:
                 yield None
 
 
+def mounted_smb(root: Path) -> bool:
+    from cairndex.file_ops.smb_transport import mount_for
+
+    try:
+        return mount_for(root) is not None
+    except OSError:
+        return False
+
+
+@contextmanager
+def _child(parent: int, name: str) -> Iterator[int]:
+    handle = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    try:
+        yield handle
+    finally:
+        os.close(handle)
+
+
+@contextmanager
+def _opened(root: Path, path: str, entry: Entry | None) -> Iterator[int]:
+    if entry is None:
+        with open_source(root, path) as handle:
+            yield handle
+        return
+    # The walk checked and retained every ancestor. Reuse its parent instead
+    # of reopening the complete SMB path for every leaf.
+    if directory_path(entry.parent) != entry.directory:
+        raise ReplicaError("Discovery directory moved; retry Update")
+    handle = os.open(
+        path.rsplit("/", 1)[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=entry.parent
+    )
+    try:
+        if not stat.S_ISREG(os.fstat(handle).st_mode):
+            raise ReplicaError("Discovery source is no longer a regular file")
+        yield handle
+        if directory_path(entry.parent) != entry.directory:
+            raise ReplicaError("Discovery directory moved; retry Update")
+    finally:
+        os.close(handle)
+
+
+def submit(
+    executor: Executor, root: Path, entry: Entry, cached: dict[str, Any] | None
+) -> Future[dict[str, Any]]:
+    """Give a worker its own parent before advancing the directory iterator."""
+    held = replace(entry, parent=os.dup(entry.parent))
+    try:
+        return executor.submit(_inspect_owned, root, held, cached)
+    except BaseException:
+        os.close(held.parent)
+        raise
+
+
+def _inspect_owned(root: Path, entry: Entry, cached: dict[str, Any] | None) -> dict[str, Any]:
+    try:
+        return inspect(root, entry.path, cached, entry=entry)
+    finally:
+        os.close(entry.parent)
+
+
 # Complete small-file hashes and large-file samples are never interchangeable identity claims
-def inspect(root: Path, path: str, cached: dict[str, Any] | None = None) -> dict[str, Any]:
-    with open_source(root, path) as handle:
+def inspect(
+    root: Path,
+    path: str,
+    cached: dict[str, Any] | None = None,
+    *,
+    entry: Entry | None = None,
+) -> dict[str, Any]:
+    if entry:
+        normalize_relative_path(path)
+        if entry.path != path or directory_path(entry.parent) != entry.directory:
+            raise ReplicaError("Discovery directory moved; retry Update")
+        if cached and cached["generation"] == generation(path, entry.info):
+            return cached
+    with _opened(root, path, entry) as handle:
         info = os.fstat(handle)
         token = generation(path, info)
-        if cached and cached["generation"] == token:
+        if entry is None and cached and cached["generation"] == token:
             return cached
         digest = hashlib.sha256()
         if info.st_size <= SAMPLE * 3:

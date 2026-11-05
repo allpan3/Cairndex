@@ -46,10 +46,10 @@ def test_unchanged_update_checks_sources_without_content_reads_or_grouping(repli
     original = discovery_sources.inspect
     inspected = []
 
-    def inspect(root, path, cached=None):
+    def inspect(root, path, cached=None, **kwargs):
         inspected.append(path)
         assert cached is not None
-        return original(root, path, cached)
+        return original(root, path, cached, **kwargs)
 
     def unnecessary(*args, **kwargs):
         pytest.fail("An unchanged settled library needs neither content reads nor grouping")
@@ -122,8 +122,8 @@ def test_cancel_during_source_batch_discards_uncommitted_observations(replicas, 
     state.enqueue(store, "cancel-sources")
     original = discovery_sources.inspect
 
-    def cancel(root, path, cached=None):
-        observation = original(root, path, cached)
+    def cancel(root, path, cached=None, **kwargs):
+        observation = original(root, path, cached, **kwargs)
         state.cancel(store, "cancel-sources")
         return observation
 

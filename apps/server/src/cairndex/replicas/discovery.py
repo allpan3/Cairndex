@@ -3,7 +3,10 @@
 import json
 import sqlite3
 import time
+from collections import deque
 from collections.abc import Iterator
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +19,7 @@ from cairndex.replicas.catalog.protocol import UnitChange
 from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.discovery_progress import advance
 from cairndex.replicas.discovery_state import capable
+from cairndex.replicas.media import generation
 from cairndex.replicas.protocol import ReplicaError, checksum
 from cairndex.scanning.media_types import classify
 
@@ -31,7 +35,8 @@ BATCH = 32
 # memory and time between cancellation/save opportunities on slower storage.
 SCAN_BATCH = 512
 SCAN_SECONDS = 0.05
-_walks: dict[CatalogStore, tuple[str, Iterator[str | None]]] = {}
+SMB_READERS = 16
+_walks: dict[CatalogStore, tuple[str, Iterator[sources.Entry | None]]] = {}
 
 
 # Release/cancel closes pinned directory handles before retiring a private generation
@@ -200,30 +205,50 @@ def enumerate_batch(store: CatalogStore, root: Path, run: str) -> None:
     walker = _walks[store][1]
     found = []
     complete = False
-    with store.connection(readonly=True) as db:
-        deadline = time.monotonic() + SCAN_SECONDS
-        for index in range(SCAN_BATCH):
-            if index and time.monotonic() >= deadline:
-                break
-            try:
-                path = next(walker)
-            except StopIteration:
-                complete = True
-                break
-            if path is None or classify(path) is None:
-                continue
-            prior = db.execute(
-                "SELECT body FROM discovery_baselines WHERE json_extract(body,'$.path')=? LIMIT 1",
-                (path,),
-            ).fetchone()
-            cached = json.loads(prior[0]) if prior else None
-            observation = sources.inspect(root, path, cached)
+    with store.connection(readonly=True) as db, ExitStack() as workers:
+        pool = None
+        pending: deque[Future[dict[str, Any]]] = deque()
+
+        def record(observation: dict[str, Any]) -> None:
             from cairndex.replicas.discovery_verification import evidence
 
             full = evidence(db, observation)
             if full and observation["evidence"]["algorithm"] != "sha256":
                 observation = observation | {"sample": observation["evidence"], "evidence": full}
+            path = observation["path"]
             found.append((run, path, path.rpartition("/")[0], value_text(observation)))
+
+        deadline = time.monotonic() + SCAN_SECONDS
+        for index in range(SCAN_BATCH):
+            if index and time.monotonic() >= deadline:
+                break
+            try:
+                entry = next(walker)
+            except StopIteration:
+                complete = True
+                break
+            if entry is None or classify(entry.path) is None:
+                continue
+            path = entry.path
+            prior = db.execute(
+                "SELECT body FROM discovery_baselines WHERE json_extract(body,'$.path')=? LIMIT 1",
+                (path,),
+            ).fetchone()
+            cached = json.loads(prior[0]) if prior else None
+            if entry.network and (
+                cached is None or cached["generation"] != generation(path, entry.info)
+            ):
+                if pool is None:
+                    pool = workers.enter_context(ThreadPoolExecutor(max_workers=SMB_READERS))
+                pending.append(sources.submit(pool, root, entry, cached))
+                if len(pending) == SMB_READERS:
+                    record(pending.popleft().result())
+            else:
+                record(sources.inspect(root, path, cached, entry=entry))
+        # All SQLite work stays on this thread. ExitStack drains even failed
+        # batches before any observations commit or directory handles retire.
+        for future in pending:
+            record(future.result())
     with store.connection() as db:
         if not db.execute(
             "SELECT 1 FROM discovery_runs WHERE id=? AND state='running'", (run,)

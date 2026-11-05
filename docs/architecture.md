@@ -41,6 +41,12 @@ or 50 ms of source work. Catalog checks use the same bounds, resume after the
 last processed file and commit observations with their progress. A slow source
 operation or durable commit can exceed the time target. Unchanged baselines are
 not rewritten; a settled catalog with no new files needs no grouping index.
+Enumeration retains checked parents and reuses exact native-generation hits.
+On positively identified macOS SMB mounts, up to sixteen cold inspections run
+concurrently; SQLite and verified-evidence lookup stay on the discovery worker.
+All readers drain before the batch commits or fails. Remounts still invalidate
+native generations and require fresh fingerprints; review and repair checks
+remain independent.
 Media maintenance
 inspects sources outside writer transactions, then commits at most 32 local
 observations and their progress cursor together. Cancellation discards the
