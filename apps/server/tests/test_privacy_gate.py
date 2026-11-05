@@ -307,14 +307,19 @@ def test_repository_declares_no_vendored_trees():
 # Declarations land before their assets; verify every asset already present.
 def test_real_binary_allowlist_matches_repository_assets():
     allowlist = privacy_gate.load_allowlist()
+    # A path can have several approved historical versions. Its current bytes
+    # must match one exact path/digest pair, not every past version at once.
+    approved: dict[str, set[str]] = {}
     for allowance in allowlist.binaries.values():
         for relative_path in allowance.paths:
-            path = _SCRIPT.parent.parent / relative_path
-            if not path.exists():
-                continue
-            data = path.read_bytes()
-            assert hashlib.sha256(data).hexdigest() == allowance.sha256
-            assert privacy_gate.scan_blob(data, "fixture", {relative_path}, allowlist, []) == []
+            approved.setdefault(relative_path, set()).add(allowance.sha256)
+    for relative_path, digests in approved.items():
+        path = _SCRIPT.parent.parent / relative_path
+        if not path.exists():
+            continue
+        data = path.read_bytes()
+        assert hashlib.sha256(data).hexdigest() in digests
+        assert privacy_gate.scan_blob(data, "fixture", {relative_path}, allowlist, []) == []
 
 
 # A declaration-only first commit grants only the reviewed bytes at the reviewed path.
