@@ -69,8 +69,9 @@ Library-only Write Mode and Trash. Immediate Apply uses the exact prepared
 receipt; Enter confirms Rename. Undo for a bundled copy trashes its files and
 removes the task-created bundle. Replace bundling has no Undo. The old storage
 budget, saved-draft and recent-operation panels are removed; the default budget
-remains. Waiting operations cover only the newest page. Native-drop Move and
-New Folder remain deferred. See its source-operation documentation for details.
+remains. Waiting operations cover only the newest page. Native-drop Move remains deferred. New Folder is implemented on the test
+branch with journaled creation and conditional Undo; qualification and an updated
+installation are in progress. See its source-operation documentation for details.
 
 ## Qualification and evidence
 

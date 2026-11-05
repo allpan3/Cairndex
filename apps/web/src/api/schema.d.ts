@@ -7522,6 +7522,11 @@ export interface components {
             ready: boolean;
             /** Selection Version */
             selection_version?: number | null;
+            /**
+             * Source Mkdir
+             * @default false
+             */
+            source_mkdir: boolean;
             /** Source Operations Version */
             source_operations_version?: number | null;
             /** Storage Access */
@@ -7683,7 +7688,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "copy" | "rename" | "move" | "trash" | "undo" | "restore";
+            action: "copy" | "rename" | "move" | "trash" | "undo" | "restore" | "mkdir";
             /**
              * Byte Limit
              * @default 137438953472

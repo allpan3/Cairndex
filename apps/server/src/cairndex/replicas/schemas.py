@@ -54,6 +54,7 @@ class ReplicaStatus(StrictModel):
     discovery_version: int | None = None
     grouping_version: int | None = None
     source_operations_version: int | None = None
+    source_mkdir: bool = False
     ready: bool
     blocked: str | None
     outbox: int

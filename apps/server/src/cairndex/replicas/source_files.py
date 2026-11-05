@@ -354,7 +354,13 @@ def stage_output(
 
 
 def publish_output(
-    root: Path, operation: str, destination: str, expected: list[Any], stage: str = "output-stage"
+    root: Path,
+    operation: str,
+    destination: str,
+    expected: list[Any],
+    stage: str = "output-stage",
+    *,
+    parent_identity: list[int] | None = None,
 ) -> None:
     """Resume a no-replace publication only from its recorded physical object."""
     if stage not in ("output-stage", "output-stage-0", "output-stage-1"):
@@ -374,6 +380,9 @@ def publish_output(
         parent(root, destination) as (target_parent, name),
     ):
         validate_parent(root, destination, target_parent)
+        info = os.fstat(target_parent)
+        if parent_identity is not None and [info.st_dev, info.st_ino] != parent_identity:
+            raise ReplicaError("Destination parent changed after review; create a new operation")
         relocate(source_parent, stage, target_parent, name)
     if len(expected) == 5 and isinstance(expected[0], str) and expected[0].startswith("smb3-v1:"):
         # Replaced SMB directories can retain an obsolete child listing. Wait

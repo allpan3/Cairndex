@@ -118,3 +118,42 @@ def test_upload_rejects_invalid_identity_before_staging(isolated_client, tmp_pat
     assert set(root.rglob("*")) == before
     with service._handles[identity][0].connection(readonly=True) as db:
         assert db.execute("SELECT count(*) FROM source_uploads").fetchone()[0] == 0
+
+
+def test_new_folder_requires_write_permission_through_application(
+    isolated_client, registry_session, tmp_path
+):
+    identity, _ = create(isolated_client, tmp_path / "library")
+    base = f"/api/v1/libraries/{identity}"
+    intent = {"operation": "new-folder", "action": "mkdir", "destination": "Nested"}
+    assert isolated_client.get(base + "/replica/status").json()["source_mkdir"] is True
+    assert isolated_client.post(base + "/source-operations", json=intent).status_code == 403
+    assert isolated_client.put(base + "/write-mode", json={"enabled": True}).status_code == 200
+    assert isolated_client.post(base + "/source-operations", json=intent).status_code == 202
+    store = service._handles[identity][0]
+
+    def authorize():
+        ensure_portable_write_mode(registry_session, identity)
+
+    run_one(store, tmp_path / "library", authorize)
+    planned = isolated_client.get(base + "/source-operations/new-folder").json()
+    assert planned["state"] == "prepared"
+    assert isolated_client.put(base + "/write-mode", json={"enabled": False}).status_code == 200
+    assert (
+        isolated_client.post(
+            base + "/source-operations/new-folder/accept", json={"receipt": planned["receipt"]}
+        ).status_code
+        == 403
+    )
+    assert not (tmp_path / "library/Nested").exists()
+    assert isolated_client.put(base + "/write-mode", json={"enabled": True}).status_code == 200
+    assert (
+        isolated_client.post(
+            base + "/source-operations/new-folder/accept", json={"receipt": planned["receipt"]}
+        ).status_code
+        == 202
+    )
+    assert isolated_client.put(base + "/write-mode", json={"enabled": False}).status_code == 200
+    registry_session.expire_all()
+    run_one(store, tmp_path / "library", authorize)
+    assert not (tmp_path / "library/Nested").exists()

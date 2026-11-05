@@ -32,7 +32,7 @@ TABLES = {
 
 class SourceRequest(StrictModel):
     operation: Token
-    action: Literal["copy", "rename", "move", "trash", "undo", "restore"]
+    action: Literal["copy", "rename", "move", "trash", "undo", "restore", "mkdir"]
     source: str = Field(default="", max_length=4096)
     destination: str = Field(default="", max_length=4096)
     collision: Literal["fail", "skip", "suffix", "replace"] = "fail"

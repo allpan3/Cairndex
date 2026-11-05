@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Add New Folder to portable File Browser in Write Mode, using journaled
+  no-replace directory publication, exact retry and conditional Undo. Reject
+  occupied names and unsafe paths; preserve files added after creation.
+
 - Restore ranked manual-bundling targets, suggested draft titles/roles and
   related Unbundled files for portable libraries. Recommendations use indexed
   metadata and filenames, including files outside the first page. Apply remains

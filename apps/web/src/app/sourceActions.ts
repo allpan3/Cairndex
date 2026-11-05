@@ -154,3 +154,23 @@ export function trashRowTask(row: TrashRow): NewTask {
     ],
   }
 }
+
+/** Create only a vacant folder; an occupied name is never replaced. */
+export function newFolderTask(folder: string, name: string): NewTask {
+  return {
+    title: `Creating “${name}”`,
+    summary: `Created folder “${name}”.`,
+    finish: { kind: 'none' },
+    items: [
+      {
+        name,
+        size: null,
+        request: {
+          operation: operationId(),
+          action: 'mkdir',
+          destination: joinPath(folder, name),
+        },
+      },
+    ],
+  }
+}

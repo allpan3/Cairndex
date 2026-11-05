@@ -40,6 +40,12 @@ Unrelated later metadata stays intact. Later changes to an affected value, an oc
 restore path, unresolved alternatives or unavailable recovery bytes require review. An
 exact completed retry cannot apply the inverse twice.
 
+New Folder extends the same contract with a `mkdir` action. Its source-only
+receipt retains an empty directory version and creates no catalog entities.
+Publication requires a vacant path and the reviewed parent; Undo requires the
+recorded empty contents. Older readers retain the unknown receipt for review
+and never replay directory creation from received history.
+
 ## Failure model
 
 Several clients of one server share its private operation queue. Independent local

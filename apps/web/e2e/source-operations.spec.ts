@@ -223,3 +223,54 @@ test('library files copy, move, trash and come back as single actions @fullstack
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+test('New Folder creates in the current folder and Undo preserves later files @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(150_000)
+  const { scratch, root } = await fixture('cairndex-source-mkdir-')
+  await mkdir(join(root, 'Parent'))
+  const backend = await startBackend(join(scratch, 'private'), { CAIRNDEX_WORKER_ENABLED: 'true' })
+  try {
+    await proxyApi(page, backend.baseUrl)
+    await createLibrary(page, root, 'Synthetic folders')
+    await page.getByRole('tab', { name: 'Files', exact: true }).click()
+    const files = page.getByRole('grid', { name: 'Files', exact: true })
+    await files.getByRole('row').filter({ hasText: 'Parent' }).dblclick()
+    await page.getByRole('button', { name: 'New Folder', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'New Folder', exact: true })
+    const name = dialog.getByLabel('Folder name')
+    await name.fill('../escape')
+    await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeDisabled()
+    await name.fill('Child')
+    await expect(files.getByRole('row').filter({ hasText: 'Child' })).toHaveCount(0)
+    await name.press('Enter')
+    await expect(dialog).toBeHidden()
+    await expect(page.getByText('Created folder “Child”.')).toBeVisible()
+    await expect(files.getByRole('row').filter({ hasText: 'Child' })).toBeVisible()
+    await page.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(page.getByText('Undone.')).toBeVisible()
+    await expect(files.getByRole('row').filter({ hasText: 'Child' })).toHaveCount(0)
+    await files.click({ button: 'right', position: { x: 20, y: 20 } })
+    await page.getByRole('menuitem', { name: 'New Folder', exact: true }).click()
+    await dialog.getByLabel('Folder name').fill('Kept')
+    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(page.getByText('Created folder “Kept”.')).toBeVisible()
+    await writeFile(join(root, 'Parent', 'Kept', 'later.txt'), 'Synthetic later work')
+    await page.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(
+      page.getByText('Later source bytes differ; Undo will not overwrite them'),
+    ).toBeVisible()
+    expect(await readFile(join(root, 'Parent', 'Kept', 'later.txt'), 'utf8')).toBe(
+      'Synthetic later work',
+    )
+    await page.getByRole('button', { name: 'Manage libraries', exact: true }).click()
+    const manager = page.getByRole('dialog', { name: 'Libraries', exact: true })
+    await manager.getByRole('button', { name: 'Write mode for Synthetic folders' }).click()
+    await manager.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'New Folder', exact: true })).toHaveCount(0)
+  } finally {
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
