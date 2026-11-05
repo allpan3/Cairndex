@@ -1,5 +1,5 @@
 import { useModalDialog } from './useModalDialog'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import {
   useBundleFiles,
@@ -566,13 +566,17 @@ export function NameEditor({
   onSubmit,
   onCancel,
   label,
+  validate,
 }: {
   initial: string
   onSubmit: (name: string) => void
   onCancel: () => void
   label: string
+  validate?: (name: string) => string | null
 }) {
   const [value, setValue] = useState(initial)
+  const error = validate?.(value.trim())
+  const errorId = useId()
   // Guards the blur handler: committing on Enter also blurs, which would
   // otherwise submit the same name twice. A ref as well as state, because the
   // outside-pointerdown path below can fire before the re-render.
@@ -587,7 +591,7 @@ export function NameEditor({
   }, [])
 
   const commit = () => {
-    if (settled.current) return
+    if (settled.current || error) return
     settled.current = true
     onSubmit(value)
   }
@@ -597,28 +601,37 @@ export function NameEditor({
   useCommitOnPointerDownOutside(true, inputRef, commit)
 
   return (
-    <input
-      ref={inputRef}
-      className="edit file-row__rename"
-      value={value}
-      aria-label={label}
-      spellCheck={false}
-      onChange={(event) => setValue(event.target.value)}
-      onClick={(event) => event.stopPropagation()}
-      onDoubleClick={(event) => event.stopPropagation()}
-      onMouseDown={(event) => event.stopPropagation()}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        event.stopPropagation()
-        if (event.key === 'Enter') {
-          event.preventDefault()
-          commit()
-        } else if (event.key === 'Escape') {
-          event.preventDefault()
-          settled.current = true
-          onCancel()
-        }
-      }}
-    />
+    <>
+      <input
+        ref={inputRef}
+        className="edit file-row__rename"
+        value={value}
+        aria-label={label}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
+        spellCheck={false}
+        onChange={(event) => setValue(event.target.value)}
+        onClick={(event) => event.stopPropagation()}
+        onDoubleClick={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          event.stopPropagation()
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            commit()
+          } else if (event.key === 'Escape') {
+            event.preventDefault()
+            settled.current = true
+            onCancel()
+          }
+        }}
+      />
+      {error && (
+        <span id={errorId} role="alert">
+          {error}
+        </span>
+      )}
+    </>
   )
 }
