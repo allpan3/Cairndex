@@ -588,6 +588,8 @@ class CatalogStore(CatalogStorage):
                 or (revision == prior["revision"] and raw != prior["body"])
             ):
                 raise ReplicaError("A newer editor draft is already retained")
+            if prior and revision == prior["revision"]:
+                return
             db.execute(
                 "INSERT OR REPLACE INTO drafts VALUES (?, ?, ?, ?)",
                 (identity, owner, revision, raw),

@@ -95,7 +95,9 @@ export function TrashDialog({
           <h2 id="trash-title">Move {what(paths)} to the Trash?</h2>
         </div>
         <p className="modal__note">
-          You can put {paths.length === 1 ? 'it' : 'them'} back from Trash in the sidebar.
+          This moves {paths.length === 1 ? 'the file' : 'the files'} out of the current folder and
+          removes {paths.length === 1 ? 'it' : 'them'} from any bundle. You can put{' '}
+          {paths.length === 1 ? 'it' : 'them'} back from Trash in the sidebar.
         </p>
         <div className="modal__actions">
           <button type="button" className="btn" onClick={close}>

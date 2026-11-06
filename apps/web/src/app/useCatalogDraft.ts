@@ -109,18 +109,27 @@ export function useCatalogDraft<T extends object>(
   useEffect(() => {
     if (!envelope) return
     let active = true
+    let delivered = false
+    let sending = false
     // Send only the declared API fields; retry disconnected generations until unmounted
-    const deliver = () =>
+    const deliver = () => {
+      if (delivered || sending) return
+      sending = true
       void catalog(library, `/drafts/${owner}/${envelope.id}`, 'PUT', {
         revision: envelope.revision,
         body: envelope.body,
       })
         .then(() => {
+          delivered = true
           if (active) setDeliveryError('')
         })
         .catch((reason: Error) => {
           if (active) setDeliveryError(reason.message)
         })
+        .finally(() => {
+          sending = false
+        })
+    }
     deliver()
     const timer = setInterval(deliver, 4000)
     return () => {

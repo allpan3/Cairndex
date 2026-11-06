@@ -109,7 +109,9 @@ def accept(
 ) -> SourceJob:
     ensure_portable_write_mode(registry, library_id)
     registry.commit()
-    return journal.accept(store, operation, payload.receipt)
+    job = journal.accept(store, operation, payload.receipt)
+    wake()
+    return job
 
 
 @router.post("/{operation}/retry", response_model=SourceJob, status_code=202)
@@ -118,7 +120,9 @@ def retry(
 ) -> SourceJob:
     ensure_portable_write_mode(registry, library_id)
     registry.commit()
-    return journal.retry(store, operation)
+    job = journal.retry(store, operation)
+    wake()
+    return job
 
 
 @router.delete("/{operation}", status_code=204)

@@ -17,7 +17,7 @@ export function SourceTaskProgress({ tasks }: { tasks: SourceTasks }) {
   return (
     <div className="source-tasks" aria-label="File tasks">
       {tasks.tasks
-        .filter((task) => !task.inline)
+        .filter((task) => !task.inline || task.running)
         .map((task) => (
           <TaskRow key={task.id} task={task} tasks={tasks} />
         ))}
@@ -106,7 +106,7 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
         </span>
         <button
           type="button"
-          className="job-progress__cancel"
+          className="btn btn--sm source-task__cancel"
           disabled={task.busy}
           onClick={() => void tasks.dismiss(task.id)}
           title="Cancel remaining items"

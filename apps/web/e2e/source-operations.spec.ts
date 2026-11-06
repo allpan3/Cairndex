@@ -390,3 +390,64 @@ test('New Folder creates in the current folder and Undo preserves later files @f
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+test('long stopped file tasks keep controls visible and share access opens a dialog @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(150_000)
+  const { scratch, root } = await fixture('cairndex-source-layout-')
+  const backend = await startBackend(join(scratch, 'private'), { CAIRNDEX_WORKER_ENABLED: 'true' })
+  try {
+    await proxyApi(page, backend.baseUrl)
+    await createLibrary(page, root, 'Synthetic activity')
+    await page.getByRole('tab', { name: 'Files', exact: true }).click()
+    await page.route('**/source-operations/uploads/*', async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback()
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: { code: 'storage', message: 'Synthetic connection unavailable' },
+        }),
+      })
+    })
+    const name = 'Synthetic'.repeat(24) + '.txt'
+    await drop(page.locator('.catalog-ordinary-layout'), [{ name, text: 'Synthetic bytes' }])
+    await page.getByRole('dialog').getByRole('button', { name: 'Copy', exact: true }).click()
+    const activity = page.locator('.file-activity')
+    const cancel = activity.getByRole('button', { name: /^Cancel / })
+    await expect(cancel).toBeVisible()
+    for (const width of [320, 400]) {
+      await activity.evaluate((node, value) => {
+        ;(node as HTMLElement).style.width = `${value}px`
+      }, width)
+      expect(await activity.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
+      const card = (await activity.boundingBox())!
+      const button = (await cancel.boundingBox())!
+      expect(button.x + button.width).toBeLessThanOrEqual(card.x + card.width)
+    }
+    await page.screenshot({ path: test.info().outputPath('synthetic-long-task.png') })
+    await cancel.click()
+    await expect(activity).toHaveCount(0)
+    await page.route('**/replica/status', async (route) => {
+      const url = new URL(route.request().url())
+      const response = await route.fetch({ url: `${backend.baseUrl}${url.pathname}` })
+      await route.fulfill({
+        response,
+        json: { ...(await response.json()), storage_access: 'authorization' },
+      })
+    })
+    const access = page.getByRole('dialog', { name: 'Network Share Access' })
+    await expect(access).toBeVisible()
+    await expect(access.getByRole('button', { name: 'Allow Access…' })).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath('synthetic-share-access.png') })
+    await page.keyboard.press('Escape')
+    await expect(access).toHaveCount(0)
+    await page.getByRole('button', { name: 'Network Share Access…' }).click()
+    await expect(access).toBeVisible()
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

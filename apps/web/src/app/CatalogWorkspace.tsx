@@ -33,7 +33,7 @@ import { GroupingReviewDialog } from './grouping/GroupingReviewDialog'
 import { ReplicaViewer, type ReplicaOpen } from './viewer/ReplicaViewer'
 import type { PendingDeepLink } from './deepLinkUri'
 import { CatalogViewerInspector } from './CatalogViewerInspector'
-import { StorageAccessNotice } from './StorageAccessNotice'
+import { StorageAccessDialog } from './StorageAccessDialog'
 import { LibraryAccessNotice } from './LibraryAccessNotice'
 import { useCatalogMaintenance } from './useCatalogMaintenance'
 import { usePortableJobNotifications } from '../desktop/usePortableJobNotifications'
@@ -327,7 +327,7 @@ export function CatalogWorkspace({
     state?.blocked ??
     null
   const storageAccess = state?.storage_access && (
-    <StorageAccessNotice
+    <StorageAccessDialog
       access={state.storage_access}
       authorize={() => authorizeLibraryStorage(libraryId)}
       onAuthorized={refresh}

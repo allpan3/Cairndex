@@ -8738,6 +8738,24 @@ button.pick-row:disabled {
 }
 .file-activity .job-progress__label {
   white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1;
+}
+.file-activity {
+  overflow-x: hidden;
+}
+.file-activity .job-progress__row {
+  align-items: flex-start;
+}
+.source-task__cancel {
+  flex: 0 0 auto;
+}
+.source-task p,
+.source-task__question,
+.source-stopped section > span {
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 .source-task__metrics {
   display: flex;
