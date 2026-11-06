@@ -24,7 +24,7 @@ import { CatalogToast, type CatalogNotice } from './CatalogToast'
 import { useCatalogCollections } from './useCatalogCollections'
 import { useNavigationHistory } from './useNavigationHistory'
 import { AddToBundleDialog, CreateBundleDialog } from './ManualBundlingDialogs'
-import { IncomingDialog, type IncomingTarget } from './IncomingDialog'
+import { IncomingDialog, type IncomingTarget, type IncomingDropContext } from './IncomingDialog'
 import { SourceTaskProgress } from './SourceTaskProgress'
 import { useSourceTasks } from './useSourceTasks'
 import { newFolderTask, renameError, renameTask } from './sourceActions'
@@ -144,17 +144,15 @@ export function CatalogOrdinaryBrowser(props: {
     paths: string[]
   } | null>(null)
   const filePicker = useRef<HTMLInputElement>(null)
-  // The Bundle Browser's open collection and the folder its bundles share
-  const dropContext = useRef<{ collection: string | null; folder: string | null }>({
+  // The open bundle takes precedence over its enclosing collection.
+  const dropContext = useRef<IncomingDropContext>({
     collection: null,
     folder: null,
+    bundle: null,
   })
-  const onDropContext = useCallback(
-    (context: { collection: string | null; folder: string | null }) => {
-      dropContext.current = context
-    },
-    [],
-  )
+  const onDropContext = useCallback((context: IncomingDropContext) => {
+    dropContext.current = context
+  }, [])
   // The folder the last files went to, per library, for drops with no better hint
   const [lastFolders, setLastFolders] = usePersistentState<Record<string, string>>(
     'cairndex.incomingFolders',
@@ -372,8 +370,8 @@ export function CatalogOrdinaryBrowser(props: {
         if (paths.length > 0) setAction({ kind, paths })
       }
     : undefined
-  // Where incoming files go follows where they arrived: the open folder, or a
-  // new bundle beside the bundles of the open collection
+  // Incoming files follow the active folder or open bundle; the collection
+  // view creates a new bundle only when no bundle is open.
   const receive = (files: File[]) => {
     const remembered = lastFolders[props.library] ?? ''
     setIncoming({
@@ -382,11 +380,18 @@ export function CatalogOrdinaryBrowser(props: {
         mode === 'file' && fileScope === 'browse'
           ? { kind: 'folder', folder: path }
           : mode === 'collection' && manualBundling
-            ? {
-                kind: 'new-bundle',
-                collection: dropContext.current.collection,
-                folder: dropContext.current.folder ?? remembered,
-              }
+            ? dropContext.current.bundle
+              ? {
+                  kind: 'bundle',
+                  bundle: dropContext.current.bundle.id,
+                  title: dropContext.current.bundle.title,
+                  folder: remembered,
+                }
+              : {
+                  kind: 'new-bundle',
+                  collection: dropContext.current.collection,
+                  folder: dropContext.current.folder ?? remembered,
+                }
             : { kind: 'folder', folder: remembered },
     })
   }

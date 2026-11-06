@@ -134,7 +134,37 @@ test('dropped files become a bundle, join a bundle or land in a folder @fullstac
     expect(await exists(join(root, 'Trips', 'Harbor at dusk.en.srt'))).toBe(false)
     expect(await exists(join(root, 'Trips', 'Harbor at dusk.mp4'))).toBe(true)
 
-    // The File Browser: the open folder; an occupied name waits in the sidebar
+    // Dropping on the open bundle uses that bundle, not the collection behind it.
+    await card.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Open Bundle', exact: true }).click()
+    const album = page.getByRole('list', { name: 'Album items' })
+    await expect(album).toBeVisible()
+    await drop(album, [{ name: 'Harbor notes.txt', text: 'Synthetic production notes' }])
+    await expect(joining).toBeVisible()
+    await expect(joining.getByLabel('Bundle name')).toHaveCount(0)
+    await expect(joining.getByLabel('Add to a collection')).toHaveCount(0)
+    await expect(joining.getByRole('button', { name: 'Trips', exact: true })).toHaveAttribute(
+      'aria-current',
+      'location',
+    )
+    await expect(joining.getByRole('button', { name: 'Copy', exact: true })).toBeEnabled()
+    await page.screenshot({ path: test.info().outputPath('synthetic-open-bundle-drop.png') })
+    await joining.getByRole('button', { name: 'Copy', exact: true }).click()
+    await expect(page.getByText('Added 1 file to “Harbor at dusk”.')).toBeVisible()
+    await expect(album.getByText('Harbor notes.txt', { exact: true })).toBeVisible()
+    expect(await readFile(join(root, 'Trips', 'Harbor notes.txt'), 'utf8')).toBe(
+      'Synthetic production notes',
+    )
+    // Add Files follows the same open-bundle context.
+    await page.getByLabel('Files to copy into the library').setInputFiles({
+      name: 'extra.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Synthetic extra'),
+    })
+    await expect(joining).toBeVisible()
+    await joining.getByRole('button', { name: 'Cancel', exact: true }).click()
+
+    // File Browser takes precedence even while the bundle remains open off-screen.
     await page.getByRole('tab', { name: 'Files', exact: true }).click()
     const files = page.getByRole('grid', { name: 'Files', exact: true })
     await files.getByRole('row').filter({ hasText: 'Trips' }).dblclick()
@@ -154,6 +184,13 @@ test('dropped files become a bundle, join a bundle or land in a folder @fullstac
     await expect(page.getByText('Undone.')).toBeVisible()
     await expect.poll(() => exists(join(root, 'Trips', 'poster (2).jpg'))).toBe(false)
     expect(await exists(join(root, 'Trips', 'poster.jpg'))).toBe(true)
+    await page.getByRole('tab', { name: 'Bundles', exact: true }).click()
+    await expect(album).toBeVisible()
+    await page.getByRole('button', { name: 'Back to library', exact: true }).click()
+    await drop(layout, [{ name: 'Separate.txt', text: 'Synthetic separate bundle' }])
+    const separate = page.getByRole('dialog', { name: 'Add 1 file as a new bundle' })
+    await expect(separate).toBeVisible()
+    await separate.getByRole('button', { name: 'Cancel', exact: true }).click()
     await page.screenshot({ path: '/tmp/cairndex-source-operations-synthetic.png' })
   } catch (error) {
     console.error(await page.locator('body').innerText())
