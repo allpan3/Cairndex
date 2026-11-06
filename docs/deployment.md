@@ -688,8 +688,9 @@ intent for an explicit retry; background recovery does not prompt.
 The signed backend supports `cairndex-sidecar authorize-smb <mounted-directory>`
 for explicit saved-login authorization. The command permits one prompt, waits up
 to two minutes for an answer, and verifies signed, encrypted SMB3. It starts no
-HTTP server and changes no library files. The app offers the same request: when
-conversion or metadata exchange stops because the server may not read the
+HTTP server and changes no library files. Enabling Write Mode makes this request before reporting that writing is enabled,
+and reuses the verified session for later operations. The app also offers the
+same request when conversion or metadata exchange stops because the server may not read the
 share's saved login, the conversion review and the library's status show
 **Allow Access…**. A missing login instead asks the owner to save one in Finder. Use the actual sidecar executable that will serve the library.
 Its lookup uses the mounted share name as the Keychain path, without an added

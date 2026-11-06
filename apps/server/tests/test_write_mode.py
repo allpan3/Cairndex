@@ -93,3 +93,62 @@ def test_existing_registries_gain_the_write_mode_column(tmp_path: Path) -> None:
         assert not stored
     finally:
         reopened.dispose()
+
+
+@pytest.mark.parametrize("mounted", [True, False])
+def test_enabling_prepares_storage_before_permission_is_visible(
+    isolated_client, tmp_path, monkeypatch, registry_session_factory, mounted
+):
+    from cairndex.file_ops import smb_transport
+
+    root = tmp_path / "library"
+    identity, _ = create(isolated_client, root)
+    calls = []
+    monkeypatch.setattr(smb_transport, "mount_for", lambda path: object() if mounted else None)
+
+    def authorize(path):
+        assert path == root
+        with registry_session_factory() as registry:
+            assert not registry.get(RegisteredLibrary, identity).write_mode_enabled
+        calls.append(path)
+
+    monkeypatch.setattr(smb_transport, "authorize", authorize)
+    base = f"/api/v1/libraries/{identity}/write-mode"
+    assert isolated_client.put(base, json={"enabled": True}).status_code == 200
+    assert calls == ([root] if mounted else [])
+    assert isolated_client.put(base, json={"enabled": False}).status_code == 200
+    assert calls == ([root] if mounted else [])
+
+
+def test_denied_storage_access_does_not_enable_write_mode(isolated_client, tmp_path, monkeypatch):
+    from cairndex.file_ops import smb_transport
+
+    identity, _ = create(isolated_client, tmp_path / "library")
+    monkeypatch.setattr(smb_transport, "mount_for", lambda path: object())
+
+    def denied(path):
+        raise smb_transport.KeychainError(13, "Synthetic denial")
+
+    monkeypatch.setattr(smb_transport, "authorize", denied)
+    base = f"/api/v1/libraries/{identity}/write-mode"
+    response = isolated_client.put(base, json={"enabled": True})
+    assert response.status_code == 409
+    assert not isolated_client.get(base).json()["enabled"]
+
+
+def test_readonly_deployment_never_requests_storage_access(isolated_client, tmp_path, monkeypatch):
+    from cairndex.replicas import service
+
+    identity, _ = create(isolated_client, tmp_path / "library")
+    calls = []
+    monkeypatch.setattr(service, "prepare_write_access", lambda *args: calls.append(args))
+    monkeypatch.setenv("CAIRNDEX_WRITE_MODE", "disabled")
+    get_settings.cache_clear()
+    try:
+        response = isolated_client.put(
+            f"/api/v1/libraries/{identity}/write-mode", json={"enabled": True}
+        )
+        assert response.status_code == 403
+        assert calls == []
+    finally:
+        get_settings.cache_clear()
