@@ -1,10 +1,15 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { fetchWriteMode } from '../api/client'
+import { replicaRequest } from '../api/replicas'
 import { IncomingDialog, type IncomingTarget } from './IncomingDialog'
 import type { CatalogCollection } from './useCatalogCollections'
 
+vi.mock('../api/replicas', async (original) => ({
+  ...(await original<typeof import('../api/replicas')>()),
+  replicaRequest: vi.fn(),
+}))
 vi.mock('../api/catalog', () => ({ catalog: vi.fn(), operationId: () => 'synthetic' }))
 vi.mock('../api/client', async (original) => ({
   ...(await original<typeof import('../api/client')>()),
@@ -45,7 +50,10 @@ function open(target: IncomingTarget) {
   return { onStart, onManage }
 }
 
-beforeEach(() => vi.mocked(fetchWriteMode).mockReset().mockResolvedValue(enabled))
+beforeEach(() => {
+  vi.mocked(fetchWriteMode).mockReset().mockResolvedValue(enabled)
+  vi.mocked(replicaRequest).mockReset().mockResolvedValue({ items: [] })
+})
 afterEach(cleanup)
 
 test('a Bundle Browser drop names the bundle and keeps the open collection', async () => {
@@ -92,4 +100,81 @@ test('with write mode off the next step is Libraries, not a disabled Copy', asyn
   expect(onManage).toHaveBeenCalled()
   expect(onStart).not.toHaveBeenCalled()
   expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
+})
+
+test.each([
+  { items: [{ file: { relative_path: 'Trips/movie.mp4' } }], folder: 'Trips' },
+  { items: [{ file: { relative_path: 'movie.mp4' } }], folder: '' },
+  { items: [{ directory: { directory_path: 'Trips/Scenes' } }], folder: 'Trips/Scenes' },
+  { items: [], folder: 'Remembered' },
+])(
+  'bundle copies suggest an ordered member folder or the empty-bundle fallback: $folder',
+  async ({ items, folder }) => {
+    vi.mocked(replicaRequest).mockResolvedValue({ items })
+    const { onStart } = open({
+      kind: 'bundle',
+      bundle: 'b1',
+      title: 'Lighthouse',
+      folder: 'Remembered',
+    })
+    expect(screen.queryByLabelText('Bundle name')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Add to a collection')).not.toBeInTheDocument()
+    const copy = screen.getByRole('button', { name: 'Copy' })
+    await vi.waitFor(() => expect(copy).toBeEnabled())
+    fireEvent.click(copy)
+    expect(onStart.mock.calls[0]![1]).toBe(folder)
+    expect(onStart.mock.calls[0]![0].finish).toEqual({
+      kind: 'add-to-bundle',
+      bundle: 'b1',
+      title: 'Lighthouse',
+    })
+    expect(replicaRequest).toHaveBeenCalledWith(
+      'synthetic',
+      '/media/bundles/b1/album?offset=0&limit=1',
+      'GET',
+      undefined,
+      expect.any(AbortSignal),
+    )
+  },
+)
+
+test('a late folder suggestion does not replace a manual destination', async () => {
+  let resolve!: (page: unknown) => void
+  vi.mocked(replicaRequest).mockImplementation(
+    () =>
+      new Promise((done) => {
+        resolve = done
+      }),
+  )
+  const { onStart } = open({
+    kind: 'bundle',
+    bundle: 'b1',
+    title: 'Lighthouse',
+    folder: 'Remembered',
+  })
+  await screen.findByText('Finding a destination folder…')
+  const copy = screen.getByRole('button', { name: 'Copy' })
+  expect(copy).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }))
+  await act(async () => resolve({ items: [{ file: { relative_path: 'Trips/movie.mp4' } }] }))
+  await vi.waitFor(() => expect(copy).toBeEnabled())
+  fireEvent.click(copy)
+  expect(onStart.mock.calls[0]![1]).toBe('')
+})
+
+test('a failed suggestion requires a chosen folder but preserves the target bundle', async () => {
+  vi.mocked(replicaRequest).mockRejectedValue(new Error('Unavailable'))
+  const { onStart } = open({
+    kind: 'bundle',
+    bundle: 'b1',
+    title: 'Lighthouse',
+    folder: 'Remembered',
+  })
+  await screen.findByText('The folder suggestion is unavailable. Choose a destination folder.')
+  const copy = screen.getByRole('button', { name: 'Copy' })
+  expect(copy).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }))
+  await vi.waitFor(() => expect(copy).toBeEnabled())
+  fireEvent.click(copy)
+  expect(onStart.mock.calls[0]![0].finish.bundle).toBe('b1')
 })
