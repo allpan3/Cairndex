@@ -1,5 +1,5 @@
 // Complete structural choices and historical recovery retain every rejected alternative
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCatalogDraft } from './useCatalogDraft'
 import { useQuery } from '@tanstack/react-query'
 import { catalog, displayCell, type Entity, type Field } from '../api/catalog'
@@ -57,8 +57,13 @@ export function CatalogReview({
   })
   const selected = (field: Field) =>
     choices[field.unit] ?? (field.candidates.length === 1 ? (field.value ?? undefined) : undefined)
+  // The review renders below the editor's fields; bring it to the owner who opened it
+  const root = useRef<HTMLElement>(null)
+  useEffect(() => {
+    root.current?.scrollIntoView?.({ block: 'start' })
+  }, [])
   return (
-    <section aria-label="Complete conflict review">
+    <section ref={root} aria-label="Complete conflict review">
       <h3>Review affected metadata</h3>
       {draft.error && <p role="alert">{draft.error}</p>}
       {draft.copies.map((copy) => (

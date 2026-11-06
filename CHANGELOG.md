@@ -298,6 +298,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Review Conflicts in the bundle, viewer and multi-bundle inspectors now opens a
+  compact dialog over the browser instead of switching to Metadata review. It
+  shows title, rating, notes, cover and main-file versions as readable values
+  and commits the chosen versions with the existing causal `choose` preview and
+  the exact bases that were displayed. File, order, existence and cross-object
+  conflicts link to Metadata review with that object's complete review open.
+
 - Name new File Browser folders inline with **Untitled** selected, replacing
   the popup. Enter or clicking outside confirms; Escape cancels.
 
@@ -430,6 +437,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Restore Rename and Move to Trash inside bundle albums, including filename
+  editing in the file inspector and keyboard actions. Add per-file Locate in
+  File Browser and shorten the media menu action to Open.
+- Retain acknowledged metadata across inspector remounts, preventing stale
+  cached notes and same-client conflicts. Apply explicit conflict choices to
+  the covered local drafts without replacing unrelated input.
 
 - Restore automatic saving for bundle title, notes, rating and cover. Remove
   ordinary inspector Save/Discard/recovery controls while retaining interrupted

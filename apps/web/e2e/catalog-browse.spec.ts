@@ -156,21 +156,37 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
       ),
     ).toEqual(expect.arrayContaining(['Amber conflict', 'Blue conflict']))
     await expect(
-      inspector.getByText('Competing metadata requires review.', { exact: true }),
+      inspector.getByText('This bundle has conflicting edits.', { exact: true }),
     ).toBeVisible()
+    // The review opens over the browser for this bundle, with readable versions only
     await inspector.getByRole('button', { name: 'Review Conflicts', exact: true }).click()
-    await a.getByRole('button', { name: 'Review Title', exact: true }).click()
-    const review = a.getByRole('region', { name: 'Complete conflict review', exact: true })
+    const review = a.getByRole('dialog', { name: 'Conflicting Edits', exact: true })
+    const versions = review.getByRole('group', { name: 'Title', exact: true })
+    await expect(versions.getByRole('radio')).toHaveCount(2)
+    await expect(versions.getByRole('radio').first()).toBeFocused()
+    await expect(review).not.toContainText('asset_bundles')
+    await expect(review).not.toContainText('"')
+    const box = await review.boundingBox()
+    expect(box!.width).toBeLessThanOrEqual(560)
+    await a.screenshot({ path: test.info().outputPath('conflict-review.png') })
     await review.getByRole('radio', { name: /Amber conflict/ }).check()
-    await review.getByRole('button', { name: 'Prepare choice', exact: true }).click()
-    await a.getByRole('button', { name: 'Apply reviewed operation', exact: true }).click()
+    await review.getByRole('button', { name: 'Keep Selected', exact: true }).click()
+    await expect(review).toHaveCount(0)
     await expect.poll(async () => (await entity()).has_conflicts).toBe(false)
     expect(JSON.parse(JSON.parse((await entity()).fields.notes.value))).toEqual([
       'First note',
       'Second note',
     ])
-    await a.getByRole('button', { name: 'Bundle Browser', exact: true }).click()
-    await openBundle(a, 'Amber conflict')
+    await expect(inspector.getByRole('alert')).toHaveCount(0)
+    await expect(inspector.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
+      'Amber conflict',
+    )
+    await inspector.getByRole('textbox', { name: 'Title', exact: true }).fill('After resolution')
+    await expect
+      .poll(async () => JSON.parse((await entity()).fields.title.value))
+      .toBe('After resolution')
+    await expect.poll(async () => (await entity()).has_conflicts).toBe(false)
+    await openBundle(a, 'After resolution')
     const listing = a.getByRole('listbox', { name: 'Bundles' })
     await expect(listing).toHaveAttribute('aria-multiselectable', 'true')
     // After keyboard use the active card carries the ring; the grid itself is not framed
@@ -309,7 +325,7 @@ test('catalog saves retain retry identity across switching and same-server clien
     expect(result.has_conflicts).toBe(true)
     expect(result.fields.title.candidates).toHaveLength(2)
     await expect(
-      panel.getByText('Competing metadata requires review.', { exact: true }),
+      panel.getByText('This bundle has conflicting edits.', { exact: true }),
     ).toBeVisible()
   } finally {
     await Promise.all(contexts.map((context) => context.close()))

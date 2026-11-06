@@ -1,3 +1,5 @@
+import { NameEditor } from './FileWriteDialogs'
+import { leaf, renameError } from './sourceActions'
 import { ContextMenu } from './ContextMenu'
 import { useContextMenu } from './useContextMenu'
 import { hostFileMenuEntries } from './hostActions'
@@ -20,19 +22,27 @@ import { useCatalogHistory } from './useCatalogHistory'
 
 type Page = components['schemas']['CatalogAlbumPage']
 type Item = Page['items'][number]
+type FileActions = {
+  onLocateFile?: (path: string) => void
+  onOpenDirectory?: (path: string) => void
+  onRename?: (path: string, name: string) => void | Promise<void>
+  onSourceAction?: (action: 'copy' | 'move' | 'trash', paths: string[]) => void
+}
 
-export function CatalogBundleAlbum(props: {
-  library: string
-  bundle: string
-  layout: LayoutMode
-  zoom: number
-  onBack: () => void
-  onOpen: (file: string) => void
-  onSelectFile: (file: string | null) => void
-  hostFiles?: LibraryHostFiles
-  /** A located file to select, at the top level or in the folder member holding it */
-  initialFile?: LocatedFile | null
-}) {
+export function CatalogBundleAlbum(
+  props: FileActions & {
+    library: string
+    bundle: string
+    layout: LayoutMode
+    zoom: number
+    onBack: () => void
+    onOpen: (file: string) => void
+    onSelectFile: (file: string | null) => void
+    hostFiles?: LibraryHostFiles
+    /** A located file to select, at the top level or in the folder member holding it */
+    initialFile?: LocatedFile | null
+  },
+) {
   const [directory, setDirectory] = useState<string | null>(null)
   // The folder opened first carries the located file; leaving it ends the search
   const [locating, setLocating] = useState(props.initialFile ?? null)
@@ -84,7 +94,11 @@ function AlbumPage({
   activeView = true,
   hostFiles,
   initialFile = null,
-}: {
+  onLocateFile,
+  onOpenDirectory,
+  onRename,
+  onSourceAction,
+}: FileActions & {
   library: string
   bundle: string
   directory: string | null
@@ -124,6 +138,8 @@ function AlbumPage({
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const [notice, setNotice] = useState('')
+  const [renaming, setRenaming] = useState<string | null>(null)
+  if (!onRename && renaming) setRenaming(null)
   const menu = useContextMenu()
   const exportsEnabled = useReplicaStatus(library).data?.export_version === 1
   const sheet = useLocalContactSheet(library, setNotice)
@@ -192,6 +208,48 @@ function AlbumPage({
     } else if (item.file && ['image', 'video'].includes(item.file.media_kind)) onOpen(item.id)
     else setNotice('This file has no media preview.')
   }
+  const pathOf = (item: Item) => item.file?.relative_path ?? item.directory?.directory_path
+  function menuEntries(item: Item) {
+    const path = pathOf(item)
+    const targets = selected.has(item.id)
+      ? items.filter((member) => selected.has(member.id))
+      : [item]
+    const paths = targets.flatMap((member) => (pathOf(member) ? [pathOf(member)!] : []))
+    return [
+      {
+        label: 'Open',
+        onClick: () => open(item),
+        disabled:
+          !item.directory && (!item.file || !['image', 'video'].includes(item.file.media_kind)),
+      },
+      ...(path && (item.directory ? onOpenDirectory : onLocateFile)
+        ? [
+            {
+              label: 'Locate in File Browser',
+              onClick: () => (item.directory ? onOpenDirectory?.(path) : onLocateFile?.(path)),
+            },
+          ]
+        : []),
+      ...(item.file && hostFiles
+        ? hostFileMenuEntries(hostFiles.labels, hostFiles, item.file.relative_path)
+        : []),
+      ...(onRename && item.file
+        ? [null, { label: 'Rename…', onClick: () => setRenaming(item.id) }]
+        : []),
+      ...(onSourceAction && paths.length
+        ? [null, { label: 'Move to Trash', onClick: () => onSourceAction('trash', paths) }]
+        : []),
+      ...(exportsEnabled && item.file?.media_kind === 'video'
+        ? [
+            null,
+            {
+              label: 'Save Contact Sheet…',
+              onClick: () => sheet.open(item.file!.id),
+            },
+          ]
+        : []),
+    ]
+  }
   const { marqueeRect, onMouseDown } = useMarqueeSelect({
     getScrollEl: () => scrollRef.current,
     getWrapperEl: () => gridRef.current,
@@ -248,6 +306,7 @@ function AlbumPage({
         onKeyDown={(event) => {
           if (
             event.defaultPrevented ||
+            (event.target instanceof Element && event.target.closest('input, textarea')) ||
             document.querySelector('[aria-modal="true"], [role="menu"]')
           )
             return
@@ -255,6 +314,25 @@ function AlbumPage({
             event.preventDefault()
             setSelected(new Set(items.map((item) => item.id)))
             setNotice('Selected loaded album items. Load more items to extend the selection.')
+            return
+          }
+          if (event.key === 'F2' && sole?.file && onRename) {
+            event.preventDefault()
+            setRenaming(sole.id)
+            return
+          }
+          if (
+            (event.key === 'Delete' || (event.key === 'Backspace' && event.metaKey)) &&
+            onSourceAction &&
+            selected.size
+          ) {
+            event.preventDefault()
+            onSourceAction(
+              'trash',
+              items
+                .filter((item) => selected.has(item.id))
+                .flatMap((item) => (pathOf(item) ? [pathOf(item)!] : [])),
+            )
             return
           }
           if (event.key === 'Escape') {
@@ -319,34 +397,33 @@ function AlbumPage({
                 onOpen: () => open(item),
                 onContextMenu: (event: React.MouseEvent) => {
                   event.preventDefault()
-                  select(item.id, event)
-                  menu.open(event, [
-                    {
-                      label: 'Open in Cairndex',
-                      onClick: () => open(item),
-                      disabled: !item.file || !['image', 'video'].includes(item.file.media_kind),
-                    },
-                    ...(item.file && hostFiles
-                      ? hostFileMenuEntries(hostFiles.labels, hostFiles, item.file.relative_path)
-                      : []),
-                    ...(exportsEnabled && item.file?.media_kind === 'video'
-                      ? [
-                          null,
-                          {
-                            label: 'Save Contact Sheet…',
-                            onClick: () => sheet.open(item.file!.id),
-                          },
-                        ]
-                      : []),
-                  ])
+                  if (!selected.has(item.id))
+                    select(item.id, { shiftKey: false, metaKey: false, ctrlKey: false })
+                  menu.open(event, menuEntries(item))
                 },
-                dragProps: fileDragProps(item.file ? hostFiles?.onStartFileDrag : undefined, () =>
-                  (selected.has(item.id)
-                    ? items.filter((member) => selected.has(member.id))
-                    : [item]
-                  ).flatMap((member) => (member.file ? [member.file.relative_path] : [])),
+                dragProps: fileDragProps(
+                  item.file && renaming !== item.id ? hostFiles?.onStartFileDrag : undefined,
+                  () =>
+                    (selected.has(item.id)
+                      ? items.filter((member) => selected.has(member.id))
+                      : [item]
+                    ).flatMap((member) => (member.file ? [member.file.relative_path] : [])),
                 ),
                 catalog: true,
+                nameEditor:
+                  item.file && renaming === item.id && onRename ? (
+                    <NameEditor
+                      key={item.file.relative_path}
+                      initial={leaf(item.file.relative_path)}
+                      label={`Rename ${leaf(item.file.relative_path)}`}
+                      validate={renameError}
+                      onSubmit={async (name) => {
+                        await onRename(item.file!.relative_path, name)
+                        setRenaming(null)
+                      }}
+                      onCancel={() => setRenaming(null)}
+                    />
+                  ) : undefined,
               }
               if (item.file)
                 return layout === 'list' ? (
@@ -362,6 +439,12 @@ function AlbumPage({
                       : `album-tile${selected.has(item.id) ? ' album-tile--selected' : ''}`
                   }
                   data-file-id={item.id}
+                  onContextMenu={(event) => {
+                    event.preventDefault()
+                    if (!selected.has(item.id))
+                      select(item.id, { shiftKey: false, metaKey: false, ctrlKey: false })
+                    menu.open(event, menuEntries(item))
+                  }}
                   aria-pressed={selected.has(item.id)}
                   onClick={(event) => select(item.id, event)}
                   onDoubleClick={() => open(item)}

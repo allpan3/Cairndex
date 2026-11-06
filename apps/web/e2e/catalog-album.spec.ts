@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, rename, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -285,6 +285,117 @@ test('album rejects changed pages and ignores a late response after navigation @
     } finally {
       await stopBackend(backend.child)
     }
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
+
+test('album file actions use live Write Mode and preserve file identity @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(150_000)
+  const scratch = await mkdtemp(join(tmpdir(), 'cairndex-album-actions-'))
+  const root = execFileSync(
+    'uv',
+    [
+      'run',
+      'python',
+      '-c',
+      'from pathlib import Path; import sys,shutil; from cairndex.devtools.album_fixture import prepare_album; from cairndex.replicas.catalog.conversion import prepare_disposable; f=prepare_album(parent=Path(sys.argv[1])); p=prepare_disposable(f,format_version=3).package; [shutil.copytree(f.source/n,p/n) for n in ("Loose","Gallery","Gallery2")]; print(p)',
+      scratch,
+    ],
+    { cwd: fileURLToPath(new URL('../../server/', import.meta.url)) },
+  )
+    .toString()
+    .trim()
+  const backend = await startBackend(join(scratch, 'private'), { CAIRNDEX_WORKER_ENABLED: 'true' })
+  const original = await readFile(join(root, 'Loose/frame000.png'))
+  try {
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/register', {
+      root_path: root,
+    })
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    const card = page.locator('[data-bundle-id="bundle-000001"]')
+    await openAlbum(page, card)
+    const listing = page.getByRole('list', { name: 'Album items' })
+    const picture = listing.locator('[data-file-id="loose-000"]')
+    await picture.click({ button: 'right' })
+    await expect(page.getByRole('menuitem', { name: 'Open', exact: true })).toBeEnabled()
+    await expect(page.getByRole('menuitem', { name: 'Open in Cairndex', exact: true })).toHaveCount(
+      0,
+    )
+    await expect(page.getByRole('menuitem', { name: 'Rename…', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: 'Move to Trash', exact: true })).toHaveCount(0)
+    await page.getByRole('menuitem', { name: 'Locate in File Browser', exact: true }).click()
+    await expect(page.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(page.getByRole('row').filter({ hasText: 'frame000.png' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await page.getByRole('button', { name: 'Manage libraries', exact: true }).click()
+    const manager = page.getByRole('dialog', { name: 'Libraries', exact: true })
+    const toggle = manager.getByRole('button', { name: /^Write mode for/ })
+    await toggle.click()
+    await manager.getByRole('button', { name: 'Turn on', exact: true }).click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await manager.getByRole('button', { name: 'Close', exact: true }).click()
+    await page.getByRole('tab', { name: 'Bundles', exact: true }).click()
+    await picture.click()
+    const inspector = page.getByRole('complementary', { name: 'File inspector', exact: true })
+    await inspector.locator('.inspector__title').dblclick()
+    const renameInput = inspector.getByRole('textbox', { name: 'Rename frame000.png' })
+    await renameInput.fill('renamed.png')
+    await renameInput.press('Enter')
+    await expect(inspector.locator('.inspector__title')).toHaveText('renamed.png', {
+      timeout: 30_000,
+    })
+    expect(await readFile(join(root, 'Loose/renamed.png'))).toEqual(original)
+    await picture.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Rename…', exact: true }).click()
+    const inline = picture.getByRole('textbox', { name: 'Rename renamed.png' })
+    await inline.dblclick()
+    await expect(page.locator('.media-viewer')).toHaveCount(0)
+    await inline.fill('frame000.png')
+    await inline.press('Enter')
+    await expect(inline).toHaveCount(0)
+    expect(await readFile(join(root, 'Loose/frame000.png'))).toEqual(original)
+    await picture.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Move to Trash', exact: true }).click()
+    const trash = page.getByRole('dialog', { name: /Move .* to the Trash/ })
+    await trash.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+    await expect
+      .poll(
+        () =>
+          readFile(join(root, 'Loose/frame000.png')).then(
+            () => true,
+            () => false,
+          ),
+        { timeout: 30_000 },
+      )
+      .toBe(false)
+    await page.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect
+      .poll(
+        () =>
+          readFile(join(root, 'Loose/frame000.png')).then(
+            () => true,
+            () => false,
+          ),
+        { timeout: 30_000 },
+      )
+      .toBe(true)
+    expect(await readFile(join(root, 'Loose/frame000.png'))).toEqual(original)
+    const file = await (
+      await fetch(`${backend.baseUrl}/api/v1/libraries/${library.id}/replica/media/files/loose-000`)
+    ).json()
+    expect(file.file.id).toBe('loose-000')
+    expect(file.file.relative_path).toBe('Loose/frame000.png')
+    await page.screenshot({ path: test.info().outputPath('synthetic-album-actions.png') })
+  } finally {
+    await stopBackend(backend.child)
     await rm(scratch, { recursive: true, force: true })
   }
 })

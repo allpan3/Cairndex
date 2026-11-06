@@ -300,8 +300,23 @@ cover. Changes save automatically while their exact inputs and observed bases
 remain recoverable across reload and response loss. An already observed conflict
 requires explicit review; autosave cannot choose between competing values. Older
 alternate private drafts remain stored without being applied over current edits.
+Acknowledged values and bases survive inspector remounts while catalog queries
+catch up, so a following edit does not conflict with this client’s own save.
+An explicit conflict choice replaces only the covered field drafts and advances
+their acknowledged bases; unrelated input remains intact.
 These controls require `inspector_version: 1`; older servers retain scalar editing
 and Metadata review without calls to unsupported inspector routes.
+**Review Conflicts** in the bundle, viewer and multi-bundle inspectors opens a
+dialog over the browser for those bundles. It reads each held field's complete
+structural scope once and shows title, rating, notes, cover and main-file
+versions as the inspector shows them, never as stored JSON. **Keep Selected**
+queues the existing `choose` preview with every scope unit and exactly the bases
+that were displayed, then commits its receipt as `commit_<job>`. A lost reply
+retries the same operation; a stale choice reloads the versions and
+uses a new one. A scope that includes `$alive`, `$members`, another object or any
+other field is summarized instead: **Open Full Review…** opens Metadata review on
+that object with its complete conflict review open, where composition and
+explicit recovery remain. Rejected versions stay in history.
 Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
 local derivatives in the private cache; missing artwork leaves metadata usable.
 File pages retain catalog order. Selecting one file checks its local bytes and
@@ -427,6 +442,16 @@ arrows, Home/End and Enter. Command/Ctrl+A selects loaded album items only.
 Escape clears selection, then returns to the parent view. Bundle metadata drafts
 remain separate from file selection. Bulk bundle controls belong to the Bundle
 Browser, not the file selection inside an album.
+
+Album file menus use **Open** and **Locate in File Browser**. With effective
+Write Mode, **Rename…** edits the filename inline and **Move to Trash** uses the
+same journaled confirmation and Undo as File Browser. F2 starts file renaming;
+Delete (or Cmd-Backspace) requests Trash for the selection. Double-clicking the
+selected file inspector’s filename also renames it. Disabling Write Mode removes
+these write actions immediately. Album folder members can be located or trashed
+through their real library-relative directory path. Removing membership remains
+a separate metadata operation. A bundle has no single physical root; its existing
+**Locate in File Browser** menu locates the first ordered file.
 
 The album endpoint accepts stable bundle and optional directory-member IDs, with
 at most 100 items per page. The interface requests 50. Loose files and directory

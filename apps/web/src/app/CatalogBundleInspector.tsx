@@ -16,6 +16,7 @@ import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFiles } from './CatalogBundleFiles'
 import { moveTo } from './reorder'
 import { AddFilesToBundleDialog } from './ManualBundlingDialogs'
+import { CatalogConflictDialog } from './CatalogConflictDialog'
 
 // The normal inspector controls use causal requests, never legacy metadata mutations.
 export function CatalogBundleInspector({
@@ -26,6 +27,7 @@ export function CatalogBundleInspector({
   blocked,
   refresh,
   onReview,
+  onReviewConflict,
   onOpen,
   hostFiles,
   onSelectHostFile,
@@ -36,6 +38,7 @@ export function CatalogBundleInspector({
   onOpenCollection,
   onFilterTag,
   onLocateFile,
+  onRenameFile,
   onOpenDirectory,
 }: {
   hostFiles?: LibraryHostFiles
@@ -47,6 +50,8 @@ export function CatalogBundleInspector({
   blocked: boolean
   refresh: () => void
   onReview: () => void
+  /** Open Metadata Review on one structural conflict; falls back to `onReview`. */
+  onReviewConflict?: (unit: string) => void
   /** Open the bundle in the viewer; absent inside the viewer itself. */
   onOpen?: () => void
   onOpenFile: (file: string) => void
@@ -63,11 +68,13 @@ export function CatalogBundleInspector({
   onOpenCollection?: (id: string) => void
   onFilterTag?: (id: string) => void
   onLocateFile?: (path: string) => void
+  onRenameFile?: (path: string, name: string) => void | Promise<void>
   onOpenDirectory?: (path: string) => void
 }) {
   const status = useReplicaStatus(library).data
   const draft = useCatalogBundleDraft(library, entity, editor, refresh, blocked)
   const [addingFiles, setAddingFiles] = useState(false)
+  const [reviewing, setReviewing] = useState(false)
   const [actionMessage, setActionMessage] = useState('')
   const canAddFiles =
     inspectorEnabled &&
@@ -142,6 +149,8 @@ export function CatalogBundleInspector({
           key={albumFile}
           library={library}
           file={albumFile}
+          onRename={onRenameFile}
+          onLocatePath={onLocateFile}
           hostFiles={hostFiles}
         />
       </aside>
@@ -182,11 +191,29 @@ export function CatalogBundleInspector({
       {actionMessage && <p role="status">{actionMessage}</p>}
       {entity.has_conflicts && (
         <p className="catalog-inspector-conflict" role="alert">
-          <span>Competing metadata requires review.</span>{' '}
-          <button className="btn btn--sm" onClick={onReview}>
+          <span>This bundle has conflicting edits.</span>{' '}
+          <button className="btn btn--sm" onClick={() => setReviewing(true)}>
             Review Conflicts
           </button>
         </p>
+      )}
+      {reviewing && (
+        <CatalogConflictDialog
+          library={library}
+          bundles={[entity.id]}
+          blocked={blocked || draft.busy || Boolean(draft.draft.pending)}
+          onClose={() => setReviewing(false)}
+          onResolved={(values, observed, event) => {
+            draft.acceptResolution(values, observed, event)
+            refresh()
+            window.dispatchEvent(new Event('cairndex:metadata-saved'))
+          }}
+          onAdvanced={(unit) => {
+            setReviewing(false)
+            if (onReviewConflict) onReviewConflict(unit)
+            else onReview()
+          }}
+        />
       )}
       <BundleTitleEditor
         value={title ?? ''}

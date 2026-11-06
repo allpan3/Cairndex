@@ -210,10 +210,17 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
-- Restore Rename, Trash and Locate actions inside open bundles and shorten the
-  media action to Open. Investigate same-client note conflicts across navigation.
-  A contextual conflict-review redesign is committed separately but unverified;
-  integrate and qualify it before a later test installation.
+- Album Rename, Trash and Locate actions, the Open label, and contextual
+  conflict review passed frontend qualification and await packaging/install. A
+  regression reproduced stale notes after an inspector remount; the correction
+  retains the save acknowledgement and advances later edits from that receipt.
+  Explicit conflict choices replace only their covered local drafts. macOS passed
+  1,471 units and the full frontend gate. Nineteen of twenty broader browser
+  cases passed initially; the full-review effect returned a browser Promise and
+  crashed React cleanup. After correction, that case and both affected album/
+  conflict cases passed on final source. Synthetic screenshots were inspected.
+  Backend, Rust, Linux and frozen-integration evidence is retained for unchanged
+  source areas; no API, schema or dependency changed. Install after package checks.
 
 - The owner approved correcting the two verified privacy false positives: a
   generic temporary-directory prefix in the local profile and a literal inside

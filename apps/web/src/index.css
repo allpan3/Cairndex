@@ -7891,6 +7891,131 @@ code {
   opacity: 0.6;
 }
 
+/* A bundle's competing edits: compact, above the viewer like the edit review,
+   with only the list of versions scrolling so the actions stay in reach. */
+.conflict-review {
+  z-index: 10020;
+}
+.modal.conflict-review__dialog {
+  width: min(560px, 92vw);
+  max-height: min(680px, 85vh);
+  overflow: hidden;
+}
+.conflict-review__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.conflict-review__group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.conflict-review__bundle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+.conflict-review__field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.conflict-review__field legend {
+  padding: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.conflict-review__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.conflict-review__option:hover {
+  border-color: var(--border-strong);
+}
+.conflict-review__option.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.conflict-review__option:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.conflict-review__option input {
+  margin: 2px 0 0;
+  flex: none;
+}
+.conflict-review__value {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.conflict-review__tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.conflict-review__empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.conflict-review__stars {
+  color: var(--star);
+}
+.conflict-review__notes {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 140px;
+  overflow: auto;
+}
+.conflict-review__notes li + li {
+  margin-top: 4px;
+}
+.conflict-review__thumb {
+  display: block;
+  width: 120px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--bg);
+}
+.conflict-review__structural {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.conflict-review__structural p {
+  margin: 0;
+}
+
 /* Technical details stay available without pushing file actions below long paths */
 .file-meta__row dt {
   flex-shrink: 0;

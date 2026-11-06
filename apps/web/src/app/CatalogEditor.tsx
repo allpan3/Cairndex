@@ -90,12 +90,17 @@ export function CatalogEditor({
   editor,
   blocked,
   refresh,
+  initialReview = null,
+  onReviewClosed,
 }: {
   library: string
   entity: Entity
   editor: string
   blocked: boolean
   refresh: () => void
+  /** A held unit to open its complete conflict review for on mount. */
+  initialReview?: string | null
+  onReviewClosed?: () => void
 }) {
   const owner = `${entity.family}/${entity.id}`
   const key = draftKey(library, owner, editor)
@@ -139,7 +144,11 @@ export function CatalogEditor({
       current = false
     }
   }, [library, previewDraft.body.job])
-  const [review, setReview] = useState<string | null>(null)
+  const [review, setReviewState] = useState<string | null>(initialReview)
+  const setReview = (unit: string | null) => {
+    setReviewState(unit)
+    if (unit === null) onReviewClosed?.()
+  }
   const [history, setHistory] = useState<string | null>(null)
   const [advanced, setAdvanced] = useState(false)
   const controls = useQuery({

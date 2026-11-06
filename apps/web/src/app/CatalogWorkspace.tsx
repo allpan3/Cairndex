@@ -241,6 +241,18 @@ export function CatalogWorkspace({
   const [selected, setSelected] = useState<string | null>(null)
   const [deleted, setDeleted] = useState(false)
   const [creating, setCreating] = useState(false)
+  // A structural conflict the bundle browser sent here; its editor opens the full review
+  const [reviewUnit, setReviewUnit] = useState<string | null>(null)
+  function reviewConflict(unit: string) {
+    const [owner, id] = unit.split('/')
+    setMedia(null)
+    setFamily(owner!)
+    setAfter('')
+    setSelected(id!)
+    setCreating(false)
+    setReviewUnit(unit)
+    setReviewMode(true)
+  }
   // A cairndex:// link opens in the browser, so it leaves metadata review and the viewer
   useEffect(() => {
     if (!deepLink) return
@@ -486,6 +498,7 @@ export function CatalogWorkspace({
                       setSelected(bundleId)
                       setReviewMode(true)
                     }}
+                    onReviewConflict={reviewConflict}
                     {...controls}
                   />
                 )
@@ -543,6 +556,7 @@ export function CatalogWorkspace({
             setFamily('asset_bundles')
             setReviewMode(true)
           }}
+          onReviewConflict={reviewConflict}
           onOpen={(id) => setMedia({ bundleId: id })}
           onOpenFile={(bundleId, fileId, time) => setMedia({ bundleId, fileId, time })}
           viewerOpen={media !== null}
@@ -765,6 +779,10 @@ export function CatalogWorkspace({
                 editor={editor}
                 blocked={!state?.ready || Boolean(state?.blocked)}
                 refresh={refresh}
+                initialReview={
+                  reviewUnit?.startsWith(`${family}/${detail.data.id}/`) ? reviewUnit : null
+                }
+                onReviewClosed={() => setReviewUnit(null)}
               />
             ) : (
               <p>Select an object to edit.</p>

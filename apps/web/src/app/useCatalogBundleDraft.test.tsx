@@ -328,3 +328,61 @@ test('unavailable browser storage does not prevent automatic server saving', asy
     write.mockRestore()
   }
 })
+
+test('a remounted inspector retains its own acknowledged value and basis before polling catches up', async () => {
+  vi.mocked(runJob).mockResolvedValueOnce(receipt('first')).mockResolvedValueOnce(receipt('second'))
+  const first = setup()
+  act(() => first.result.current.change('notes', JSON.stringify(JSON.stringify(['First note']))))
+  await act(() => first.result.current.save())
+  first.unmount()
+  const second = setup()
+  expect(JSON.parse(JSON.parse(second.result.current.read('notes')))).toEqual(['First note'])
+  act(() =>
+    second.result.current.change(
+      'notes',
+      JSON.stringify(JSON.stringify(['First note', 'Second note'])),
+    ),
+  )
+  await act(() => second.result.current.save())
+  expect(vi.mocked(runJob).mock.calls[1]![2]).toMatchObject({
+    changes: expect.arrayContaining([
+      expect.objectContaining({ unit: unit('notes'), basis: ['first'] }),
+    ]),
+    parents: expect.arrayContaining(['first']),
+  })
+  const peer = entity('peer')
+  peer.fields.notes!.value = JSON.stringify(JSON.stringify(['Peer note']))
+  second.rerender({ value: peer })
+  expect(JSON.parse(JSON.parse(second.result.current.read('notes')))).toEqual(['Peer note'])
+})
+
+test('an explicit conflict choice replaces only its field draft and advances subsequent edits', async () => {
+  const value = entity()
+  value.fields.notes!.held = 'conflict'
+  value.fields.notes!.basis = ['amber', 'blue']
+  value.observed[unit('notes')] = ['amber', 'blue']
+  vi.mocked(runJob).mockResolvedValue(receipt('next'))
+  const { result } = setup(value)
+  act(() => result.current.change('notes', JSON.stringify(JSON.stringify(['Unresolved draft']))))
+  await act(() => result.current.save())
+  expect(runJob).not.toHaveBeenCalled()
+  const chosen = JSON.stringify(JSON.stringify(['Chosen note']))
+  act(() =>
+    result.current.acceptResolution(
+      { [unit('notes')]: chosen },
+      { [unit('notes')]: ['amber', 'blue'] },
+      'resolution',
+    ),
+  )
+  expect(result.current.read('notes')).toBe(chosen)
+  expect(result.current.draft.inputs).toEqual({})
+  act(() =>
+    result.current.change('notes', JSON.stringify(JSON.stringify(['Chosen note', 'Next note']))),
+  )
+  await act(() => result.current.save())
+  expect(vi.mocked(runJob).mock.calls[0]![2]).toMatchObject({
+    changes: expect.arrayContaining([
+      expect.objectContaining({ unit: unit('notes'), basis: ['resolution'] }),
+    ]),
+  })
+})

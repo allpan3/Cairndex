@@ -8,6 +8,7 @@ import { CatalogBundleMemberships } from './CatalogBundleMemberships'
 import { StarRating } from './Stars'
 import { useCatalogDraft } from './useCatalogDraft'
 import { validCatalogBulkDraft } from './catalogBulkDraft'
+import { CatalogConflictDialog } from './CatalogConflictDialog'
 
 type Snapshot = components['schemas']['CatalogSelectionRead']
 const empty = {
@@ -37,6 +38,7 @@ export function CatalogMultiBundleInspector({
   blocked,
   memberships,
   onReview,
+  onReviewConflict,
   onRetainedChange,
   onClose,
   onFilterTag,
@@ -51,6 +53,8 @@ export function CatalogMultiBundleInspector({
   /** The server can list a selection's own tags and collections (`selection_version: 3`). */
   memberships: boolean
   onReview: () => void
+  /** Open Metadata Review on one structural conflict; falls back to `onReview`. */
+  onReviewConflict?: (unit: string) => void
   /** Retain only unfinished work after its original selection changes. */
   onRetainedChange: (retained: boolean) => void
   onClose: () => void
@@ -64,6 +68,7 @@ export function CatalogMultiBundleInspector({
   const cancelled = useRef(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [reviewing, setReviewing] = useState(false)
   const supported = ids.length > 0 && ids.length <= 100
   const snapshot = useQuery({
     queryKey: ['catalog-selection', library, ids],
@@ -164,11 +169,28 @@ export function CatalogMultiBundleInspector({
       )}
       {held && (
         <p role="alert">
-          <span>Competing metadata requires review.</span>{' '}
-          <button className="btn btn--sm" onClick={onReview}>
+          <span>Some selected bundles have conflicting edits.</span>{' '}
+          <button className="btn btn--sm" onClick={() => setReviewing(true)}>
             Review Conflicts
           </button>
         </p>
+      )}
+      {reviewing && (
+        <CatalogConflictDialog
+          library={library}
+          bundles={items.filter((item) => item.held).map((item) => item.id)}
+          blocked={blocked}
+          onClose={() => setReviewing(false)}
+          onResolved={() => {
+            for (const key of AFFECTED) void client.invalidateQueries({ queryKey: [key, library] })
+            window.dispatchEvent(new Event('cairndex:metadata-saved'))
+          }}
+          onAdvanced={(unit) => {
+            setReviewing(false)
+            if (onReviewConflict) onReviewConflict(unit)
+            else onReview()
+          }}
+        />
       )}
       {supported && (
         <>
