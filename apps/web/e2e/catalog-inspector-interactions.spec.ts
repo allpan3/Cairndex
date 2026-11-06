@@ -62,7 +62,6 @@ test('ordinary note dragging and tag chip actions survive saves and navigation @
     await expect(inspector.getByRole('textbox', { name: 'Note 1', exact: true })).toHaveValue(
       'Second synthetic note',
     )
-    await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect
       .poll(
         async () => {

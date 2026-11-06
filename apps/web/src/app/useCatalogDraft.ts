@@ -48,6 +48,7 @@ export function useCatalogDraft<T extends object>(
   editor: string,
   initial: T,
   validateBody?: (body: T) => boolean,
+  listCopies = true,
 ) {
   const key = draftKey(library, owner, editor)
   const [loaded] = useState(() => {
@@ -67,8 +68,10 @@ export function useCatalogDraft<T extends object>(
   const [deliveryError, setDeliveryError] = useState('')
   const [envelope, setEnvelope] = useState<Envelope<T> | null>(loaded.envelope)
   const latest = useRef(envelope)
+  const browserStorageFailed = useRef(false)
   const copies = useQuery({
     queryKey: ['catalog-private-work', library, owner],
+    enabled: listCopies,
     queryFn: () =>
       catalog<{ items: Envelope<T>[] }>(library, `/drafts?owner=${encodeURIComponent(owner)}`),
     refetchInterval: 4000,
@@ -84,7 +87,9 @@ export function useCatalogDraft<T extends object>(
       if (loaded.error && !localStorage.getItem(`${key}.unreadable`))
         localStorage.setItem(`${key}.unreadable`, localStorage.getItem(key) ?? '')
       localStorage.setItem(key, JSON.stringify(next))
+      browserStorageFailed.current = false
     } catch {
+      browserStorageFailed.current = true
       setError('Browser draft storage is unavailable.')
     }
     latest.current = next
@@ -124,6 +129,18 @@ export function useCatalogDraft<T extends object>(
     }
   }, [library, owner, envelope])
   return {
+    // A completed request from an unmounted inspector must not replace newer
+    // edits made by another mounted view of the same editor.
+    isCurrent: () => {
+      if (browserStorageFailed.current) return true
+      try {
+        return (
+          localStorage.getItem(key) === (latest.current ? JSON.stringify(latest.current) : null)
+        )
+      } catch {
+        return true
+      }
+    },
     body: envelope?.body ?? initial,
     update,
     discard,
