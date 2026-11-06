@@ -2,8 +2,10 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `074a71f0`, qualified on
-2026-11-06. It includes open-bundle incoming drops, exclusive file/bundle inspectors, inline name rejection, compact copy throughput/progress,
+The local desktop and web test installation is `f68f707e`, qualified on
+2026-11-06. It includes automatic inspector saving, SMB access preparation when enabling
+Write Mode, open-bundle incoming drops, exclusive file/bundle inspectors,
+inline name rejection, compact copy throughput/progress,
 inline New Folder naming, source-write network access
 recovery, incoming-files dialogs and background tasks on top of
 the merged historical audit, latest-Update acceptance, Widen title repair and
@@ -51,13 +53,15 @@ macOS SQLite writers retain FULL synchronous and both fullfsync flags.
 Batching must preserve durability, source validation and repair safeguards.
 Do not restore cross-device metadata reuse as a shortcut for SMB remounts.
 
-Bundle inspector autosave and Write Mode access preparation are being qualified
-on the incoming-files branch. Ordinary scalar edits retain their causal request
+Bundle inspector autosave and Write Mode access preparation are installed
+from the incoming-files branch. Ordinary scalar edits retain their causal request
 and save after a short pause or field exit; uncertain replies retry that exact
 request. Conflict review remains explicit. Enabling Write Mode verifies the
-mounted-SMB saved login before reporting success. The macOS package will use
-an existing persistent sidecar signing identity; one approval can be required
-when moving from the former ad-hoc signer. These repairs are not installed yet.
+mounted-SMB saved login before reporting success. The macOS package uses
+a persistent sidecar signing identity; one approval can be required when moving
+from the former ad-hoc signer. Two different synthetic executables verified
+Keychain access in fresh processes without prompting. Actual owner-share access
+remains an owner check. Existing conflict alternatives are preserved.
 
 ## Work awaiting consolidation
 
@@ -153,6 +157,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed autosave and Write Mode access | Linux 2,078 bulk cases passed with the known ARM manifest failure, plus 81 disk cases passed; backend static checks on both platforms, macOS 35 focused backend and 64 packaging/manifest cases; 1,463 frontend units, full frontend gate, 20 of 21 initial browser cases followed by five affected final-source cases and three inspector repeats passing; signed app-only package, sidecar smoke, five frozen cases across four integration modules, distribution and installed desktop/web checks |
 | Audit metadata follow-up | macOS 2,089 backend cases; Linux 2,088; both platforms 1,422 web units, 67 browser cases, static checks, web builds and four frozen integrations |
 | Latest-Update Accept | macOS full frontend gate with 1,432 units; ten selected browser cases on each platform |
 | Widen | Linux 2,042 memory plus 55 disk backend cases; both-platform backend static checks; three new backend regressions; six macOS grouping browser cases and the new Linux browser case |
@@ -164,7 +169,15 @@ includes a full Linux backend run and focused macOS source-operation checks.
 | Installed inline naming follow-up | macOS full frontend gate with 1,439 units and four source/Rename browser cases; synthetic screenshot inspected; app-only build, sidecar smoke, signature/distribution and installed desktop/web checks. Backend, Rust, Linux and frozen-integration evidence retained for unchanged source areas |
 | Installed source-access recovery | Linux 2,063 memory plus 81 disk backend cases; macOS 90 source/API/exchange/Keychain cases; backend static checks on both platforms; sidecar smoke, four frozen integrations, app-only build, signature/distribution and installed desktop/web checks. Frontend and Rust evidence retained for unchanged sources |
 
-The full Linux backend runs retain the known ARM manifest exclusion, covered by
+The autosave round retained one transient inspector tag re-add failure; its
+standalone recheck and three subsequent repeats passed. The initial package
+attempt stopped at the source-freshness preflight after integration tests created
+Python caches; building the app before those tests passed without changing the
+gate. Failed attempts remain in local receipts under `20261106-autosave-access`.
+Installed bytes match the qualified package and stopped private profiles retain
+identical files, modes, sizes and modification times. Credentials were untouched.
+
+Earlier full Linux backend runs retain the known ARM manifest exclusion, covered by
 hosted x86 CI. Unchanged Rust, dependency and frontend gates were retained where
 applicable; these are not fresh whole-suite combined runs. Docker checks were
 not repeated for changes that left deployment sources unchanged. DMG creation
@@ -196,6 +209,11 @@ measurement excludes scheduling, history exchange, UI polling and probing; it
 is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
+
+- Restore Rename, Trash and Locate actions inside open bundles and shorten the
+  media action to Open. Investigate same-client note conflicts across navigation.
+  A contextual conflict-review redesign is committed separately but unverified;
+  integrate and qualify it before a later test installation.
 
 - The owner approved correcting the two verified privacy false positives: a
   generic temporary-directory prefix in the local profile and a literal inside
