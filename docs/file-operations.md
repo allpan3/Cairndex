@@ -5,7 +5,10 @@ on library items, need that library's **Write mode**. Turn it on in **Libraries*
 the serving instance; nothing else switches it. The deployment must permit writes. A
 protected library requires its passphrase when enabling writes.
 
-Turning write mode on asks for confirmation; turning it off takes effect at once
+Turning write mode on asks for confirmation and checks saved-login access for
+a mounted macOS SMB share before reporting success. If macOS requires approval,
+its request appears as part of enabling Write Mode; no separate Allow Access
+step is needed. A live verified SMB session is reused. Turning it off takes effect at once
 for an authorized session. A locked library asks for its passphrase. Released
 libraries must be reopened before enabling writes. A read-only deployment keeps
 the control visible and explains why it is blocked. Library **Settings…** opens

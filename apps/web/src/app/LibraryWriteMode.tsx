@@ -178,7 +178,13 @@ export function WriteModeConfirm({
         className="btn btn--sm btn--primary"
         disabled={writeMode.isPending || passphrase === ''}
       >
-        {writeMode.isPending ? 'Working…' : enable ? 'Turn on' : 'Turn off'}
+        {writeMode.isPending
+          ? enable
+            ? 'Enabling…'
+            : 'Turning off…'
+          : enable
+            ? 'Turn on'
+            : 'Turn off'}
       </button>
     </form>
   )

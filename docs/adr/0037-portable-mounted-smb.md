@@ -36,8 +36,11 @@ after it reads that item's path attribute and before it reads its password.
 The signed sidecar's
 explicit `authorize-smb` command can request access and verify signed, encrypted
 SMB3 without opening a library or starting an HTTP server. The app's Allow Access
-action makes the same request from the server process, and only when the owner
-starts it from a conversion or library status that reports missing access.
+action makes the same request from the server process. Enabling Write Mode also
+requests this access after deployment/passphrase checks and before acknowledging
+the enabled flag. This explicit owner action can show the macOS request; normal
+background work remains noninteractive. No source files change during access
+preparation. Conversion and library status retain recovery for refused access.
 Missing authorization is a recoverable unavailable state. Creation and serving
 register roots; the last use of an account releases its private SMB session.
 

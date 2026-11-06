@@ -431,6 +431,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Prepare mounted-SMB saved-login access when enabling Write Mode, before
+  reporting success, and reuse the verified session for subsequent operations.
+
 - Add dropped files to the currently open bundle instead of creating a new one.
   Suggest the first ordered member's folder for existing bundles, while keeping
   the destination editable. Add Files follows the same open-bundle context.
