@@ -50,16 +50,21 @@ menu, opens one dialog. What the files become depends on where they arrive:
 
 | Where | Dialog | Result |
 | --- | --- | --- |
-| Bundle Browser, empty space | Add N files as a new bundle | One new bundle, in the open collection |
-| A bundle card | Add N files to “Title” | The files join that bundle |
+| Bundle Browser, no bundle open | Add N files as a new bundle | One new bundle, in the open collection |
+| A bundle card or inside an open bundle | Add N files to “Title” | The files join that bundle |
 | File Browser | Copy N files to *folder* | Plain copies in the open folder |
 
 The bundle name defaults to the stem the files share ("Harbor at dusk" for its
 `.mp4` and `.srt`), else the largest file's name. In a collection, that collection
 is pre-filled and others can be added, and the folder defaults to the one most of
 the collection's bundles are in. Elsewhere the folder defaults to the one last used
-for this library; for a bundle card it is that bundle's folder. **Change…** browses
-the library's existing folders, because the destination folder must already exist.
+for this library. Drops inside an open bundle, and **Add Files…** while it is
+open, add to that bundle. Bundles have no single physical path. For an existing
+bundle, the suggested folder is the parent of its first ordered file, or its
+first directory member. One metadata read supplies this hint; it does not scan
+storage or load every file. An empty bundle uses the last chosen library folder.
+**Change…** browses existing library folders. A manual choice takes precedence
+over the suggestion, and Copy waits for a suggestion or an explicit choice.
 With write mode off, the dialog's next step is **Open Libraries…**. Opening the
 dialog changes no source files, and the originals stay where they are.
 

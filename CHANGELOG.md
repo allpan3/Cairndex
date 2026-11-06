@@ -431,6 +431,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Add dropped files to the currently open bundle instead of creating a new one.
+  Suggest the first ordered member's folder for existing bundles, while keeping
+  the destination editable. Add Files follows the same open-bundle context.
+
 - Show file details instead of stacking them above bundle metadata when selecting
   a file in an open bundle, including after Locate in Bundle Browser. Restore
   the unsaved bundle draft when file selection is cleared.

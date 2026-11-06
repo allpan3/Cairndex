@@ -1,22 +1,32 @@
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { replicaRequest } from '../api/replicas'
+import type { components } from '../api/schema'
 import { operationId } from '../api/catalog'
 import { useWriteMode } from '../api/hooks'
 import { formatBytes } from '../lib/format'
 import { FolderPicker } from './FolderPicker'
-import { folderLabel, joinPath, noun, suggestBundleTitle } from './sourceTasks'
+import { folderLabel, joinPath, noun, parentFolder, suggestBundleTitle } from './sourceTasks'
 import type { CatalogCollection } from './useCatalogCollections'
 import { useModalDialog } from './useModalDialog'
 import type { NewTask } from './useSourceTasks'
 
 /**
  * What files from this computer become, decided by where they were dropped:
- * a new bundle (the Bundle Browser), more files of one bundle (a bundle card),
+ * a new bundle (the Bundle Browser), more files of one bundle (a card or open album),
  * or plain files in a folder (the File Browser). Each target suggests a folder.
  */
 export type IncomingTarget =
   | { kind: 'new-bundle'; collection: string | null; folder: string }
   | { kind: 'bundle'; bundle: string; title: string; folder: string }
   | { kind: 'folder'; folder: string }
+
+/** The open Bundle Browser view, including a bundle whose contents are open. */
+export type IncomingDropContext = {
+  collection: string | null
+  folder: string | null
+  bundle: { id: string; title: string } | null
+}
 
 function collectionPath(items: CatalogCollection[], id: string): string {
   const byId = new Map(items.map((item) => [item.id, item]))
@@ -50,7 +60,31 @@ export function IncomingDialog({
 }) {
   const writeMode = useWriteMode(library)
   const enabled = writeMode.data?.effective === true
-  const [folder, setFolder] = useState(target.folder)
+  const [chosenFolder, setFolder] = useState<string | null>(null)
+  const bundle = target.kind === 'bundle' ? target.bundle : null
+  const suggestion = useQuery({
+    queryKey: ['incoming-bundle-folder', library, bundle],
+    enabled: bundle !== null,
+    // One ordered member is enough for a default. Do not scan source storage or
+    // load every file merely to suggest a destination for the owner's review.
+    queryFn: async ({ signal }) => {
+      const page = await replicaRequest<components['schemas']['CatalogAlbumPage']>(
+        library,
+        `/media/bundles/${bundle}/album?offset=0&limit=1`,
+        'GET',
+        undefined,
+        signal,
+      )
+      const first = page.items[0]
+      return first?.file
+        ? parentFolder(first.file.relative_path)
+        : (first?.directory?.directory_path ?? null)
+    },
+    gcTime: 0,
+    retry: false,
+  })
+  const folder = chosenFolder ?? suggestion.data ?? target.folder
+  const folderReady = chosenFolder !== null || bundle === null || suggestion.isSuccess
   const [title, setTitle] = useState(() => suggestBundleTitle(files))
   const [chosen, setChosen] = useState<string[]>(() =>
     target.kind === 'new-bundle' && target.collection ? [target.collection] : [],
@@ -130,7 +164,7 @@ export function IncomingDialog({
           className="incoming__form"
           onSubmit={(event) => {
             event.preventDefault()
-            if (enabled) start()
+            if (enabled && folderReady) start()
           }}
         >
           <div className="modal__head">
@@ -205,6 +239,12 @@ export function IncomingDialog({
             <span>Folder</span>
             <FolderPicker library={library} value={folder} onChange={setFolder} />
           </div>
+          {bundle && chosenFolder === null && suggestion.isPending && (
+            <p role="status">Finding a destination folder…</p>
+          )}
+          {bundle && chosenFolder === null && suggestion.isError && (
+            <p role="alert">The folder suggestion is unavailable. Choose a destination folder.</p>
+          )}
           {writeMode.data && !enabled && (
             <p className="incoming__off" role="status">
               {writeMode.data.allowed_by_deployment
@@ -228,7 +268,11 @@ export function IncomingDialog({
                 Open Libraries…
               </button>
             ) : (
-              <button type="submit" className="btn btn--primary" disabled={!enabled}>
+              <button
+                type="submit"
+                className="btn btn--primary"
+                disabled={!enabled || !folderReady}
+              >
                 Copy
               </button>
             )}

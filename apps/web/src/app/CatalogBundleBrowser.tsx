@@ -7,6 +7,7 @@ import type { BundleSort, SortOrder } from '../api/client'
 import type { BundleCardItem } from './BundleCard'
 import { Browser, type BrowserNavigation } from './Browser'
 import { mostCommonFolder, parentFolder } from './sourceTasks'
+import type { IncomingDropContext } from './IncomingDialog'
 import { Toolbar } from './Toolbar'
 import {
   type BrowsePrefs,
@@ -201,7 +202,7 @@ export function CatalogBundleBrowser({
     bundle: { id: string; title: string; folder: string | null },
   ) => void
   /** Where files dropped on this view should go: its collection and likeliest folder. */
-  onDropContext?: (context: { collection: string | null; folder: string | null }) => void
+  onDropContext?: (context: IncomingDropContext) => void
 }) {
   const status = useReplicaStatus(library).data
   const localHistoryEnabled = (status?.browse_version ?? 0) >= 11
@@ -355,9 +356,6 @@ export function CatalogBundleBrowser({
     () => (collectionId ? mostCommonFolder(items.map((item) => item.resume_relative_path)) : null),
     [collectionId, items],
   )
-  useEffect(() => {
-    onDropContext?.({ collection: collectionId, folder: dropFolder })
-  }, [onDropContext, collectionId, dropFolder])
   const scopeFor = (text: string) =>
     JSON.stringify([
       library,
@@ -560,6 +558,17 @@ export function CatalogBundleBrowser({
     queryFn: () => catalog<Entity>(library, `/entities/asset_bundles/${single}`),
     refetchInterval: 2000,
   })
+  const albumTitle =
+    detail.data?.id === albumId
+      ? ((JSON.parse(detail.data.fields.title?.value ?? 'null') as string | null) ?? '')
+      : (items.find((item) => item.id === albumId)?.title ?? '')
+  useEffect(() => {
+    onDropContext?.({
+      collection: collectionId,
+      folder: dropFolder,
+      bundle: albumId ? { id: albumId, title: albumTitle } : null,
+    })
+  }, [onDropContext, collectionId, dropFolder, albumId, albumTitle])
   // Resolve one ordered member from metadata; host handoff also supports attachments.
   const hostTarget = useQuery({
     queryKey: ['catalog-host-target', library, single, albumId, albumFile, inspectorFile],

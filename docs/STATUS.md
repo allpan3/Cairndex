@@ -124,6 +124,15 @@ modes, sizes and modification times; credentials remain untouched. Rollback and
 local receipts are retained under `20261106-album-inspector`. Owner acceptance
 remains the merge checkpoint.
 
+Open-bundle incoming drops are qualified and awaiting package/install. Drops and
+Add Files target the open bundle; the first ordered file's parent (or directory
+member) supplies the editable folder suggestion. Empty bundles use the remembered
+folder, and a manual choice wins over a late suggestion. macOS passed all 1,453
+frontend units, lint/format/types, production build and five album/source browser
+cases. The synthetic dialog screenshot was inspected. Backend, Rust, Linux and
+frozen-integration evidence is retained for unchanged sources; no backend contract
+or dependency changed.
+
 ## Qualification and evidence
 
 These results qualify the named snapshots. The latest New Folder installation
