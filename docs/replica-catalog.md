@@ -302,8 +302,10 @@ and Metadata review without calls to unsupported inspector routes.
 Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
 local derivatives in the private cache; missing artwork leaves metadata usable.
 File pages retain catalog order. Selecting one file checks its local bytes and
-shows the shared file inspector. Video facts use a bounded probe; image dimensions
-use a guarded header read. Unknown or unavailable facts do not become zero-size or
+shows the shared file inspector in place of the bundle controls. Clearing the
+file selection restores the bundle inspector and its unsaved draft; file details
+are never stacked above bundle metadata. Video facts use a bounded probe; image
+dimensions use a guarded header read. Unknown or unavailable facts do not become zero-size or
 shared availability claims. Each selection reads the file again, and so does a change
 in the File Browser listing's state for it. The toolbar's Refresh reads it again with
 the rest of the view, and a finished Update marks every file's details for a new read.

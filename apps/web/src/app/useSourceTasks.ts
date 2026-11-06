@@ -343,7 +343,7 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
           () => undefined,
         )
         commit(tasks.current.filter((task) => task.id !== id))
-        throw new Error('That name already exists.')
+        throw new Error('This name is already in use.')
       }
       // Real interruptions still need the existing recovery path.
       patch(id, (task) => ({ ...task, inline: false }))
