@@ -140,6 +140,12 @@ def set_write_mode(
             # missing passphrase from a wrong one, and never log either.
             raise AuthRequiredError("Enabling write mode requires this library's passphrase.")
 
+        # This explicit capability change is also consent to request the mounted
+        # share's saved login. Do it after permission checks and before enabling.
+        from cairndex.replicas.service import prepare_write_access
+
+        prepare_write_access(library_id, root)
+
     library.write_mode_enabled = enabled
     registry.flush()
     return _state(enabled=enabled, root=root)

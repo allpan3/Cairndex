@@ -234,12 +234,28 @@ def authorize_storage(library_id: str) -> None:
         handle = _handles.get(library_id)
     if handle is None:
         raise ReplicaError("Open the library on this server first")
+    _authorize_storage(library_id, handle[1].root)
+
+
+def prepare_write_access(library_id: str, root: Path) -> None:
+    """Enabling Write Mode also admits the exact SMB login, without touching sources."""
     try:
-        smb_transport.authorize(handle[1].root)
+        mounted = smb_transport.mount_for(root) is not None
+    except OSError as error:
+        raise ReplicaError(smb_transport.access_message(error)) from None
+    if mounted:
+        _authorize_storage(library_id, root)
+
+
+def _authorize_storage(library_id: str, root: Path) -> None:
+    try:
+        smb_transport.authorize(root)
     except OSError as error:
         raise ReplicaError(smb_transport.access_message(error)) from None
     _storage_access.pop(library_id, None)
-    if isinstance(handle[0], CatalogStore):
+    with _lock:
+        handle = _handles.get(library_id)
+    if handle is not None and isinstance(handle[0], CatalogStore):
         with handle[0].connection() as db:
             # Authorization clears only the prompt, never the stopped intent or
             # its recovery checkpoints. The owner still explicitly retries it.
