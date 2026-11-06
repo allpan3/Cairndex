@@ -2,8 +2,9 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `f68f707e`, qualified on
-2026-11-06. It includes automatic inspector saving, SMB access preparation when enabling
+The local desktop and web test installation is `e0a364d`, qualified on
+2026-11-06. It includes contextual conflict review, album file actions, retained autosave
+acknowledgements, and SMB access preparation when enabling
 Write Mode, open-bundle incoming drops, exclusive file/bundle inspectors,
 inline name rejection, compact copy throughput/progress,
 inline New Folder naming, source-write network access
@@ -62,6 +63,11 @@ a persistent sidecar signing identity; one approval can be required when moving
 from the former ad-hoc signer. Two different synthetic executables verified
 Keychain access in fresh processes without prompting. Actual owner-share access
 remains an owner check. Existing conflict alternatives are preserved.
+Album file menus now include Open, Locate in File Browser, and gated Rename/Trash;
+the selected file inspector also supports filename editing. Ordinary conflicts
+open in a compact dialog with readable alternatives. Structural conflicts retain
+full review. Confirmed saves survive inspector remounts, and explicit conflict
+choices advance only their covered local drafts.
 
 ## Work awaiting consolidation
 
@@ -157,6 +163,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed album actions and contextual conflict review | macOS full frontend gate with 1,471 units; 19 of 20 broader browser cases initially passed, then the corrected full-review case and both affected album/conflict cases passed on final source; synthetic screenshots inspected; signed app-only package, sidecar smoke, persistent signature/distribution and installed desktop/web checks passed. Backend, Rust, Linux and frozen-integration evidence retained for unchanged source areas |
 | Installed autosave and Write Mode access | Linux 2,078 bulk cases passed with the known ARM manifest failure, plus 81 disk cases passed; backend static checks on both platforms, macOS 35 focused backend and 64 packaging/manifest cases; 1,463 frontend units, full frontend gate, 20 of 21 initial browser cases followed by five affected final-source cases and three inspector repeats passing; signed app-only package, sidecar smoke, five frozen cases across four integration modules, distribution and installed desktop/web checks |
 | Audit metadata follow-up | macOS 2,089 backend cases; Linux 2,088; both platforms 1,422 web units, 67 browser cases, static checks, web builds and four frozen integrations |
 | Latest-Update Accept | macOS full frontend gate with 1,432 units; ten selected browser cases on each platform |
@@ -168,6 +175,13 @@ includes a full Linux backend run and focused macOS source-operation checks.
 | Installed New Folder follow-up | Linux 2,061 memory plus 77 disk backend cases; macOS 91 source-operation cases; both-platform backend static and full frontend gates with 1,439 units, seven browser cases per platform; packaged New Folder/Undo smoke, four frozen integrations, app-only build, signature/distribution and installed desktop/web checks |
 | Installed inline naming follow-up | macOS full frontend gate with 1,439 units and four source/Rename browser cases; synthetic screenshot inspected; app-only build, sidecar smoke, signature/distribution and installed desktop/web checks. Backend, Rust, Linux and frozen-integration evidence retained for unchanged source areas |
 | Installed source-access recovery | Linux 2,063 memory plus 81 disk backend cases; macOS 90 source/API/exchange/Keychain cases; backend static checks on both platforms; sidecar smoke, four frozen integrations, app-only build, signature/distribution and installed desktop/web checks. Frontend and Rust evidence retained for unchanged sources |
+
+The album/conflict round corrected an effect that returned the browser’s scroll
+Promise as React cleanup. The failed browser attempt remains retained. Final
+source passed the affected cases. Installed application bytes, modes and symlinks
+match the qualified package; the stopped-profile comparison confirms unchanged
+private file names, modes, sizes and modification times. Credentials were untouched.
+Rollback and local receipts are retained under `20261106-album-conflicts`.
 
 The autosave round retained one transient inspector tag re-add failure; its
 standalone recheck and three subsequent repeats passed. The initial package
@@ -209,18 +223,6 @@ measurement excludes scheduling, history exchange, UI polling and probing; it
 is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
-
-- Album Rename, Trash and Locate actions, the Open label, and contextual
-  conflict review passed frontend qualification and await packaging/install. A
-  regression reproduced stale notes after an inspector remount; the correction
-  retains the save acknowledgement and advances later edits from that receipt.
-  Explicit conflict choices replace only their covered local drafts. macOS passed
-  1,471 units and the full frontend gate. Nineteen of twenty broader browser
-  cases passed initially; the full-review effect returned a browser Promise and
-  crashed React cleanup. After correction, that case and both affected album/
-  conflict cases passed on final source. Synthetic screenshots were inspected.
-  Backend, Rust, Linux and frozen-integration evidence is retained for unchanged
-  source areas; no API, schema or dependency changed. Install after package checks.
 
 - The owner approved correcting the two verified privacy false positives: a
   generic temporary-directory prefix in the local profile and a literal inside
