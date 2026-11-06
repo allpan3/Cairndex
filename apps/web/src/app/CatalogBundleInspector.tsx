@@ -136,6 +136,19 @@ export function CatalogBundleInspector({
   }
   // The footer appears once there is something to save, recover or report
   const footer = unsaved || draft.busy || draft.copies.length > 0 || Boolean(draft.message)
+  // Keep the bundle draft mounted while a file is inspected, but show only
+  // the selected object's inspector. Clearing file selection restores the draft.
+  if (albumFile)
+    return (
+      <aside className="inspector" aria-label="File inspector">
+        <CatalogFileDetails
+          key={albumFile}
+          library={library}
+          file={albumFile}
+          hostFiles={hostFiles}
+        />
+      </aside>
+    )
   return (
     <aside className="inspector" aria-label="Bundle inspector">
       <div
@@ -163,14 +176,6 @@ export function CatalogBundleInspector({
           </button>
         )}
       </div>
-      {albumFile && (
-        <CatalogFileDetails
-          key={albumFile}
-          library={library}
-          file={albumFile}
-          hostFiles={hostFiles}
-        />
-      )}
       {draft.error && <p role="alert">{draft.error}</p>}
       {actionMessage && <p role="status">{actionMessage}</p>}
       {entity.has_conflicts && (

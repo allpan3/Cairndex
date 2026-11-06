@@ -64,7 +64,7 @@ test('write mode enables file and folder renames that apply on Enter @fullstack'
     await writeFile(join(root, 'Renamed/Taken.txt'), 'Synthetic occupied file')
     await name.fill('Taken.txt')
     await name.press('Enter')
-    await expect(page.getByRole('alert')).toHaveText('That name already exists.')
+    await expect(page.getByRole('alert')).toHaveText('This name is already in use.')
     await expect(name).toBeFocused()
     await expect(page.locator('.file-activity')).toHaveCount(0)
     expect(await readFile(join(root, 'Renamed/Taken.txt'), 'utf8')).toBe('Synthetic occupied file')

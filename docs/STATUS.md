@@ -110,6 +110,15 @@ file names, modes, sizes and modification times survived installation and smoke;
 credentials were untouched. Rollback and receipts are retained locally under
 `20261105-inline-name-errors`. The branch remains unmerged for owner acceptance.
 
+The album inspector follow-up is qualified and awaiting test installation.
+A selected album file shows file details only; clearing selection restores bundle
+metadata and its unsaved draft. Locate, viewer return and selection changes use
+the same behavior. Naming conflicts now say “This name is already in use.”
+macOS passed 1,447 frontend units, lint/format/types, production build and six
+album/source/Rename browser cases. The synthetic inspector screenshot was checked.
+Backend, Rust, Linux and frozen-integration evidence is retained for unchanged
+sources; this follow-up changes no backend contract or dependency.
+
 ## Qualification and evidence
 
 These results qualify the named snapshots. The latest New Folder installation

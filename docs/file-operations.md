@@ -31,7 +31,7 @@ In File Browser, **New Folder** in the toolbar, context menu or desktop File
 menu inserts an inline row with **Untitled** selected. Type a name and press
 Enter or click outside to create it in the current directory; Escape cancels
 without creating a folder. Invalid or occupied names stay editable with a small
-inline error. An occupied name says **That name already exists.**, with no Retry
+inline error. An occupied name says **This name is already in use.**, with no Retry
 or recovery card. Rename uses the same behavior in the browser and inspector.
 New Folder requires Write Mode and a server that advertises `source_mkdir`. Existing names are refused without replacement. Undo is available
 while the folder still matches the recorded empty tree; adding files prevents

@@ -248,7 +248,7 @@ test('an occupied rename rejects the editor and retires its intent without a tas
   const { hook, notices } = mount()
   await act(async () => {
     await expect(hook.result.current.name(renameTask('Trips/Vacant', 'Taken'))).rejects.toThrow(
-      'That name already exists.',
+      'This name is already in use.',
     )
   })
   expect(hook.result.current.tasks).toEqual([])

@@ -431,6 +431,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Show file details instead of stacking them above bundle metadata when selecting
+  a file in an open bundle, including after Locate in Bundle Browser. Restore
+  the unsaved bundle draft when file selection is cleared.
+- Use “This name is already in use.” for Rename and New Folder conflicts.
+
 - Reject occupied Rename and New Folder names inline, keeping the name editable
   without Retry or recovery controls. Preserve recovery for interrupted writes.
 
