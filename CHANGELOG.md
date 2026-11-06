@@ -431,6 +431,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Restore automatic saving for bundle title, notes, rating and cover. Remove
+  ordinary inspector Save/Discard/recovery controls while retaining interrupted
+  edits and retrying the same save request.
 - Prepare mounted-SMB saved-login access when enabling Write Mode, before
   reporting success, and reuse the verified session for subsequent operations.
 

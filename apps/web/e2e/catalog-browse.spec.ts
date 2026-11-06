@@ -86,16 +86,11 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
       await route.fulfill({ status: response.status, contentType: 'application/json', body })
     })
     await inspector.getByRole('textbox', { name: 'Note', exact: true }).fill('First note')
-    await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
     await responseHeld
     await inspector.getByRole('button', { name: 'Add note', exact: true }).click()
     await inspector.getByRole('textbox', { name: 'Note 2', exact: true }).fill('Second note')
     release()
-    await expect(
-      inspector.getByText('Saved here · newer draft retained', { exact: true }),
-    ).toBeVisible()
-    await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
-    await expect(inspector.getByText('Saved here', { exact: true })).toBeVisible()
+    await expect(inspector.getByText('Saved', { exact: true })).toBeVisible()
     await expect(inspector.getByRole('alert')).toHaveCount(0)
     const entity = async (index = 0) =>
       (
@@ -110,7 +105,6 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     ])
     const other = b.getByRole('complementary', { name: 'Bundle inspector' })
     await other.getByRole('textbox', { name: 'Title', exact: true }).fill('Blue title')
-    await other.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect
       .poll(async () => JSON.parse((await entity(1)).fields.title.value), { timeout: 30_000 })
       .toBe('Blue title')
@@ -150,19 +144,17 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     await expect.poll(async () => (await entity()).has_conflicts).toBe(false)
     await inspector.getByRole('textbox', { name: 'Title', exact: true }).fill('Amber conflict')
     await other.getByRole('textbox', { name: 'Title', exact: true }).fill('Blue conflict')
-    await other.getByRole('button', { name: 'Save changes', exact: true }).click()
     // The previous save's notice can remain visible before this request starts.
     await expect
       .poll(async () => JSON.parse((await entity(1)).fields.title.value), { timeout: 30_000 })
       .toBe('Blue conflict')
     await deliver()
-    await expect
-      .poll(async () => JSON.parse((await entity()).fields.title.value))
-      .toBe('Blue conflict')
-    await expect(inspector.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
-      'Amber conflict',
-    )
-    await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await expect.poll(async () => (await entity()).has_conflicts).toBe(true)
+    expect(
+      (await entity()).fields.title.candidates.map((item: { value: string }) =>
+        JSON.parse(item.value),
+      ),
+    ).toEqual(expect.arrayContaining(['Amber conflict', 'Blue conflict']))
     await expect(
       inspector.getByText('Competing metadata requires review.', { exact: true }),
     ).toBeVisible()
@@ -246,19 +238,9 @@ test('catalog saves retain retry identity across switching and same-server clien
     }
     const panel = a.getByRole('complementary', { name: 'Bundle inspector' })
     const peer = b.getByRole('complementary', { name: 'Bundle inspector' })
-    await panel.getByRole('textbox', { name: 'Title', exact: true }).fill('Retained client title')
-    await peer.getByRole('textbox', { name: 'Title', exact: true }).fill('Other client title')
-    await peer.getByRole('button', { name: 'Save changes', exact: true }).click()
-    await expect(peer.getByText('Saved here', { exact: true })).toBeVisible()
     const base = `/api/v1/libraries/${libraries[0]!.id}/replica/catalog`
     const read = async () =>
       (await fetch(backend.baseUrl + base + '/entities/asset_bundles/bundle-000001')).json()
-    await expect
-      .poll(async () => JSON.parse((await read()).fields.title.value))
-      .toBe('Other client title')
-    await expect(panel.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
-      'Retained client title',
-    )
     let acknowledge = () => {}
     const held = new Promise<void>((resolve) => {
       acknowledge = resolve
@@ -267,11 +249,16 @@ test('catalog saves retain retry identity across switching and same-server clien
     const saved = new Promise<void>((resolve) => {
       committed = resolve
     })
+    let sendRequest = () => {}
+    const maySend = new Promise<void>((resolve) => {
+      sendRequest = resolve
+    })
     const operations: string[] = []
     await a.route('**/replica/catalog/jobs', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback()
       const body = route.request().postDataJSON() as { operation: string }
       operations.push(body.operation)
+      if (operations.length === 1) await maySend
       const response = await fetch(backend.baseUrl + base + '/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -296,7 +283,16 @@ test('catalog saves retain retry identity across switching and same-server clien
           body: result,
         })
     })
-    await panel.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await panel.getByRole('textbox', { name: 'Title', exact: true }).fill('Retained client title')
+    await peer.getByRole('textbox', { name: 'Title', exact: true }).fill('Other client title')
+    await expect(peer.getByText('Saved', { exact: true })).toBeVisible()
+    await expect
+      .poll(async () => JSON.parse((await read()).fields.title.value))
+      .toBe('Other client title')
+    await expect(panel.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
+      'Retained client title',
+    )
+    sendRequest()
     await saved
     await a.getByRole('combobox', { name: 'Library', exact: true }).selectOption(libraries[1]!.id)
     acknowledge()
@@ -306,8 +302,7 @@ test('catalog saves retain retry identity across switching and same-server clien
     )
     await a.getByRole('combobox', { name: 'Library', exact: true }).selectOption(libraries[0]!.id)
     await openBundle(a, 'Other client title')
-    await panel.getByRole('button', { name: 'Retry save', exact: true }).click()
-    await expect(panel.getByText('Saved here', { exact: true })).toBeVisible()
+    await expect(panel.getByText('Saved', { exact: true })).toBeVisible()
     expect(operations).toHaveLength(2)
     expect(operations[0]).toBe(operations[1])
     const result = await read()

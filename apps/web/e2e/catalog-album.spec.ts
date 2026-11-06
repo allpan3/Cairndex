@@ -234,11 +234,8 @@ test('album rejects changed pages and ignores a late response after navigation @
       },
       { timeout: 30_000 },
     )
-    await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
     await saved
-    await expect(inspector.locator('.catalog-inspector-actions [role="status"]')).toHaveText(
-      'Saved here',
-    )
+    await expect(inspector.locator('.catalog-inspector-save')).toHaveText('Saved')
     release()
     await expect(
       page.getByText('Album changed. Reload the album before loading more items.'),

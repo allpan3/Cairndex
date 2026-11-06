@@ -90,8 +90,7 @@ test('local opening history and observed sizes restore Recent and complete sorts
     await inspector
       .getByRole('textbox', { name: 'Title', exact: true })
       .fill('Synthetic edited bundle')
-    await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
-    await expect(inspector.getByText('Saved here', { exact: true })).toBeVisible()
+    await expect(inspector.getByText('Saved', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Sort', exact: true }).click()
     await page.getByRole('button', { name: 'Date Modified', exact: true }).click()
     await page.keyboard.press('Escape')

@@ -66,7 +66,7 @@ export function CatalogBundleInspector({
   onOpenDirectory?: (path: string) => void
 }) {
   const status = useReplicaStatus(library).data
-  const draft = useCatalogBundleDraft(library, entity, editor, refresh)
+  const draft = useCatalogBundleDraft(library, entity, editor, refresh, blocked)
   const [addingFiles, setAddingFiles] = useState(false)
   const [actionMessage, setActionMessage] = useState('')
   const canAddFiles =
@@ -104,7 +104,6 @@ export function CatalogBundleInspector({
   const savedNotes = (notesText ? JSON.parse(notesText) : []) as string[] | null
   const notes = savedNotes?.length ? savedNotes : ['']
   const setNotes = (value: string[]) => draft.change('notes', JSON.stringify(JSON.stringify(value)))
-  const unsaved = Boolean(draft.draft.pending) || Object.keys(draft.draft.inputs).length > 0
   const move = (from: number, target: number, before: boolean) => {
     const order = notes.map((_, index) => String(index))
     const moved = moveTo(order, String(from), String(target), before).map(Number)
@@ -134,8 +133,6 @@ export function CatalogBundleInspector({
     dropRef.current = next
     setNoteDrop(next)
   }
-  // The footer appears once there is something to save, recover or report
-  const footer = unsaved || draft.busy || draft.copies.length > 0 || Boolean(draft.message)
   // Keep the bundle draft mounted while a file is inspected, but show only
   // the selected object's inspector. Clearing file selection restores the draft.
   if (albumFile)
@@ -176,7 +173,12 @@ export function CatalogBundleInspector({
           </button>
         )}
       </div>
-      {draft.error && <p role="alert">{draft.error}</p>}
+      {draft.error && (
+        <p role="alert">
+          Changes could not be saved. {draft.error}
+          {draft.draft.pending && ' Retrying automatically.'}
+        </p>
+      )}
       {actionMessage && <p role="status">{actionMessage}</p>}
       {entity.has_conflicts && (
         <p className="catalog-inspector-conflict" role="alert">
@@ -189,11 +191,8 @@ export function CatalogBundleInspector({
       <BundleTitleEditor
         value={title ?? ''}
         onChange={(value) => draft.change('title', JSON.stringify(value || null))}
-        onBegin={() => {
-          if (!draft.draft.inputs[entity.fields.title!.unit])
-            draft.change('title', JSON.stringify(title))
-        }}
-        onCommit={() => {}}
+        onBegin={() => {}}
+        onCommit={() => void draft.save()}
       />
       <div className="prop">
         <span className="prop__k">Rating</span>
@@ -239,13 +238,7 @@ export function CatalogBundleInspector({
           </button>
         }
       >
-        <div
-          ref={notesRef}
-          className="notes-list"
-          onFocus={() => {
-            if (!draft.draft.inputs[entity.fields.notes!.unit]) setNotes(notes)
-          }}
-        >
+        <div ref={notesRef} className="notes-list">
           {notes.map((note, index) => (
             <NoteBox
               key={index}
@@ -254,7 +247,7 @@ export function CatalogBundleInspector({
               count={notes.length}
               height={heights[index] ?? null}
               onChange={(value) => setNotes(notes.map((old, at) => (at === index ? value : old)))}
-              onCommit={() => {}}
+              onCommit={() => void draft.save()}
               onRemove={() => {
                 setNotes(notes.filter((_, at) => at !== index))
                 setHeights(
@@ -328,37 +321,10 @@ export function CatalogBundleInspector({
       {!inspectorEnabled && (
         <p>Additional inspector controls require a server update. Use Metadata review.</p>
       )}
-      {/* A footer pinned to the inspector's bottom edge: in a short window the
-          inspector scrolls, and Save must stay in view wherever it is scrolled.
-          Edits wait here as a private draft until they are saved. */}
-      {footer && (
-        <div className="catalog-inspector-actions">
-          <button
-            className="btn"
-            disabled={blocked || draft.busy || !unsaved}
-            onClick={() => void draft.save()}
-          >
-            {draft.draft.pending && !draft.busy ? 'Retry save' : 'Save changes'}
-          </button>
-          <button
-            className="btn"
-            disabled={draft.busy || Boolean(draft.draft.pending) || !unsaved}
-            onClick={() => void draft.discard()}
-          >
-            Discard draft
-          </button>
-          {draft.copies.map((copy) => (
-            <button
-              className="btn"
-              key={copy.id}
-              disabled={draft.busy || Boolean(draft.draft.pending)}
-              onClick={() => draft.recover(copy.body.data)}
-            >
-              Recover private draft {copy.revision}
-            </button>
-          ))}
-          <p role="status">{draft.message}</p>
-        </div>
+      {draft.message && (
+        <p className="catalog-inspector-save" role="status">
+          {draft.message}
+        </p>
       )}
     </aside>
   )

@@ -51,6 +51,14 @@ macOS SQLite writers retain FULL synchronous and both fullfsync flags.
 Batching must preserve durability, source validation and repair safeguards.
 Do not restore cross-device metadata reuse as a shortcut for SMB remounts.
 
+Bundle inspector autosave and Write Mode access preparation are being qualified
+on the incoming-files branch. Ordinary scalar edits retain their causal request
+and save after a short pause or field exit; uncertain replies retry that exact
+request. Conflict review remains explicit. Enabling Write Mode verifies the
+mounted-SMB saved login before reporting success. The macOS package will use
+an existing persistent sidecar signing identity; one approval can be required
+when moving from the former ad-hoc signer. These repairs are not installed yet.
+
 ## Work awaiting consolidation
 
 Original branches remain available as local implementation and evidence records.

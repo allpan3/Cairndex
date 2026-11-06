@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { CatalogJobError, operationId, runJob, type Entity, type Save } from '../api/catalog'
+import { captureRequestScope } from '../api/requestScope'
 import { useCatalogDraft } from './useCatalogDraft'
 
 type Pending = { operation: string; request: Save; inputs: Record<string, string> }
@@ -88,6 +89,7 @@ export function useCatalogBundleDraft(
   entity: Entity,
   editor: string,
   refresh: () => void,
+  blocked = false,
 ) {
   const storage = useCatalogDraft(
     library,
@@ -102,14 +104,16 @@ export function useCatalogBundleDraft(
         return false
       }
     },
+    false,
   )
   const draft = decode(storage.body.data, entity.id)
   const latest = useRef(draft)
+  const scope = useRef(captureRequestScope())
   const [busy, setBusy] = useState(false)
   const running = useRef(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [acknowledged, setAcknowledged] = useState<Pending | null>(null)
+  const acknowledged = useRef<Record<string, { event: string; value: string; bases: string[] }>>({})
   const acknowledgedEvent = useRef('')
   function persist(next: Draft) {
     latest.current = next
@@ -130,11 +134,10 @@ export function useCatalogBundleDraft(
       }
       observed[alive.unit] = alive.basis
     }
-    if (acknowledged)
-      for (const saved of acknowledged.request.changes) {
-        if (JSON.stringify(entity.observed[saved.unit]) === JSON.stringify(saved.basis))
-          observed[saved.unit] = [acknowledgedEvent.current]
-      }
+    for (const [savedUnit, saved] of Object.entries(acknowledged.current)) {
+      if (saved.bases.includes(JSON.stringify(entity.observed[savedUnit])))
+        observed[savedUnit] = [saved.event]
+    }
     persist({
       ...current,
       inputs: { ...current.inputs, [unit]: raw },
@@ -147,14 +150,18 @@ export function useCatalogBundleDraft(
         ]),
       ],
     })
-    setMessage('Private draft retained')
+    setError('')
+    setMessage('Saving…')
   }
   async function save() {
-    if (running.current) return
+    if (running.current || blocked || !storage.isCurrent()) return
+    if (!latest.current.pending && !Object.keys(latest.current.inputs).length) return
     running.current = true
     setBusy(true)
     setError('')
+    let saved = false
     try {
+      scope.current()
       let current = latest.current
       if (!current.pending && !Object.keys(current.inputs).length) return
       if (!current.pending) {
@@ -195,8 +202,18 @@ export function useCatalogBundleDraft(
       const job = await runJob(library, 'save', pending.request, pending.operation)
       const event = job.result?.event
       if (!event) throw new Error('The save receipt is unavailable. Retry the retained request.')
+      if (!storage.isCurrent()) return
       acknowledgedEvent.current = event
-      setAcknowledged(pending)
+      for (const change of pending.request.changes) {
+        const previous = acknowledged.current[change.unit]
+        acknowledged.current[change.unit] = {
+          event,
+          value: change.value,
+          // Polling can lag more than one autosave. Recognize every superseded
+          // own basis, while keeping a genuinely new peer basis untouched.
+          bases: [...new Set([...(previous?.bases ?? []), JSON.stringify(change.basis)])],
+        }
+      }
       const next = latest.current
       const inputs = { ...next.inputs }
       const observed = { ...next.observed }
@@ -206,54 +223,45 @@ export function useCatalogBundleDraft(
       }
       // Advance only this save's units. A refresh must not advance other draft bases.
       persist({ inputs, observed, parents: [...new Set([...next.parents, event])], pending: null })
-      setMessage(Object.keys(inputs).length ? 'Saved here · newer draft retained' : 'Saved here')
+      saved = true
+      setMessage(Object.keys(inputs).length ? 'Saving…' : 'Saved')
       refresh()
     } catch (reason) {
+      if (!storage.isCurrent()) return
       if (reason instanceof CatalogJobError) persist({ ...latest.current, pending: null })
+      setMessage('')
       setError((reason as Error).message)
     } finally {
       running.current = false
       setBusy(false)
+      // Drain edits made during a save even when navigation unmounted this view.
+      if (saved && Object.keys(latest.current.inputs).length) void save()
     }
   }
-  async function discard() {
-    if (latest.current.pending) {
-      // A lost response can hide a committed save; resolve its receipt before discarding.
-      setError('Retry the pending save before discarding this draft.')
-      return
-    }
-    const discarded = latest.current
-    await storage.discard()
-    if (latest.current === discarded) latest.current = empty
-    setMessage('Draft discarded')
-  }
+  const autoSave = useEffectEvent(() => {
+    if (!blocked && (!error || latest.current.pending)) void save()
+  })
+  const pending = Boolean(draft.pending)
+  const dirty = pending || Object.keys(draft.inputs).length > 0
+  useEffect(() => {
+    if (!dirty || busy || blocked || (error && !pending)) return
+    const timer = setTimeout(autoSave, error ? 5000 : 400)
+    return () => clearTimeout(timer)
+  }, [storage.body.data, dirty, busy, blocked, error, pending])
+  useEffect(() => () => autoSave(), [])
+
   return {
     draft,
     change,
     save,
-    discard,
     busy,
-    error: error || storage.error,
+    error: error || (dirty ? storage.error : ''),
     message,
-    copies: storage.copies.filter((copy) => {
-      const retained = decode(copy.body.data, entity.id)
-      return retained.pending || Object.keys(retained.inputs).length > 0
-    }),
-    recover: (data: string) => {
-      if (latest.current.pending) {
-        setError('Retry the pending save before recovering another draft.')
-        return
-      }
-      const value = decode(data, entity.id)
-      persist(value)
-    },
     read: (field: string) => {
       const cell = entity.fields[field]!
-      const saved = acknowledged?.request.changes.find((change) => change.unit === cell.unit)
+      const saved = acknowledged.current[cell.unit]
       const value =
-        saved && JSON.stringify(cell.basis) === JSON.stringify(saved.basis)
-          ? saved.value
-          : cell.value
+        saved && saved.bases.includes(JSON.stringify(cell.basis)) ? saved.value : cell.value
       return draft.inputs[cell.unit] ?? value ?? 'null'
     },
   }
