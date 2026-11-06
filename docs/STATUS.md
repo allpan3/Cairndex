@@ -2,8 +2,8 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `1433ce0e`, qualified on
-2026-11-05. It includes inline name rejection, compact copy throughput/progress,
+The local desktop and web test installation is `2b7133a5`, qualified on
+2026-11-06. It includes exclusive file/bundle inspectors, inline name rejection, compact copy throughput/progress,
 inline New Folder naming, source-write network access
 recovery, incoming-files dialogs and background tasks on top of
 the merged historical audit, latest-Update acceptance, Widen title repair and
@@ -110,14 +110,19 @@ file names, modes, sizes and modification times survived installation and smoke;
 credentials were untouched. Rollback and receipts are retained locally under
 `20261105-inline-name-errors`. The branch remains unmerged for owner acceptance.
 
-The album inspector follow-up is qualified and awaiting test installation.
+The album inspector follow-up is installed on desktop and web.
 A selected album file shows file details only; clearing selection restores bundle
 metadata and its unsaved draft. Locate, viewer return and selection changes use
 the same behavior. Naming conflicts now say “This name is already in use.”
 macOS passed 1,447 frontend units, lint/format/types, production build and six
 album/source/Rename browser cases. The synthetic inspector screenshot was checked.
 Backend, Rust, Linux and frozen-integration evidence is retained for unchanged
-sources; this follow-up changes no backend contract or dependency.
+sources; this follow-up changes no backend contract or dependency. App-only
+packaging, sidecar smoke, signature/distribution and installed desktop/web checks
+passed. The stopped-profile comparison confirms unchanged private file names,
+modes, sizes and modification times; credentials remain untouched. Rollback and
+local receipts are retained under `20261106-album-inspector`. Owner acceptance
+remains the merge checkpoint.
 
 ## Qualification and evidence
 
