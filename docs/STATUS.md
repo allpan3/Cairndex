@@ -2,8 +2,8 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `2b7133a5`, qualified on
-2026-11-06. It includes exclusive file/bundle inspectors, inline name rejection, compact copy throughput/progress,
+The local desktop and web test installation is `074a71f0`, qualified on
+2026-11-06. It includes open-bundle incoming drops, exclusive file/bundle inspectors, inline name rejection, compact copy throughput/progress,
 inline New Folder naming, source-write network access
 recovery, incoming-files dialogs and background tasks on top of
 the merged historical audit, latest-Update acceptance, Widen title repair and
@@ -124,14 +124,19 @@ modes, sizes and modification times; credentials remain untouched. Rollback and
 local receipts are retained under `20261106-album-inspector`. Owner acceptance
 remains the merge checkpoint.
 
-Open-bundle incoming drops are qualified and awaiting package/install. Drops and
+Open-bundle incoming drops are installed on desktop and web. Drops and
 Add Files target the open bundle; the first ordered file's parent (or directory
 member) supplies the editable folder suggestion. Empty bundles use the remembered
 folder, and a manual choice wins over a late suggestion. macOS passed all 1,453
 frontend units, lint/format/types, production build and five album/source browser
 cases. The synthetic dialog screenshot was inspected. Backend, Rust, Linux and
 frozen-integration evidence is retained for unchanged sources; no backend contract
-or dependency changed.
+or dependency changed. App-only packaging, sidecar smoke, signature/distribution
+and installed desktop/web identity, health and shutdown checks passed. Installed
+application bytes match the package; stopped private profiles retain identical
+files, modes, sizes and modification times. Credentials were untouched. Rollback
+and local receipts are retained under `20261106-open-bundle-drop`. The branch
+remains unmerged for owner acceptance.
 
 ## Qualification and evidence
 
