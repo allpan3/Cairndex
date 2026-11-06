@@ -84,7 +84,7 @@ function mount() {
   const hook = renderHook(() => useSourceTasks('synthetic', (notice) => notices.push(notice)), {
     wrapper,
   })
-  return { hook, notices }
+  return { hook, notices, client }
 }
 
 beforeEach(() => {
@@ -277,4 +277,62 @@ test('a naming collision after mutation started keeps recovery instead of cancel
   })
   expect(hook.result.current.tasks[0]?.inline).toBe(false)
   expect(sourceRequest).not.toHaveBeenCalledWith('synthetic', expect.any(String), 'DELETE')
+})
+
+test('two naming editors share one operation and refuse a different concurrent name', async () => {
+  const { renameTask } = await import('./sourceActions')
+  const posted = server()
+  const implementation = vi.mocked(sourceRequest).getMockImplementation()!
+  let finish!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  vi.mocked(sourceRequest).mockImplementation(async (...args) => {
+    if (args[1].endsWith('/accept')) await waiting
+    return implementation(...args)
+  })
+  const { hook } = mount()
+  let first!: Promise<void>
+  let duplicate!: Promise<void>
+  act(() => {
+    first = hook.result.current.name(renameTask('Trips/old.txt', 'new.txt'))
+    duplicate = hook.result.current.name(renameTask('Trips/old.txt', 'new.txt'))
+  })
+  await act(async () => {
+    await expect(
+      hook.result.current.name(renameTask('Trips/old.txt', 'different.txt')),
+    ).rejects.toThrow('already in progress')
+  })
+  expect(posted).toHaveLength(1)
+  await act(async () => {
+    finish()
+    await Promise.all([first, duplicate])
+  })
+  expect(hook.result.current.tasks).toHaveLength(0)
+})
+
+test('a name edit finishes only after the file views have refreshed', async () => {
+  const { renameTask } = await import('./sourceActions')
+  server()
+  const { hook, client } = mount()
+  let refresh!: () => void
+  const refreshed = new Promise<void>((resolve) => {
+    refresh = resolve
+  })
+  const invalidate = vi.spyOn(client, 'invalidateQueries').mockReturnValue(refreshed)
+  let finished = false
+  let pending!: Promise<void>
+  act(() => {
+    pending = hook.result.current.name(renameTask('Trips/old.txt', 'new.txt')).then(() => {
+      finished = true
+    })
+  })
+  await waitFor(() => expect(invalidate).toHaveBeenCalledOnce())
+  expect(finished).toBe(false)
+  await act(async () => {
+    refresh()
+    await pending
+  })
+  expect(finished).toBe(true)
+  expect(hook.result.current.tasks).toHaveLength(0)
 })

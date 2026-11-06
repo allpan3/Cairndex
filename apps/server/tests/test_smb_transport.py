@@ -417,3 +417,30 @@ def test_session_rejects_plaintext_and_wrong_account(tmp_path, monkeypatch, encr
             smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner"), allow_prompt=False
         )
     assert not smb_transport._connected and not smb_transport._connections
+
+
+@pytest.mark.parametrize("code", [errno.EXDEV, errno.EAGAIN, errno.EINVAL, errno.EACCES])
+def test_validation_errors_preserve_authenticated_session(tmp_path, monkeypatch, code):
+    released = []
+    monkeypatch.setattr(smb_transport, "_release", released.append)
+    monkeypatch.setattr(
+        smb_transport,
+        "mount_for",
+        lambda _: smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner"),
+    )
+    with pytest.raises(smb_transport.SmbTransportError), smb_transport._errors(tmp_path):
+        raise OSError(code, "synthetic validation failure")
+    assert released == []
+
+
+def test_connection_reset_discards_authenticated_session(tmp_path, monkeypatch):
+    released = []
+    monkeypatch.setattr(smb_transport, "_release", released.append)
+    monkeypatch.setattr(
+        smb_transport,
+        "mount_for",
+        lambda _: smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner"),
+    )
+    with pytest.raises(smb_transport.SmbTransportError), smb_transport._errors(tmp_path):
+        raise OSError(errno.ECONNRESET, "synthetic reset")
+    assert released == [("example.com", "owner")]

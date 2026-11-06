@@ -8,7 +8,9 @@ protected library requires its passphrase when enabling writes.
 Turning write mode on asks for confirmation and checks saved-login access for
 a mounted macOS SMB share before reporting success. If macOS requires approval,
 its request appears as part of enabling Write Mode; no separate Allow Access
-step is needed. A live verified SMB session is reused. Turning it off takes effect at once
+step is needed. A live verified SMB session is reused. Name-validation and namespace
+visibility errors retain that session; a genuine disconnect can still require
+saved-login authorization again. Turning it off takes effect at once
 for an authorized session. A locked library asks for its passphrase. Released
 libraries must be reopened before enabling writes. A read-only deployment keeps
 the control visible and explains why it is blocked. Library **Settings…** opens
@@ -20,13 +22,19 @@ restart. With write mode on, a file or folder's context menu holds **Rename…**
 single selected item, and so does a double-click on its name in the inspector.
 **Delete** or **⌘⌫** asks to move the selection to the Trash. Each action asks
 only what it needs (a name, a folder, or a confirmation for the Trash).
-Naming stays in its editor until the server answers; copies and moves run as
+Naming stays in its editor until the server answers and the file views refresh;
+active naming progress is visible in the file-activity card. A second editor
+shares the same pending name request, and overlapping unfinished operations
+refuse new intent until the existing operation is finished or cancelled. Earlier
+unstarted Rename/New Folder collision rejections are retired when a corrected
+request uses that location; interrupted mutations remain protected. Copies and moves run as
 background tasks. Turning write mode off removes these actions.
 Existing directory-size and source-safety limits still apply. Interrupted writes
 retain their intent and show permission, read-only, full-storage or saved-login
 failures specifically. Private job results retain numeric storage error codes
 and the failed phase, without exception text or source paths. If macOS blocks
-the saved network login, the library shows **Allow Access…**. Authorize it, then
+the saved network login, the library opens **Network Share Access** with **Allow Access…**. Dismissing
+the dialog leaves a small control to reopen it. Authorize it, then
 choose **Try Again** for the stopped task. Successful metadata exchange does not
 hide that request; authorization alone never applies the source operation.
 
@@ -87,7 +95,10 @@ as a compact activity card at the bottom right, visible with the sidebar closed.
 It floats over the browser without moving the toolbar or reducing the grid
 height. It shows completed-file counts, received bytes, transfer percentage, speed and the current
 transfer, verification or saving phase. Transfer completion does not mean final
-publication has finished. The rest of the app stays usable. **×** stops a task: files not yet applied are cancelled, a file
+publication has finished. Browsing remains available, but source byte work currently
+holds the library exchange lock and can delay metadata saves and Update.
+[ADR-0041](adr/0041-same-volume-file-operations.md) proposes correcting this together
+with copy-free relocation; it is not implemented. **×** stops a task: files not yet applied are cancelled, a file
 already being applied finishes, and **Continue** resumes the rest. A task that ends
 cleanly leaves a message with **Undo** at the foot of the window. Undo is one new
 journaled operation per changed item. A plain copy, move, rename or trash has an
