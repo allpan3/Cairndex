@@ -115,3 +115,25 @@ test('discard acknowledges input saved in the same action', async () => {
   expect(result.current.body.files).toBe('[]')
   expect(localStorage.getItem('synthetic-draft')).toBeNull()
 })
+
+test('confirmed drafts stop polling while lost replies retry the same generation', async () => {
+  vi.useFakeTimers()
+  try {
+    let attempts = 0
+    vi.mocked(catalog).mockImplementation(async (_library, _path, method) => {
+      if (method === 'PUT' && ++attempts === 1) throw new Error('Lost reply')
+      return { items: [] }
+    })
+    const { result, unmount } = setup()
+    await act(async () => result.current.update({ files: '["kept"]' }))
+    await act(() => vi.advanceTimersByTimeAsync(4000))
+    expect(attempts).toBe(2)
+    await act(() => vi.advanceTimersByTimeAsync(12000))
+    expect(attempts).toBe(2)
+    await act(async () => result.current.update({ files: '["newer"]' }))
+    expect(attempts).toBe(3)
+    unmount()
+  } finally {
+    vi.useRealTimers()
+  }
+})

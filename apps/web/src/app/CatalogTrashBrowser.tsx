@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode } from 'react'
 import { FAMILIES } from '../api/catalog'
 import { formatBytes } from '../lib/format'
 import { leaf, trashRowTask, type TrashRow } from './sourceActions'
@@ -28,8 +28,6 @@ export function CatalogTrashBrowser({
   headerTrailing?: ReactNode
   onReviewEntity: (family: string, id: string) => void
 }) {
-  // A row leaves once its task's refresh lands; until then it cannot start twice
-  const [started, setStarted] = useState(new Set<string>())
   const { receipts, rows } = trash
   return (
     <div className="file-browser trash-browser">
@@ -92,9 +90,14 @@ export function CatalogTrashBrowser({
                   )}
                   <button
                     className="btn btn--sm"
-                    disabled={!writable || row.pending || started.has(key)}
+                    disabled={
+                      !writable ||
+                      row.pending ||
+                      tasks.tasks.some((task) =>
+                        task.items.some((item) => item.request.prior === row.id),
+                      )
+                    }
                     onClick={() => {
-                      setStarted((current) => new Set(current).add(key))
                       tasks.start(trashRowTask(row))
                     }}
                   >

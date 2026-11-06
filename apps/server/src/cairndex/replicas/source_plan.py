@@ -97,7 +97,10 @@ def prepare(
     else:
         source_seen = observation(root, source)
     if source_seen is None:
-        raise ReplicaError("Source bytes are unavailable; retry after delivery")
+        raise ReplicaError(
+            "The file is no longer at this location. Check unfinished file operations "
+            "or run Update before trying again."
+        )
     destination = "" if request.action == "trash" else source_path(request.destination)
     destination_seen = observation(root, destination) if destination else None
     if source == destination and request.action in ("rename", "move"):

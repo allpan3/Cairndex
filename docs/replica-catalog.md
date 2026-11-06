@@ -296,7 +296,8 @@ Hierarchy edits remain in Metadata review.
 
 Cover selection uses the retained inspector draft and observed file lifetime. A
 file row's ★ chooses that file; the current cover's ★ returns to the automatic
-cover. Changes save automatically while their exact inputs and observed bases
+cover. Acknowledged private draft generations stop retrying until edited again.
+Changes save automatically while their exact inputs and observed bases
 remain recoverable across reload and response loss. An already observed conflict
 requires explicit review; autosave cannot choose between competing values. Older
 alternate private drafts remain stored without being applied over current edits.

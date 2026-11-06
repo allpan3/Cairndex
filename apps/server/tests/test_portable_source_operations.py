@@ -736,3 +736,77 @@ def test_independent_source_changes_keep_concurrent_alternatives(tmp_path, scena
         else:
             assert not (root / "source.txt").exists()
             assert (peer_root / "source.txt").read_bytes() == b"original"
+
+
+def test_unfinished_path_operation_refuses_duplicates_but_keeps_exact_retry(tmp_path):
+    from cairndex.replicas.protocol import ReplicaError
+    from cairndex.replicas.source_journal import cancel
+
+    _, store = fixture(tmp_path)
+    request = SourceRequest(
+        operation="first-rename", action="rename", source="old.txt", destination="new.txt"
+    )
+    enqueue(store, request)
+    assert enqueue(store, request).id == request.operation
+    for source, destination in [
+        ("old.txt", "other.txt"),
+        ("new.txt", "elsewhere.txt"),
+        ("old.txt/child", "child"),
+    ]:
+        with pytest.raises(ReplicaError, match="unfinished file operation"):
+            enqueue(
+                store,
+                SourceRequest(
+                    operation="duplicate", action="rename", source=source, destination=destination
+                ),
+            )
+    cancel(store, request.operation)
+    assert (
+        enqueue(store, request.model_copy(update={"operation": "after-cancel"})).state == "queued"
+    )
+
+
+def test_old_rejected_name_does_not_reserve_source_or_destination(tmp_path):
+    from cairndex.replicas.source_journal import retry
+
+    root, store = fixture(tmp_path)
+    (root / "original.txt").write_bytes(b"synthetic original")
+    (root / "occupied.txt").write_bytes(b"synthetic occupied")
+    rejected = SourceRequest(
+        operation="old-rejection",
+        action="rename",
+        source="original.txt",
+        destination="occupied.txt",
+    )
+    enqueue(store, rejected)
+    run_one(store, root, lambda: None)
+    assert job(store, rejected.operation).state == "interrupted"
+    enqueue(
+        store, rejected.model_copy(update={"operation": "corrected", "destination": "vacant.txt"})
+    )
+    assert job(store, rejected.operation).state == "cancelled"
+    assert retry(store, rejected.operation).state == "cancelled"
+    assert (root / "original.txt").read_bytes() == b"synthetic original"
+    assert (root / "occupied.txt").read_bytes() == b"synthetic occupied"
+
+
+@pytest.mark.parametrize("state", ["preparing", "prepared", "accepted", "applying", "interrupted"])
+def test_unfinished_directory_reserves_descendants_and_parents(tmp_path, state):
+    from cairndex.replicas.protocol import ReplicaError
+
+    _, store = fixture(tmp_path)
+    request = SourceRequest(
+        operation="directory", action="move", source="Trips/Day", destination="Archive/Day"
+    )
+    enqueue(store, request)
+    with store.connection() as db:
+        db.execute("UPDATE source_operations SET state=? WHERE id=?", (state, request.operation))
+    for path in ("Trips", "Trips/Day/clip.txt", "Archive", "Archive/Day/clip.txt"):
+        with pytest.raises(ReplicaError, match="unfinished file operation"):
+            enqueue(store, SourceRequest(operation="overlap", action="trash", source=path))
+    assert (
+        enqueue(
+            store, SourceRequest(operation="neighbor", action="trash", source="Trips/Daylight")
+        ).state
+        == "queued"
+    )

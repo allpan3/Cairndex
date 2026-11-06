@@ -75,6 +75,45 @@ def enqueue(store: CatalogStore, request: SourceRequest) -> SourceJob:
         ).fetchone()
         if prior and prior[0] != intent:
             raise ReplicaError("Source operation identity was reused for different intent")
+        if not prior:
+            # Different editor instances must not queue overlapping namespace
+            # mutations against a path an unfinished operation may already own.
+            for path in {request.source, request.destination} - {""}:
+                occupied = db.execute(
+                    "SELECT DISTINCT o.id,o.state,o.phase,o.error,o.result,"
+                    "json_extract(o.intent,'$.action') AS action "
+                    "FROM source_operations o, json_each(o.intent) p "
+                    "WHERE o.state IN ('queued','preparing','prepared','accepted',"
+                    "'applying','interrupted') AND p.key IN ('source','destination') "
+                    "AND p.value!='' AND (p.value=? OR substr(p.value,1,length(?)+1)=?||'/' "
+                    "OR substr(?,1,length(p.value)+1)=p.value||'/')",
+                    (path, path, path, path),
+                )
+                for other in occupied:
+                    # Earlier clients hid these refused names without always
+                    # cancelling the journal row. They changed no source names
+                    # and must not reserve a location indefinitely.
+                    if (
+                        other["action"] in {"rename", "mkdir"}
+                        and other["state"] == "interrupted"
+                        and other["phase"] == "prepare"
+                        and not json.loads(other["result"] or "{}").get("started")
+                        and other["error"]
+                        in {
+                            "Destination exists; choose Replace, Skip or Keep Both",
+                            "Folder name is already in use; choose another name",
+                            "Folder path has catalog entries; choose another name",
+                        }
+                    ):
+                        db.execute(
+                            "UPDATE source_operations SET state='cancelled' WHERE id=?",
+                            (other["id"],),
+                        )
+                        continue
+                    raise ReplicaError(
+                        "An unfinished file operation uses this location. "
+                        "Finish or cancel that operation before starting another."
+                    )
         db.execute(
             "INSERT OR IGNORE INTO source_operations VALUES "
             "(?,?,'queued',NULL,NULL,'prepare',0,NULL,"

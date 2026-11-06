@@ -163,6 +163,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Uninstalled file-operation feedback/retry fixes | macOS 264 source/SMB/catalog backend cases; backend lint/format/mypy; full frontend gate with 1,474 units, then 11 naming-hook cases including the added refresh-order regression and a strengthened backend draft no-write case; seven source/conflict/draft browser scenarios; synthetic activity/access screenshots inspected. Whole backend suite, Linux, real SMB reconnect/large-file timing and packaging deferred until the recovery design is settled |
 | Installed album actions and contextual conflict review | macOS full frontend gate with 1,471 units; 19 of 20 broader browser cases initially passed, then the corrected full-review case and both affected album/conflict cases passed on final source; synthetic screenshots inspected; signed app-only package, sidecar smoke, persistent signature/distribution and installed desktop/web checks passed. Backend, Rust, Linux and frozen-integration evidence retained for unchanged source areas |
 | Installed autosave and Write Mode access | Linux 2,078 bulk cases passed with the known ARM manifest failure, plus 81 disk cases passed; backend static checks on both platforms, macOS 35 focused backend and 64 packaging/manifest cases; 1,463 frontend units, full frontend gate, 20 of 21 initial browser cases followed by five affected final-source cases and three inspector repeats passing; signed app-only package, sidecar smoke, five frozen cases across four integration modules, distribution and installed desktop/web checks |
 | Audit metadata follow-up | macOS 2,089 backend cases; Linux 2,088; both platforms 1,422 web units, 67 browser cases, static checks, web builds and four frozen integrations |
@@ -223,6 +224,26 @@ measurement excludes scheduling, history exchange, UI polling and probing; it
 is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
+
+- Owner testing found file-size-dependent Rename/Trash delays and repeated
+  attempts using the completed rename's old path. Source review confirms whole
+  recovery/output copies and exchange-lock starvation; prior small-file gates
+  did not qualify large-file usability. ADR-0041 proposes same-volume relocation
+  and awaits owner review. The local follow-up fixes activity overflow, access-dialog
+  presentation, duplicate operation admission, refresh ordering, unnecessary SMB
+  disconnects and repeated draft writes. The qualification row above covers this
+  bounded slice; it does not fix the byte-copy cost or exchange-lock contention.
+  It is not installed. Existing owner journals and user data remain untouched.
+  The current branch is `prepare/incoming-copy-dialog`; receipts are retained
+  locally under `20261106-operation-review`. No new push, PR, merge or installation
+  accompanies this checkpoint.
+- The requested Opus source review also found that relocation replaces original
+  filesystem attributes, folder operations refuse hidden or large subtrees,
+  case-only Rename fails, and Empty Trash is absent. Genuine SMB reconnects can
+  still require saved-login access; the Keychain wait holds a transport lock, and
+  Finder-created credential persistence and special-character name mapping need
+  real-share qualification. These remain open. The review did not qualify native
+  drop, the Rust host, packaging or the complete application UI.
 
 - The owner approved correcting the two verified privacy false positives: a
   generic temporary-directory prefix in the local profile and a literal inside

@@ -438,6 +438,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Keep file activity controls inside the card, show active inline naming progress,
+  and present network-share access recovery in a dialog. Deduplicate naming
+  requests and refuse overlapping unfinished source operations. Refresh file
+  views before completing a name edit.
+- Retain authenticated SMB sessions after local validation and visibility errors;
+  wake source workers after Accept/Retry and stop resending acknowledged drafts.
+
 - Restore Rename and Move to Trash inside bundle albums, including filename
   editing in the file inspector and keyboard actions. Add per-file Locate in
   File Browser and shorten the media menu action to Open.

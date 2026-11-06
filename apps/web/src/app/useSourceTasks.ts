@@ -64,6 +64,7 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
   const controllers = useRef(new Map<string, AbortController>())
   const created = useRef(new Map<string, string>())
   const queue = useRef(Promise.resolve())
+  const names = useRef(new Map<string, { destination: string; completion: Promise<void> }>())
   useEffect(() => {
     const running = controllers.current
     return () => running.forEach((controller) => controller.abort())
@@ -262,7 +263,7 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
     } finally {
       controllers.current.delete(id)
       patch(id, (task) => ({ ...task, running: false, stopping: false }))
-      void cache.invalidateQueries()
+      await cache.invalidateQueries()
     }
     if (find(id)?.items.every((item) => item.state.kind === 'done')) await finish(id)
   }
@@ -327,28 +328,58 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
     })
   }
 
+  async function finishName(id: string) {
+    await queue.current
+    const stopped = find(id)
+    if (!stopped) return
+    if (stopped.items[0]?.state.kind === 'exists') {
+      // A rejected name has changed no files. Retire that intent; a corrected
+      // name gets a fresh one. Older rejected intents are also omitted from
+      // the recovery list if cancellation could not reach the server.
+      await sourceRequest(library, `/${stopped.items[0].request.operation}`, 'DELETE').catch(
+        () => undefined,
+      )
+      commit(tasks.current.filter((task) => task.id !== id))
+      throw new Error('This name is already in use.')
+    }
+    // Real interruptions still need the existing recovery path.
+    patch(id, (task) => ({ ...task, inline: false }))
+    const state = stopped.items[0]?.state
+    throw new Error(state?.kind === 'failed' ? state.message : 'The operation did not finish.')
+  }
+
   return {
     tasks: list,
     start,
     async name(task: NewTask): Promise<void> {
-      const id = start(task, true)
-      await queue.current
-      const stopped = find(id)
-      if (!stopped) return
-      if (stopped.items[0]?.state.kind === 'exists') {
-        // A rejected name has changed no files. Retire that intent; a corrected
-        // name gets a fresh one. Older rejected intents are also omitted from
-        // the recovery list if cancellation could not reach the server.
-        await sourceRequest(library, `/${stopped.items[0].request.operation}`, 'DELETE').catch(
-          () => undefined,
-        )
-        commit(tasks.current.filter((task) => task.id !== id))
-        throw new Error('This name is already in use.')
+      const request = task.items[0]!.request
+      const path = request.source || request.destination || ''
+      const destination = request.destination || ''
+      const existing = names.current.get(path)
+      if (existing) {
+        if (existing.destination !== destination)
+          throw new Error('A name change is already in progress for this item.')
+        return existing.completion
       }
-      // Real interruptions still need the existing recovery path.
-      patch(id, (task) => ({ ...task, inline: false }))
-      const state = stopped.items[0]?.state
-      throw new Error(state?.kind === 'failed' ? state.message : 'The operation did not finish.')
+      if (
+        tasks.current.some((active) =>
+          active.items.some(
+            (item) =>
+              item.state.kind !== 'done' &&
+              path &&
+              [item.request.source, item.request.destination].includes(path),
+          ),
+        )
+      )
+        throw new Error('Finish or cancel the existing file operation before renaming this item.')
+      const id = start(task, true)
+      const completion = finishName(id)
+      names.current.set(path, { destination, completion })
+      try {
+        await completion
+      } finally {
+        names.current.delete(path)
+      }
     },
     stop(id: string) {
       patch(id, (task) => ({ ...task, stopping: true }))

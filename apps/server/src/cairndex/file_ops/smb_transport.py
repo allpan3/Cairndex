@@ -326,7 +326,21 @@ def _errors(
             raise _FileAbsent(errno.ENOENT, "The SMB file is absent") from None
         if collision and (status == NtStatus.STATUS_OBJECT_NAME_COLLISION or code == errno.EEXIST):
             raise FileExistsError(errno.EEXIST, "The SMB destination is occupied") from None
-        if path is not None:
+        # Local validation and namespace failures do not invalidate an
+        # authenticated session. Discarding it here loses one-time access and
+        # turns a name/visibility problem into a new Keychain request.
+        disconnected = code in {
+            errno.ECONNRESET,
+            errno.ECONNABORTED,
+            errno.ENOTCONN,
+            errno.EPIPE,
+            errno.ETIMEDOUT,
+        } or status in {
+            NtStatus.STATUS_NETWORK_NAME_DELETED,
+            NtStatus.STATUS_USER_SESSION_DELETED,
+            0xC000035C,  # STATUS_NETWORK_SESSION_EXPIRED (not exposed by smbprotocol)
+        }
+        if path is not None and disconnected:
             with suppress(OSError):
                 mount = mount_for(path)
                 if mount is not None:

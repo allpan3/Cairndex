@@ -1030,3 +1030,21 @@ def test_shared_server_bookkeeping_roundtrip(tmp_path):
         )
     with pytest.raises(ReplicaError, match="schema"):
         prepare_disposable(fixture)
+
+
+def test_confirmed_draft_retry_does_not_rewrite_and_reused_revision_is_refused(catalog_pair):
+    _, store, _ = catalog_pair
+    owner = "asset_bundles/bundle-000000"
+    body = {"text": "Synthetic retained note"}
+    store.draft("draft-retry", owner, 1, body)
+    # data_version changes only when another connection commits a write.
+    with sqlite3.connect(store.path.as_uri() + "?mode=ro", uri=True) as observer:
+        version = observer.execute("PRAGMA data_version").fetchone()[0]
+        store.draft("draft-retry", owner, 1, body)
+        assert observer.execute("PRAGMA data_version").fetchone()[0] == version
+        store.draft("draft-retry", owner, 2, {"text": "New generation"})
+        assert observer.execute("PRAGMA data_version").fetchone()[0] != version
+    for other_owner, other_body in [(owner, {"text": "Different"}), ("another-owner", body)]:
+        with pytest.raises(ReplicaError, match="newer editor draft"):
+            store.draft("draft-retry", other_owner, 2, other_body)
+    assert store.drafts(owner)["items"][0]["body"] == {"text": "New generation"}
