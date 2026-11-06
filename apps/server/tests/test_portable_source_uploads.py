@@ -217,4 +217,3 @@ def test_completed_upload_cannot_adopt_changed_bytes_on_retry(tmp_path):
     with pytest.raises(ReplicaError, match="original evidence"):
         asyncio.run(source_uploads.receive(store, root, "upload", 3, chunks(b"new"), lambda: None))
     assert source_uploads.uploaded_version(store, root, "upload", 3) == expected
-
