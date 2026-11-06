@@ -4,11 +4,13 @@ import { captureRequestScope } from '../api/requestScope'
 import { useCatalogDraft } from './useCatalogDraft'
 
 type Pending = { operation: string; request: Save; inputs: Record<string, string> }
+type Acknowledged = Record<string, { event: string; value: string; bases: string[] }>
 type Draft = {
   inputs: Record<string, string>
   observed: Record<string, string[]>
   parents: string[]
   pending: Pending | null
+  acknowledged?: Acknowledged
 }
 const empty: Draft = { inputs: {}, observed: {}, parents: [], pending: null }
 function decode(data: string, identity: string): Draft {
@@ -24,6 +26,7 @@ function decode(data: string, identity: string): Draft {
     switch (unit.split('/')[2]) {
       case 'title':
       case 'cover_file_id':
+      case 'primary_file_id':
         return decoded === null || typeof decoded === 'string'
       case 'rating':
         return (
@@ -56,6 +59,20 @@ function decode(data: string, identity: string): Draft {
     )
   )
     throw new Error('Invalid retained metadata draft')
+  if (
+    value.acknowledged !== undefined &&
+    (!record(value.acknowledged) ||
+      !Object.entries(value.acknowledged).every(
+        ([unit, saved]) =>
+          record(saved) &&
+          cell(unit, saved.value, true) &&
+          typeof saved.event === 'string' &&
+          saved.event.length > 0 &&
+          revisions(saved.bases) &&
+          saved.bases.every((basis) => revisions(JSON.parse(basis))),
+      ))
+  )
+    throw new Error('Invalid retained save acknowledgement')
   const pending = value.pending
   if (
     pending !== null &&
@@ -113,9 +130,11 @@ export function useCatalogBundleDraft(
   const running = useRef(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const acknowledged = useRef<Record<string, { event: string; value: string; bases: string[] }>>({})
-  const acknowledgedEvent = useRef('')
+  const acknowledged = useRef<Acknowledged>(draft.acknowledged ?? {})
   function persist(next: Draft) {
+    // A new inspector may read a cached entity before its query catches up.
+    // Keep our receipt with the draft so remounting cannot revive our old value.
+    next = { ...next, acknowledged: acknowledged.current }
     latest.current = next
     storage.update({ data: JSON.stringify(next) })
   }
@@ -146,7 +165,7 @@ export function useCatalogBundleDraft(
         ...new Set([
           ...(continuing ? current.parents : entity.parents),
           ...references.flatMap((reference) => reference.parents),
-          ...(acknowledgedEvent.current ? [acknowledgedEvent.current] : []),
+          ...Object.values(acknowledged.current).map((saved) => saved.event),
         ]),
       ],
     })
@@ -203,7 +222,6 @@ export function useCatalogBundleDraft(
       const event = job.result?.event
       if (!event) throw new Error('The save receipt is unavailable. Retry the retained request.')
       if (!storage.isCurrent()) return
-      acknowledgedEvent.current = event
       for (const change of pending.request.changes) {
         const previous = acknowledged.current[change.unit]
         acknowledged.current[change.unit] = {
@@ -238,6 +256,31 @@ export function useCatalogBundleDraft(
       if (saved && Object.keys(latest.current.inputs).length) void save()
     }
   }
+  function acceptResolution(
+    values: Record<string, string>,
+    bases: Record<string, string[]>,
+    event: string,
+  ) {
+    if (!storage.isCurrent() || running.current || latest.current.pending) return
+    const next = latest.current
+    const inputs = { ...next.inputs }
+    const observed = { ...next.observed }
+    for (const [unit, value] of Object.entries(values)) {
+      if (!unit.startsWith(`asset_bundles/${entity.id}/`)) continue
+      acknowledged.current[unit] = {
+        event,
+        value,
+        bases: [
+          ...new Set([...(acknowledged.current[unit]?.bases ?? []), JSON.stringify(bases[unit])]),
+        ],
+      }
+      delete inputs[unit]
+      observed[unit] = [event]
+    }
+    persist({ ...next, inputs, observed, parents: [...new Set([...next.parents, event])] })
+    setError('')
+    setMessage(Object.keys(inputs).length ? 'Saving…' : 'Saved')
+  }
   const autoSave = useEffectEvent(() => {
     if (!blocked && (!error || latest.current.pending)) void save()
   })
@@ -254,6 +297,7 @@ export function useCatalogBundleDraft(
     draft,
     change,
     save,
+    acceptResolution,
     busy,
     error: error || (dirty ? storage.error : ''),
     message,

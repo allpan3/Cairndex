@@ -22,6 +22,7 @@ export function CatalogViewerInspector({
   inspectorEnabled,
   blocked,
   onReview,
+  onReviewConflict,
   moments,
   onOpenFile,
   hostFiles,
@@ -36,6 +37,8 @@ export function CatalogViewerInspector({
   inspectorEnabled: boolean
   blocked: boolean
   onReview: () => void
+  /** Open Metadata Review on one structural conflict. */
+  onReviewConflict?: (unit: string) => void
   /** The moments section, with the viewer's moment source and player actions. */
   moments: ReactNode
   /** Show another file of this bundle in the viewer. */
@@ -82,6 +85,7 @@ export function CatalogViewerInspector({
           void queryClient.invalidateQueries({ queryKey: ['catalog-browse', library] })
         }}
         onReview={onReview}
+        onReviewConflict={onReviewConflict}
         onOpenFile={onOpenFile}
         hostFiles={hostFiles}
         onFilterTag={onFilterTag}

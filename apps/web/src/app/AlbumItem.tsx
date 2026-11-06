@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { type FileRead, fileThumbnailUrl } from '../api/client'
 import { formatBytes, formatDimensions, formatDuration } from '../lib/format'
 import type { FileDragProps } from './dragOut'
@@ -15,6 +15,7 @@ export function AlbumTile({
   previewDisabled,
   dragProps,
   catalog = false,
+  nameEditor,
 }: {
   file: FileRead
   selected: boolean
@@ -24,6 +25,7 @@ export function AlbumTile({
   previewDisabled: boolean
   dragProps: FileDragProps
   catalog?: boolean
+  nameEditor?: ReactNode
 }) {
   const [failedPreview, setFailedPreview] = useState('')
   const previewUrl = fileThumbnailUrl(file.bundle_id, file.id, file.updated_at)
@@ -70,9 +72,10 @@ export function AlbumTile({
     <div
       className={`album-tile${selected ? ' album-tile--selected' : ''}`}
       onClick={(event) => onSelect(event)}
-      onDoubleClick={onOpen}
+      onDoubleClick={nameEditor ? undefined : onOpen}
       onContextMenu={onContextMenu}
       onKeyDown={(event) => {
+        if (event.target instanceof Element && event.target.closest('input, textarea')) return
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
         if (event.key === 'Enter' && catalog) onOpen()
@@ -118,7 +121,7 @@ export function AlbumTile({
           <span className="card__dur">{dur}</span>
         )}
       </HoverPreview>
-      <div className="album-tile__name">{file.display_title}</div>
+      <div className="album-tile__name">{nameEditor ?? file.display_title}</div>
       <div className="album-tile__sub">
         {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}
       </div>
@@ -135,6 +138,7 @@ export function AlbumRow({
   onContextMenu,
   dragProps,
   catalog = false,
+  nameEditor,
 }: {
   file: FileRead
   selected: boolean
@@ -143,6 +147,7 @@ export function AlbumRow({
   onContextMenu: (e: React.MouseEvent) => void
   dragProps: FileDragProps
   catalog?: boolean
+  nameEditor?: ReactNode
 }) {
   const facts = factsFromBundleFile(file)
   return (
@@ -153,13 +158,14 @@ export function AlbumRow({
       aria-selected={selected}
       tabIndex={0}
       onKeyDown={(event) => {
+        if (event.target instanceof Element && event.target.closest('input, textarea')) return
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
         if (event.key === 'Enter' && catalog) onOpen()
         else onSelect(event)
       }}
       onClick={onSelect}
-      onDoubleClick={onOpen}
+      onDoubleClick={nameEditor ? undefined : onOpen}
       onContextMenu={onContextMenu}
       {...dragProps}
     >
@@ -178,7 +184,7 @@ export function AlbumRow({
             )}
           </span>
         </span>
-        <span className="file-row__text">{file.display_title}</span>
+        <span className="file-row__text">{nameEditor ?? file.display_title}</span>
         {!file.supported && <span className="badge">unsupported</span>}
         {!catalog && file.availability !== 'available' && (
           <span className="badge badge--warn">missing</span>
