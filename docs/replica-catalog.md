@@ -226,11 +226,14 @@ removes only the saved filter. Earlier servers keep the raw metadata controls.
 
 Ordinary Open registers an existing complete synthetic package. A server with
 `browse_version` of 2 or later opens the shared virtual Bundle Browser and shared title,
-ordered-note and star-rating controls. Save changes commits the retained causal
-request. Input remains editable while a save is pending. Its acknowledgement
+ordered-note and star-rating controls. Title, notes, rating and cover save
+automatically after a short pause or when leaving a field. Input remains editable
+while a save is pending. Its acknowledgement
 advances only saved fields; newer input and unrelated draft bases remain intact.
-An uncertain response keeps the exact operation for Retry save, including after a
-library switch. An already observed conflict requires explicit metadata review.
+An uncertain response retries the exact operation automatically, including after
+returning from a library switch. Changes remain private until acknowledged;
+ordinary editing has no Save, Discard or numbered draft-recovery controls.
+An already observed conflict requires explicit metadata review.
 
 | Surface | Current route and capability | Remaining integration |
 | --- | --- | --- |
@@ -293,10 +296,10 @@ Hierarchy edits remain in Metadata review.
 
 Cover selection uses the retained inspector draft and observed file lifetime. A
 file row's ★ chooses that file; the current cover's ★ returns to the automatic
-cover. Title, rating, notes and cover wait in that private draft until **Save
-changes**, which is the one deliberate difference from v0.2.1's inspector: the
-draft survives reload and response loss, and a save is refused for review when
-another device changed the same field.
+cover. Changes save automatically while their exact inputs and observed bases
+remain recoverable across reload and response loss. An already observed conflict
+requires explicit review; autosave cannot choose between competing values. Older
+alternate private drafts remain stored without being applied over current edits.
 These controls require `inspector_version: 1`; older servers retain scalar editing
 and Metadata review without calls to unsupported inspector routes.
 Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
@@ -395,8 +398,8 @@ request scans or probes source files.
 Older servers keep single selection, scalar editing and their existing views.
 Unsupported bulk or system-view endpoints are not called.
 Notes retain exact list values; dragging a grip or using its arrow keys moves
-a note and its manual height. These changes remain in the private draft until
-Save. Tag chips restore Filter, Rename, Copy and Paste, including keyboard-opened
+a note and its manual height. Note content and order save automatically. Tag
+chips restore Filter, Rename, Copy and Paste, including keyboard-opened
 menus. Browser and viewer chips use Any with subtags and preserve the current
 search, rating filters and collection scope. All Tags' double-click selects All
 bundles, clears search and applies Equal/direct membership. These actions follow

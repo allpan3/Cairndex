@@ -1,8 +1,9 @@
 import { act, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { catalog, runJob, type Entity, type Job } from '../api/catalog'
+import { advanceLibraryScope } from '../api/requestScope'
 import { useCatalogBundleDraft } from './useCatalogBundleDraft'
 vi.mock('../api/catalog', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/catalog')>()),
@@ -39,14 +40,17 @@ function entity(revision = 'seed'): Entity {
     has_conflicts: false,
   }
 }
-function setup(initial = entity()) {
+function setup(initial = entity(), blocked = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return renderHook(({ value }) => useCatalogBundleDraft('library', value, 'editor', () => {}), {
-    initialProps: { value: initial },
-    wrapper: ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    ),
-  })
+  return renderHook(
+    ({ value }) => useCatalogBundleDraft('library', value, 'editor', () => {}, blocked),
+    {
+      initialProps: { value: initial },
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    },
+  )
 }
 beforeEach(() => {
   localStorage.clear()
@@ -95,12 +99,6 @@ test('a failed acknowledgement retries the same operation and exact input', asyn
   act(() => result.current.change('title', '"First"'))
   await act(() => result.current.save())
   const first = vi.mocked(runJob).mock.calls[0]
-  act(() =>
-    result.current.recover(
-      JSON.stringify({ inputs: {}, observed: {}, parents: [], pending: null }),
-    ),
-  )
-  expect(result.current.error).toContain('Retry the pending save')
   act(() => result.current.change('title', '"Newer"'))
   await act(() => result.current.save())
   expect(vi.mocked(runJob).mock.calls[1]).toEqual(first)
@@ -159,4 +157,174 @@ test('cover selection refuses an observed deleted file', () => {
   act(() => result.current.change('cover_file_id', '"picture"', [file]))
   expect(result.current.read('cover_file_id')).toBe('null')
   expect(result.current.error).toContain('unavailable')
+})
+
+afterEach(() => vi.useRealTimers())
+const receipt = (event = 'saved-event') =>
+  ({
+    id: 'save',
+    action: 'save',
+    state: 'succeeded',
+    result: { event },
+    error: null,
+    receipt: null,
+  }) as Job
+
+test('typing autosaves after a pause without a save action', async () => {
+  vi.useFakeTimers()
+  vi.mocked(runJob).mockResolvedValue(receipt())
+  const { result } = setup()
+  act(() => result.current.change('title', '"Changed"'))
+  await act(() => vi.advanceTimersByTimeAsync(399))
+  expect(runJob).not.toHaveBeenCalled()
+  await act(() => vi.advanceTimersByTimeAsync(1))
+  expect(runJob).toHaveBeenCalledTimes(1)
+  expect(result.current.message).toBe('Saved')
+  expect(result.current.draft.inputs).toEqual({})
+})
+
+test('leaving the inspector flushes edits and drains input typed during the save', async () => {
+  let finish!: (value: Job) => void
+  vi.mocked(runJob)
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    .mockResolvedValue(receipt('second-event'))
+  const { result, unmount } = setup()
+  act(() => result.current.change('title', '"First"'))
+  act(() => {
+    void result.current.save()
+  })
+  act(() => result.current.change('title', '"Second"'))
+  unmount()
+  await act(async () => finish(receipt()))
+  expect(runJob).toHaveBeenCalledTimes(2)
+  expect(vi.mocked(runJob).mock.calls[1]![2]).toMatchObject({
+    changes: expect.arrayContaining([
+      { unit: unit('title'), value: '"Second"', basis: ['saved-event'] },
+    ]),
+  })
+})
+
+test('uncertain saves retry automatically with the identical operation', async () => {
+  vi.useFakeTimers()
+  vi.mocked(runJob).mockRejectedValueOnce(new Error('Disconnected')).mockResolvedValue(receipt())
+  const { result } = setup()
+  act(() => result.current.change('rating', '4'))
+  await act(() => vi.advanceTimersByTimeAsync(400))
+  const first = vi.mocked(runJob).mock.calls[0]
+  await act(() => vi.advanceTimersByTimeAsync(5000))
+  expect(vi.mocked(runJob).mock.calls[1]).toEqual(first)
+  expect(result.current.message).toBe('Saved')
+})
+
+test('blocked editing never autosaves, including when the inspector closes', async () => {
+  vi.useFakeTimers()
+  const { result, unmount } = setup(entity(), true)
+  act(() => result.current.change('title', '"Retained"'))
+  await act(() => vi.advanceTimersByTimeAsync(1000))
+  unmount()
+  expect(runJob).not.toHaveBeenCalled()
+})
+
+test('a late save cannot replace newer edits from a remounted inspector', async () => {
+  let finish!: (value: Job) => void
+  vi.mocked(runJob).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  const first = setup()
+  act(() => first.result.current.change('title', '"First"'))
+  act(() => {
+    void first.result.current.save()
+  })
+  first.unmount()
+  const next = setup()
+  act(() => next.result.current.change('title', '"Newer"'))
+  await act(async () => finish(receipt()))
+  const recovered = setup()
+  expect(recovered.result.current.read('title')).toBe('"Newer"')
+})
+
+test('several autosaves before a poll use their latest own basis without creating conflicts', async () => {
+  vi.mocked(runJob)
+    .mockResolvedValueOnce(receipt('first'))
+    .mockResolvedValueOnce(receipt('second'))
+    .mockResolvedValueOnce(receipt('third'))
+  const { result } = setup()
+  for (const title of ['One', 'Two', 'Three']) {
+    act(() => result.current.change('title', JSON.stringify(title)))
+    await act(() => result.current.save())
+  }
+  expect(
+    vi
+      .mocked(runJob)
+      .mock.calls.map(
+        (call) =>
+          (call[2] as { changes: { unit: string; basis: string[] }[] }).changes.find(
+            (change) => change.unit === unit('title'),
+          )!.basis,
+      ),
+  ).toEqual([['seed'], ['first'], ['second']])
+  expect(result.current.read('title')).toBe('"Three"')
+})
+
+test('an input handler from before acknowledgement still uses the latest saved basis', async () => {
+  vi.mocked(runJob).mockResolvedValueOnce(receipt('first')).mockResolvedValueOnce(receipt('second'))
+  const { result } = setup()
+  act(() => result.current.change('title', '"One"'))
+  const change = result.current.change
+  await act(() => result.current.save())
+  act(() => change('title', '"Two"'))
+  await act(() => result.current.save())
+  expect(vi.mocked(runJob).mock.calls[1]![2]).toMatchObject({
+    changes: expect.arrayContaining([{ unit: unit('title'), value: '"Two"', basis: ['first'] }]),
+  })
+})
+
+test('leaving the library retains input without starting work in the new scope', () => {
+  const { result, unmount } = setup()
+  act(() => result.current.change('title', '"Retained locally"'))
+  advanceLibraryScope()
+  unmount()
+  expect(runJob).not.toHaveBeenCalled()
+  const restored = setup()
+  expect(restored.result.current.read('title')).toBe('"Retained locally"')
+})
+
+test('background metadata polls do not postpone an interrupted save retry', async () => {
+  vi.useFakeTimers()
+  vi.mocked(runJob).mockRejectedValueOnce(new Error('Disconnected')).mockResolvedValue(receipt())
+  const { result, rerender } = setup()
+  act(() => result.current.change('rating', '4'))
+  await act(() => vi.advanceTimersByTimeAsync(400))
+  for (let index = 0; index < 5; index++) {
+    rerender({ value: entity() })
+    await act(() => vi.advanceTimersByTimeAsync(1000))
+  }
+  expect(runJob).toHaveBeenCalledTimes(2)
+  expect(result.current.message).toBe('Saved')
+})
+
+test('unavailable browser storage does not prevent automatic server saving', async () => {
+  vi.useFakeTimers()
+  vi.mocked(runJob).mockResolvedValue(receipt())
+  const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new Error('Storage unavailable')
+  })
+  try {
+    const { result } = setup()
+    act(() => result.current.change('title', '"Changed"'))
+    await act(() => vi.advanceTimersByTimeAsync(400))
+    expect(runJob).toHaveBeenCalledTimes(1)
+    expect(result.current.message).toBe('Saved')
+    expect(result.current.draft.inputs).toEqual({})
+  } finally {
+    write.mockRestore()
+  }
 })

@@ -54,6 +54,9 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     await inspector
       .getByRole('textbox', { name: 'Note', exact: true })
       .fill('Retained inspector draft')
+    await expect(
+      inspector.getByRole('button', { name: /Save changes|Discard draft|Recover private draft/ }),
+    ).toHaveCount(0)
     const note = inspector.getByRole('textbox', { name: 'Note', exact: true })
     const section = (family: string) => inspector.locator(`[data-section="${family}"]`)
     const choose = async (family: 'tags' | 'collections', name: string) => {
@@ -65,7 +68,7 @@ test('ordinary inspector saves membership and covers while local facts stay priv
       await picker.getByRole('button', { name: new RegExp(name) }).click()
       await page.keyboard.press('Escape')
     }
-    // A chip saves at once, and the unsaved note draft stays as it was
+    // Membership and scalar edits both save automatically.
     for (const family of ['tags', 'collections'] as const) {
       await choose(family, 'Synthetic child')
       await expect(
@@ -105,16 +108,13 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     const facts = files.getByRole('region', { name: 'Local file details' })
     await expect(facts).toContainText('320 × 180')
     await expect(facts).toContainText('Observed on this device')
-    // In a short window the inspector scrolls to the file list, and Save stays in view
+    // Cover selection saves automatically, including in a short window.
     await page.setViewportSize({ width: 1200, height: 640 })
     await files.getByRole('button', { name: 'Set Playback/movie.mp4 as cover' }).click()
-    await expect(
-      inspector.getByRole('button', { name: 'Save changes', exact: true }),
-    ).toBeInViewport()
-    await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
-    await expect(inspector.locator('.catalog-inspector-actions [role="status"]')).toHaveText(
-      'Saved here',
+    await expect(inspector.getByRole('button', { name: 'Save changes', exact: true })).toHaveCount(
+      0,
     )
+    await expect(inspector.locator('.catalog-inspector-save')).toHaveText('Saved')
     await page.setViewportSize({ width: 1200, height: 900 })
     const entityUrl = `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/catalog/entities/asset_bundles/bundle-000001`
     await expect
@@ -130,7 +130,6 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     )
     // The current cover's ★ returns to the automatic cover
     await files.getByRole('button', { name: 'Set Playback/movie.mp4 as cover' }).click()
-    await inspector.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect
       .poll(async () => (await (await fetch(entityUrl)).json()).fields.cover_file_id.value)
       .toBe('null')
