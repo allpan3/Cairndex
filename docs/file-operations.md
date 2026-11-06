@@ -30,6 +30,12 @@ the saved network login, the library shows **Allow Access…**. Authorize it, th
 choose **Try Again** for the stopped task. Successful metadata exchange does not
 hide that request; authorization alone never applies the source operation.
 
+Inside an open bundle, file menus also provide **Rename…** and **Move to Trash**
+under the same Write Mode gate. F2 or double-clicking the file inspector’s name
+starts renaming; Delete or ⌘⌫ requests Trash. Enter continues to open the selected
+media. The source operation preserves the file ID, and Trash retains conditional
+Undo. **Locate in File Browser** navigates without changing files or membership.
+
 In File Browser, **New Folder** in the toolbar, context menu or desktop File
 menu inserts an inline row with **Untitled** selected. Type a name and press
 Enter or click outside to create it in the current directory; Escape cancels

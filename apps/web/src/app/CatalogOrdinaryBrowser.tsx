@@ -100,6 +100,8 @@ export function CatalogOrdinaryBrowser(props: {
   onSelect: (id: string) => void
   onReviewEntity: (family: string, id: string) => void
   onReview: () => void
+  /** Open Metadata Review on one structural conflict. */
+  onReviewConflict?: (unit: string) => void
   onOpen: (id: string) => void
   /** Open one file in the viewer, at `time` seconds when it is given. */
   onOpenFile: (bundle: string, file: string, time?: number) => void
@@ -558,6 +560,8 @@ export function CatalogOrdinaryBrowser(props: {
               hostFiles={hostFiles}
               onHostPath={setBundleHostPath}
               onLocateFile={(relative) => navigateFiles(relative)}
+              onRenameFile={rename}
+              onSourceAction={sourceAction}
               onOpenDirectory={(relative) => navigateFiles(relative, true)}
               onBundleDrag={
                 bundleMoves ? (ids) => updateDragItem(ids && { kind: 'bundles', ids }) : undefined

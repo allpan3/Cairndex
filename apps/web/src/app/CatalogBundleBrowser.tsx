@@ -122,11 +122,14 @@ export function CatalogBundleBrowser({
   selected,
   onSelect,
   onReview,
+  onReviewConflict,
   onOpen,
   onOpenFile,
   hostFiles,
   onHostPath,
   onLocateFile,
+  onRenameFile,
+  onSourceAction,
   onOpenDirectory,
   onBundleDrag,
   onNewCollection,
@@ -163,6 +166,8 @@ export function CatalogBundleBrowser({
   selected: string | null
   onSelect: (id: string) => void
   onReview: () => void
+  /** Open Metadata Review on one structural conflict. */
+  onReviewConflict?: (unit: string) => void
   onOpen: (id: string) => void
   /** Open one file in the viewer, at `time` seconds when it is given. */
   onOpenFile: (bundle: string, file: string, time?: number) => void
@@ -170,6 +175,8 @@ export function CatalogBundleBrowser({
   onHostPath?: (path: string | null) => void
   /** Show one library-relative file in the File Browser. */
   onLocateFile?: (path: string) => void
+  onRenameFile?: (path: string, name: string) => void | Promise<void>
+  onSourceAction?: (action: 'copy' | 'move' | 'trash', paths: string[]) => void
   onOpenDirectory?: (path: string) => void
   /** Cards drag into sidebar collections when set; `null` ends the drag. */
   onBundleDrag?: (ids: string[] | null) => void
@@ -1084,6 +1091,10 @@ export function CatalogBundleBrowser({
             }}
             onOpen={(file) => onOpenFile(albumId, file)}
             onSelectFile={setAlbumFile}
+            onLocateFile={onLocateFile}
+            onOpenDirectory={onOpenDirectory}
+            onRename={onRenameFile}
+            onSourceAction={onSourceAction}
             hostFiles={hostFiles}
           />
         )}
@@ -1123,6 +1134,7 @@ export function CatalogBundleBrowser({
           blocked={blocked}
           memberships={(status?.selection_version ?? 0) >= 3}
           onReview={onReview}
+          onReviewConflict={onReviewConflict}
           onRetainedChange={setBulkRetained}
           onFilterTag={onFilterTag}
           onClose={() => {
@@ -1149,7 +1161,9 @@ export function CatalogBundleBrowser({
           blocked={blocked}
           refresh={refresh}
           onReview={onReview}
+          onReviewConflict={onReviewConflict}
           albumFile={albumId ? albumFile : null}
+          onRenameFile={onRenameFile}
           summary={items.find((item) => item.id === detail.data.id)}
           onOpenCollection={onOpenCollection}
           onFilterTag={onFilterTag}
