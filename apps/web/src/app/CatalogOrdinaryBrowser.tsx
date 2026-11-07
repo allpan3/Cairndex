@@ -149,7 +149,7 @@ export function CatalogOrdinaryBrowser(props: {
   // The open bundle takes precedence over its enclosing collection.
   const dropContext = useRef<IncomingDropContext>({
     collection: null,
-    folder: null,
+    home: null,
     bundle: null,
   })
   const onDropContext = useCallback((context: IncomingDropContext) => {
@@ -392,7 +392,8 @@ export function CatalogOrdinaryBrowser(props: {
               : {
                   kind: 'new-bundle',
                   collection: dropContext.current.collection,
-                  folder: dropContext.current.folder ?? remembered,
+                  home: dropContext.current.home,
+                  folder: remembered,
                 }
             : { kind: 'folder', folder: remembered },
     })

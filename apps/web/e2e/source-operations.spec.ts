@@ -190,7 +190,23 @@ test('dropped files become a bundle, join a bundle or land in a folder @fullstac
     await drop(layout, [{ name: 'Separate.txt', text: 'Synthetic separate bundle' }])
     const separate = page.getByRole('dialog', { name: 'Add 1 file as a new bundle' })
     await expect(separate).toBeVisible()
-    await separate.getByRole('button', { name: 'Cancel', exact: true }).click()
+    // A new folder is created before the copy; Undo trashes the file, then that folder
+    await separate.getByRole('button', { name: 'Library', exact: true }).click()
+    await separate.getByRole('button', { name: 'Change…', exact: true }).click()
+    await separate.getByRole('button', { name: 'New Folder…', exact: true }).click()
+    const folderName = separate.getByLabel('New folder name')
+    await folderName.fill('Separate')
+    await folderName.press('Enter')
+    await expect(separate.getByRole('button', { name: 'Separate (new folder)' })).toBeVisible()
+    await separate.screenshot({ path: test.info().outputPath('synthetic-new-folder.png') })
+    await separate.getByRole('button', { name: 'Copy', exact: true }).click()
+    await expect(page.getByText('Created “Separate” with 1 file.')).toBeVisible()
+    expect(await readFile(join(root, 'Separate', 'Separate.txt'), 'utf8')).toBe(
+      'Synthetic separate bundle',
+    )
+    await page.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(page.getByText('Moved 1 file to the Trash.')).toBeVisible()
+    await expect.poll(() => exists(join(root, 'Separate'))).toBe(false)
     await page.screenshot({ path: '/tmp/cairndex-source-operations-synthetic.png' })
   } catch (error) {
     console.error(await page.locator('body').innerText())

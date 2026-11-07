@@ -8348,6 +8348,34 @@ code {
 .folder-picker__folder:hover {
   background: var(--surface-2);
 }
+/* Folders the copy will create: named like the others, marked new. */
+.folder-picker__crumb--new {
+  font-style: italic;
+}
+.folder-picker__new {
+  margin-left: 2px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.folder-picker__create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+}
+.folder-picker__create .edit {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.folder-picker__error {
+  flex-basis: 100%;
+  color: var(--error);
+  font-size: 12px;
+}
 
 /* A background file task in the sidebar foot, and what it needs from the owner */
 .source-task__title {

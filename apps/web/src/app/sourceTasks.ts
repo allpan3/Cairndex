@@ -99,15 +99,47 @@ export function suggestBundleTitle(files: { name: string; size: number }[]): str
   return stem(largest.name)
 }
 
-/** The folder most of these library paths sit in; ties go to the first seen. */
-export function mostCommonFolder(paths: (string | null | undefined)[]): string | null {
+/** Where a view's bundles are stored, as a hint for where a new one belongs. */
+export interface BundleHome {
+  /** The folder a new bundle goes into, or whose subfolder it gets. */
+  folder: string
+  /** Whether each bundle has a folder of its own inside `folder`. */
+  perBundle: boolean
+}
+
+/**
+ * Reads the layout from one file path per bundle. Bundles that share a folder
+ * put a new bundle beside them in that folder. Bundles that each have their
+ * own folder put a new bundle in a new folder under their common parent, never
+ * inside another bundle's folder.
+ */
+export function bundleHome(paths: (string | null | undefined)[]): BundleHome | null {
   const counts = new Map<string, number>()
   for (const path of paths)
     if (path) counts.set(parentFolder(path), (counts.get(parentFolder(path)) ?? 0) + 1)
-  let best: string | null = null
+  if (counts.size === 0) return null
+  let shared: string | null = null
   for (const [folder, count] of counts)
-    if (best === null || count > counts.get(best)!) best = folder
-  return best
+    if (count > 1 && (shared === null || count > counts.get(shared)!)) shared = folder
+  if (shared !== null || counts.has('')) return { folder: shared ?? '', perBundle: false }
+  const parents = [...counts.keys()].map((folder) => parentFolder(folder).split('/'))
+  let common = parents[0]!
+  for (const next of parents.slice(1)) {
+    let length = 0
+    while (length < common.length && common[length] === next[length]) length += 1
+    common = common.slice(0, length)
+  }
+  return { folder: common.join('/'), perBundle: true }
+}
+
+/** A bundle name as one folder name, or null when nothing usable remains. */
+export function folderNameFor(title: string): string | null {
+  const name = title
+    .replace(/[/\\\0]/g, '-')
+    .trim()
+    .replace(/^\.+|\.+$/g, '')
+    .trim()
+  return name && name !== '-' ? name : null
 }
 
 /** Transfer bytes are separate from verification and final publication. */

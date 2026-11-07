@@ -441,6 +441,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Suggest a sensible folder for files dropped on a collection as a new bundle:
+  beside that collection's bundles, in a new folder of its own when they each
+  have one, never inside another bundle's folder. A collection with no bundles
+  yet maps its path onto folders of the same names; folders that do not exist
+  are marked new and created, journaled, before the copy. The folder picker
+  gains New Folder, and Undo trashes the copies before the folders it made.
 - Show grouping review section headings as titles only, without the "accept
   all additions" checkbox, and indent their rows one level inside them.
 - Move original objects for same-volume Rename, Move and Trash, preserving their
