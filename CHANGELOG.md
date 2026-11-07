@@ -10,6 +10,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Add ⌘Z for Undo of the latest file operation (Rename, Move, Trash, Put Back,
+  copy or New Folder), also after its message has gone, until another operation
+  starts. Text fields and open dialogs keep ⌘Z; each operation is undone once.
 - Add confirmed Empty Trash for retained originals. Existing independent recovery
   copies remain available and are never purged by this action.
 

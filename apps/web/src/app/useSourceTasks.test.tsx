@@ -376,3 +376,45 @@ test.each([true, false])(
     })
   },
 )
+
+test('⌘Z undoes the latest finished operation once, outside text fields', async () => {
+  const posted = server()
+  const { hook, notices } = mount(true)
+  const press = (target: EventTarget = document.body) =>
+    act(() => {
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }))
+    })
+  press()
+  expect(posted).toHaveLength(0)
+  act(() => {
+    hook.result.current.start({
+      title: 'Renaming',
+      summary: 'Renamed.',
+      finish: { kind: 'none' },
+      items: [
+        {
+          name: 'clip.mp4',
+          size: null,
+          request: {
+            operation: 'rename-clip',
+            action: 'rename',
+            source: 'Trips/clip.mp4',
+            destination: 'Trips/harbor.mp4',
+          },
+        },
+      ],
+    })
+  })
+  await waitFor(() => expect(notices).toHaveLength(1))
+  const field = document.body.appendChild(document.createElement('input'))
+  press(field)
+  field.remove()
+  expect(posted).toHaveLength(1)
+  press()
+  await waitFor(() => expect(notices).toHaveLength(2))
+  expect(posted[1]).toMatchObject({ action: 'return', prior: 'rename-clip' })
+  // Neither a second ⌘Z nor the first notice's button repeats that Undo
+  press()
+  act(() => notices[0]!.action!.run())
+  expect(posted).toHaveLength(2)
+})
