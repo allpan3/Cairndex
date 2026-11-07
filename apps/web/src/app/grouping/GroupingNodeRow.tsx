@@ -260,7 +260,7 @@ export function GroupingNodeRow({
                 }
                 aria-label={
                   node.target
-                    ? `New bundle instead of adding to ${node.target_title ?? node.title}`
+                    ? `Make new bundle instead of adding to ${node.target_title ?? node.title}`
                     : `Add to bundle ${node.target_title ?? node.title} instead`
                 }
                 draggable={false}
@@ -274,7 +274,7 @@ export function GroupingNodeRow({
                   })
                 }
               >
-                {node.target ? 'New bundle' : 'Add to bundle'}
+                {node.target ? 'Make new bundle' : 'Add to bundle'}
               </button>
             )}
           </span>
