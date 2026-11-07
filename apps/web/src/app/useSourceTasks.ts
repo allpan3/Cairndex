@@ -104,8 +104,12 @@ export function useSourceTasks(
     signal: AbortSignal,
     show: (job: SourceJob) => void,
   ) {
+    // Most steps finish within a fraction of a second: look again soon, then
+    // back off so long copies do not poll faster than they report progress.
+    let delay = 50
     while (waiting.includes(job.state)) {
-      await sleep(400, signal)
+      await sleep(delay, signal)
+      delay = Math.min(400, delay * 2)
       job = await sourceRequest<SourceJob>(library, `/${job.id}`)
       show(job)
     }

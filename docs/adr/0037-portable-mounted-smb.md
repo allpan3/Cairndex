@@ -77,7 +77,11 @@ the former source name before checking absence; a cached positive stat alone
 cannot keep a completed rename pending. Before any mounted open of a name that
 was just created or renamed over direct SMB, a stat by that name rebinds it.
 Against Samba, an open or directory listing alone left such a name unopenable
-through smbfs indefinitely while the server already had it. An arriving name is
+through smbfs indefinitely while the server already had it. Before waiting, an
+exclusive probe file is created and removed through the mount in the target's
+folder. smbfs otherwise answers the absence it cached during the pre-move checks
+for about two seconds; the probe clears it, and each wait fell from 0.4-2.6 s to
+about 20 ms. A refused probe only leaves the bounded wait. An arriving name is
 retained. A replaced
 directory may wait up to thirty seconds
 for its mounted child listing while its server identity remains exact. A missing

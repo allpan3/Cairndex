@@ -444,6 +444,50 @@ def test_publication_refreshes_completed_mounted_writer_before_observation(
         os.close(descriptor)
 
 
+def test_visibility_first_clears_cached_absences_in_the_target_folder(tmp_path, monkeypatch):
+    # smbfs answers "absent" from its cache for seconds after a direct rename; a
+    # change made through the mount in that folder must come before any lookup.
+    target = tmp_path / "moved.bin"
+    target.write_bytes(b"Synthetic moved file")
+    events = []
+    monkeypatch.setattr(smb_portable, "_uncache", lambda _: None)
+    real_open, real_rebind = os.open, smb_transport.rebind
+    monkeypatch.setattr(
+        smb_portable.os,
+        "open",
+        lambda path, flags, *rest, **kw: (
+            events.append(("create" if flags & os.O_CREAT else "open", Path(path).parent)),
+            real_open(path, flags, *rest, **kw),
+        )[1],
+    )
+    monkeypatch.setattr(
+        smb_transport, "rebind", lambda path: (events.append(("stat", path)), real_rebind(path))
+    )
+    smb_portable._visible(
+        tmp_path / "source.bin", target, {"size": target.stat().st_size}, move=True, folder=False
+    )
+    assert events[0] == ("create", tmp_path)
+    # The probe is never left in the owner's folder
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["moved.bin"]
+
+
+def test_visibility_still_waits_when_the_folder_refuses_the_probe(tmp_path, monkeypatch):
+    target = tmp_path / "moved.bin"
+    target.write_bytes(b"Synthetic moved file")
+    monkeypatch.setattr(smb_portable, "_uncache", lambda _: None)
+    real_open = os.open
+
+    def refuse_create(path, flags, *rest, **kw):
+        if flags & os.O_CREAT:
+            raise PermissionError(errno.EACCES, "Synthetic refusal")
+        return real_open(path, flags, *rest, **kw)
+
+    monkeypatch.setattr(smb_portable.os, "open", refuse_create)
+    smb_portable._visible(
+        tmp_path / "source.bin", target, {"size": target.stat().st_size}, move=True, folder=False
+    )
+
+
 def test_visibility_rebinds_each_name_before_its_first_mounted_open(tmp_path, monkeypatch):
     # smbfs can keep failing an open of a directly renamed name until a stat
     # rebinds it, so the stat must come before any open of that name.
