@@ -6,7 +6,7 @@ import type { components } from '../api/schema'
 import type { BundleSort, SortOrder } from '../api/client'
 import type { BundleCardItem } from './BundleCard'
 import { Browser, type BrowserNavigation } from './Browser'
-import { mostCommonFolder, parentFolder } from './sourceTasks'
+import { bundleHome, parentFolder } from './sourceTasks'
 import type { IncomingDropContext } from './IncomingDialog'
 import { Toolbar } from './Toolbar'
 import {
@@ -357,10 +357,10 @@ export function CatalogBundleBrowser({
       ) ?? [],
     [browse.data, localHistoryEnabled, leaving],
   )
-  // A new bundle dropped here most likely belongs beside this view's bundles
+  // A new bundle dropped here most likely belongs with this view's bundles
   const collectionId = selection.collectionId ?? null
-  const dropFolder = useMemo(
-    () => (collectionId ? mostCommonFolder(items.map((item) => item.resume_relative_path)) : null),
+  const dropHome = useMemo(
+    () => (collectionId ? bundleHome(items.map((item) => item.resume_relative_path)) : null),
     [collectionId, items],
   )
   const scopeFor = (text: string) =>
@@ -572,10 +572,10 @@ export function CatalogBundleBrowser({
   useEffect(() => {
     onDropContext?.({
       collection: collectionId,
-      folder: dropFolder,
+      home: dropHome,
       bundle: albumId ? { id: albumId, title: albumTitle } : null,
     })
-  }, [onDropContext, collectionId, dropFolder, albumId, albumTitle])
+  }, [onDropContext, collectionId, dropHome, albumId, albumTitle])
   // Resolve one ordered member from metadata; host handoff also supports attachments.
   const hostTarget = useQuery({
     queryKey: ['catalog-host-target', library, single, albumId, albumFile, inspectorFile],
