@@ -7533,6 +7533,11 @@ export interface components {
             source_mkdir: boolean;
             /** Source Operations Version */
             source_operations_version?: number | null;
+            /**
+             * Source Original
+             * @default false
+             */
+            source_original: boolean;
             /** Storage Access */
             storage_access?: ("authorization" | "login") | null;
             /** Storyboard Version */
@@ -7692,7 +7697,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "copy" | "rename" | "move" | "trash" | "undo" | "restore" | "mkdir";
+            action: "copy" | "rename" | "move" | "trash" | "undo" | "restore" | "mkdir" | "relocate" | "retain" | "return" | "purge";
             /**
              * Byte Limit
              * @default 137438953472

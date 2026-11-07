@@ -6,6 +6,11 @@
 
 ## Contract
 
+[ADR-0041](0041-same-volume-file-operations.md) amends this contract for new
+same-volume Rename, Move, Trash, Put Back and Empty Trash operations. They retain
+the original object rather than independent recovery copies. The copy contract
+below still governs Copy, Replace and all existing copy-based journals.
+
 Copy, Rename, Move, Replace, Trash and Undo require both the deployment permission and
 the serving instance's per-library write permission. Access checks and Release admission
 apply. Copying a library does not copy write permission. Source reads, discovery,

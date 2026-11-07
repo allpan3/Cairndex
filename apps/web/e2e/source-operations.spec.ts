@@ -451,3 +451,55 @@ test('long stopped file tasks keep controls visible and share access opens a dia
     await rm(scratch, { recursive: true, force: true })
   }
 })
+
+test('Empty Trash confirms permanent deletion and Cancel retains the original @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(mounted ? 600_000 : 150_000)
+  const { scratch, root } = await fixture('cairndex-source-empty-')
+  await writeFile(join(root, 'discard.txt'), 'Synthetic retained original')
+  const backend = await startBackend(join(scratch, 'private'), { CAIRNDEX_WORKER_ENABLED: 'true' })
+  try {
+    await proxyApi(page, backend.baseUrl)
+    await createLibrary(page, root, 'Synthetic trash')
+    await page.getByRole('tab', { name: 'Files', exact: true }).click()
+    const files = page.getByRole('grid', { name: 'Files', exact: true })
+    await files.getByRole('row').filter({ hasText: 'discard.txt' }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Move to Trash', exact: true }).click()
+    await page
+      .getByRole('dialog', { name: 'Move “discard.txt” to the Trash?' })
+      .getByRole('button', { name: 'Move to Trash', exact: true })
+      .click()
+    await expect(page.getByText('Moved “discard.txt” to the Trash.')).toBeVisible()
+    await page.getByRole('button', { name: 'Trash', exact: true }).click()
+    const trash = page.getByRole('list', { name: 'Trash', exact: true })
+    await expect(trash).toContainText('discard.txt')
+    const operationRoot = join(root, '.cairndex', 'source-operations')
+    const operations = await readdir(operationRoot)
+    const retained = []
+    for (const operation of operations) {
+      const path = join(operationRoot, operation, 'original')
+      if (await exists(path)) retained.push(path)
+    }
+    expect(retained).toHaveLength(1)
+    await page.getByRole('button', { name: 'Empty Trash…', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Empty Trash?', exact: true })
+    await expect(dialog.getByRole('button', { name: 'Delete Permanently' })).toBeEnabled()
+    await page.screenshot({ path: test.info().outputPath('synthetic-empty-trash.png') })
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    expect(await readFile(retained[0]!, 'utf8')).toBe('Synthetic retained original')
+    await expect(trash).toContainText('discard.txt')
+    await page.getByRole('button', { name: 'Empty Trash…', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Delete Permanently', exact: true }).click()
+    await expect(page.getByText('Permanently deleted 1 item.')).toBeVisible()
+    await expect(page.getByText('The Trash is empty.')).toBeVisible()
+    expect(await exists(retained[0]!)).toBe(false)
+    expect(await exists(join(root, 'discard.txt'))).toBe(false)
+    for (const operation of await readdir(operationRoot))
+      expect(await exists(join(operationRoot, operation, 'original'))).toBe(false)
+  } finally {
+    await page.close()
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})

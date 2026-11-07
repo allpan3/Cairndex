@@ -21,11 +21,17 @@ def clear_sessions():
     smb_transport._connections.clear()
     smb_transport._roots.clear()
     smb_transport._root_users.clear()
+    smb_transport._authorized_passwords.clear()
+    smb_transport._password_pending.clear()
+    smb_transport._credential_epochs.clear()
     yield
     smb_transport._connected.clear()
     smb_transport._connections.clear()
     smb_transport._roots.clear()
     smb_transport._root_users.clear()
+    smb_transport._authorized_passwords.clear()
+    smb_transport._password_pending.clear()
+    smb_transport._credential_epochs.clear()
 
 
 # Model open-object identity and deletion separately from replaceable pathnames
@@ -444,3 +450,179 @@ def test_connection_reset_discards_authenticated_session(tmp_path, monkeypatch):
     with pytest.raises(smb_transport.SmbTransportError), smb_transport._errors(tmp_path):
         raise OSError(errno.ECONNRESET, "synthetic reset")
     assert released == [("example.com", "owner")]
+
+
+def test_explicit_authorization_reconnects_without_reprompt_and_forgets_on_close(
+    tmp_path, monkeypatch
+):
+    reads = []
+    monkeypatch.setattr(
+        smb_transport,
+        "_password",
+        lambda mount, **kw: reads.append(kw["allow_prompt"]) or "synthetic-password",
+    )
+    monkeypatch.setattr(smb_transport.smbclient, "delete_session", lambda *a, **kw: None)
+
+    def connect(server, **kwargs):
+        return SimpleNamespace(
+            username=kwargs["username"],
+            encrypt_data=True,
+            connection=SimpleNamespace(
+                transport=SimpleNamespace(connected=True),
+                dialect=0x0311,
+                require_signing=True,
+                server_name=server,
+            ),
+        )
+
+    monkeypatch.setattr(smb_transport.smbclient, "register_session", connect)
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    monkeypatch.setattr(smb_transport, "mount_for", lambda root: mount)
+    smb_transport.register_root(tmp_path)
+    first = smb_transport._connect(mount, allow_prompt=True)
+    first.connection.transport.connected = False
+    second = smb_transport._connect(mount, allow_prompt=False)
+    assert second is not first and reads == [True]
+    smb_transport.forget_credentials(tmp_path)
+    second.connection.transport.connected = False
+    smb_transport._connect(mount, allow_prompt=False)
+    assert reads == [True, False]
+    smb_transport._connect(mount, allow_prompt=True)
+    assert reads == [True, False, True]
+    smb_transport.close_root(tmp_path)
+    assert not smb_transport._authorized_passwords
+
+
+def test_keychain_wait_does_not_block_mount_registry(tmp_path, monkeypatch):
+    import threading
+
+    entered, release, inspected = threading.Event(), threading.Event(), threading.Event()
+
+    def password(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return "synthetic-password"
+
+    monkeypatch.setattr(smb_transport, "_password", password)
+    monkeypatch.setattr(smb_transport.smbclient, "delete_session", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        smb_transport.smbclient,
+        "register_session",
+        lambda server, **kw: SimpleNamespace(
+            username=kw["username"],
+            encrypt_data=True,
+            connection=SimpleNamespace(
+                transport=SimpleNamespace(connected=True),
+                dialect=0x0311,
+                require_signing=True,
+                server_name=server,
+            ),
+        ),
+    )
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    monkeypatch.setattr(smb_transport, "mount_for", lambda root: mount)
+    worker = threading.Thread(target=lambda: smb_transport._connect(mount, allow_prompt=True))
+    worker.start()
+    reader = threading.Thread(target=lambda: (smb_transport._mount(tmp_path), inspected.set()))
+    try:
+        assert entered.wait(2)
+        reader.start()
+        assert inspected.wait(2)
+    finally:
+        release.set()
+        worker.join(5)
+        reader.join(5)
+
+
+def test_timed_out_prompt_is_reused_by_background_retry(tmp_path, monkeypatch):
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    release = threading.Event()
+    calls = []
+
+    def password(*args, **kwargs):
+        calls.append(kwargs["allow_prompt"])
+        assert release.wait(5)
+        return "synthetic-password"
+
+    monkeypatch.setattr(smb_transport, "_password_sync", password)
+    try:
+        with pytest.raises(smb_transport.KeychainError):
+            smb_transport._password(mount, allow_prompt=True, timeout=0.01)
+        pending = smb_transport._password_pending[(mount, True)]
+        release.set()
+        assert pending[0].wait(2)
+        assert smb_transport._password(mount, allow_prompt=False) == "synthetic-password"
+        assert calls == [True]
+        assert not smb_transport._password_pending
+    finally:
+        release.set()
+
+
+@pytest.mark.parametrize("revoke", ["disable", "close", "remount", "shutdown"])
+def test_pending_authorization_cannot_restore_revoked_grant(tmp_path, monkeypatch, revoke):
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    entered, release = threading.Event(), threading.Event()
+    failures = []
+
+    def password(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return "synthetic-password"
+
+    monkeypatch.setattr(smb_transport, "_password", password)
+    monkeypatch.setattr(smb_transport, "mount_for", lambda path: mount)
+    monkeypatch.setattr(smb_transport.smbclient, "delete_session", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        smb_transport.smbclient,
+        "register_session",
+        lambda server, **kw: SimpleNamespace(
+            username=kw["username"],
+            encrypt_data=True,
+            connection=SimpleNamespace(
+                transport=SimpleNamespace(connected=True),
+                dialect=0x0311,
+                require_signing=True,
+                server_name=server,
+            ),
+        ),
+    )
+    smb_transport.register_root(tmp_path)
+
+    def authorize():
+        try:
+            smb_transport._connect(mount, allow_prompt=True)
+        except smb_transport.SmbTransportError as error:
+            failures.append(error.errno)
+
+    worker = threading.Thread(target=authorize)
+    worker.start()
+    try:
+        assert entered.wait(2)
+        if revoke == "disable":
+            smb_transport.forget_credentials(tmp_path)
+        elif revoke == "close":
+            smb_transport.close_root(tmp_path)
+        elif revoke == "shutdown":
+            smb_transport.close_sessions()
+        else:
+            monkeypatch.setattr(smb_transport, "mount_for", lambda path: None)
+            with pytest.raises(smb_transport.SmbTransportError, match="mount changed"):
+                smb_transport._mount(tmp_path)
+    finally:
+        release.set()
+        worker.join(5)
+    assert not worker.is_alive()
+    assert failures == [errno.ECANCELED]
+    assert not smb_transport._authorized_passwords
+    assert not smb_transport._connected
+
+
+def test_disabling_unavailable_mount_revokes_registered_grant(tmp_path, monkeypatch):
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    credential = (mount.server, mount.account, mount.share)
+    smb_transport._roots[tmp_path] = mount
+    smb_transport._authorized_passwords[credential] = "synthetic-password"
+    monkeypatch.setattr(smb_transport, "mount_for", lambda root: None)
+    smb_transport.forget_credentials(tmp_path)
+    assert credential not in smb_transport._authorized_passwords
+    assert smb_transport._credential_epochs[credential] == 1

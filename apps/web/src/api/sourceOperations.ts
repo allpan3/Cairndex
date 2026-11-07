@@ -13,14 +13,16 @@ export type Version = {
   version: 'source' | 'destination'
   evidence: { algorithm: 'sha256' | 'tree-sha256-v1'; size: number; digest: string }
 }
+export type OriginalVersion = { operation: string; version: 'original'; kind: 'file' | 'directory' }
 export type SourceReceipt = {
   operation: string
   action: string
   source: string
   destination: string
   undo_of: string | null
-  versions_before: Record<string, Version | null>
-  versions_after: Record<string, Version | null>
+  purges?: string | null
+  versions_before: Record<string, Version | OriginalVersion | null>
+  versions_after: Record<string, Version | OriginalVersion | null>
   metadata: { changes: { unit: string; value: string }[] } | null
 }
 export type ReceiptPage = {

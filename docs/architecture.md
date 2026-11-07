@@ -55,7 +55,10 @@ or apply to a changed authored path. Writer durability remains unchanged.
 The existing two source workers advance maintenance independently of metadata
 exchange, so each small batch does not repeat a full history walk. Maintenance
 uses lifecycle admission and the same guarded media adapter as playback;
-source-write operations retain the exchange lock and permission checks.
+source-write operations use a separate per-library lock and retain permission
+checks. Lifecycle admission spans the source phase; Release drains both source
+and metadata work. Catalog bases are rechecked before mutation and commit, so
+concurrent metadata saves remain available without weakening recovery.
 Local maintenance alone leaves history polling at its idle interval.
 Update also advances several bounded transactions per exchange pass, yielding
 after 32 steps or 0.25 seconds.
@@ -74,7 +77,8 @@ The shared ORM, legacy routes and shared-folder lease utilities below remain
 internal fixture and model references. Public registry admission does not allow
 old libraries to use them. Portable routes use the private catalog. Reviewed
 source operations use a private intent journal, two bounded workers and
-independent retained versions under `.cairndex/source-operations/`. Received
+retained originals or independent copy/replace versions under
+`.cairndex/source-operations/`, according to the explicit operation contract. Received
 receipts never run filesystem work. Local no-replace primitives and the
 authenticated mounted-SMB adapter preserve occupied names. See
 [source operations](file-operations.md) and [qualification](storage-qualification.md).

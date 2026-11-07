@@ -343,6 +343,7 @@ class CatalogStorage(PrivateStore):
                 "grouping_version": 2 if self.descriptor.format_version == 3 else None,
                 "source_operations_version": 1 if self.descriptor.format_version == 3 else None,
                 "source_mkdir": self.descriptor.format_version == 3,
+                "source_original": self.descriptor.format_version == 3,
                 "media_version": 1,
                 "path_media_version": 1,
                 "maintenance_version": 1,
