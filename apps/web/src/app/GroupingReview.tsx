@@ -989,7 +989,7 @@ function AdditionDestinationButton({
         destination.set(proposal, !proposal.create_new_bundle)
       }}
     >
-      {proposal.create_new_bundle ? 'Add to bundle' : 'New bundle'}
+      {proposal.create_new_bundle ? 'Add to bundle' : 'Make new bundle'}
     </button>
   )
 }
