@@ -2,8 +2,10 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `18b4cd8`, qualified on
-2026-11-06. It includes copy-free same-volume Rename, Move and Trash
+The local desktop and web test installation is `10d9108`, qualified on
+2026-11-07. It includes faster network-share Rename/Trash/Put Back, folder
+suggestions and New Folder in the incoming dialog, title-only grouping headings,
+a persistent local app signature, copy-free same-volume Rename, Move and Trash
 (ADR-0041), operation feedback/retry fixes, contextual conflict review, album file actions, retained autosave
 acknowledgements, and SMB access preparation when enabling
 Write Mode, open-bundle incoming drops, exclusive file/bundle inspectors,
@@ -164,6 +166,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed network-share speed, folder suggestion and grouping headings | Linux 57 SMB/signing backend cases; macOS backend lint/format/mypy, 119 focused backend cases and the full frontend gate with 1,484 units on the packaged commit; source-operation and grouping-section browser specs (one known teardown flake passed on rerun); synthetic new-folder and grouping screenshots inspected; disposable Samba Rename/Trash/Put Back/Undo/Empty Trash at 1 MiB and 512 MiB in 0.8–1.2 s per step; signed app-only package with the persistent app signer, sidecar smoke, four frozen integrations, distribution, installed sidecar smoke and profile preservation |
 | Installed same-volume original operations | Linux 2,061 memory plus 110 disk backend cases after one test update (the old Undo-race setup queued a second recovery that the new admission guard refuses); macOS backend lint/format/mypy and 97 focused SMB/source/write-mode cases; full frontend gate with 1,479 units; disposable Samba Rename/Trash/Put Back/Undo/Empty Trash at 1 MiB and 512 MiB; signed app-only package, sidecar smoke, four frozen integrations, persistent signature/distribution, installed sidecar smoke and profile preservation. The source-operation browser spec was not rerun after the final backend changes |
 | Uninstalled file-operation feedback/retry fixes | macOS 264 source/SMB/catalog backend cases; backend lint/format/mypy; full frontend gate with 1,474 units, then 11 naming-hook cases including the added refresh-order regression and a strengthened backend draft no-write case; seven source/conflict/draft browser scenarios; synthetic activity/access screenshots inspected. Whole backend suite, Linux, real SMB reconnect/large-file timing and packaging deferred until the recovery design is settled |
 | Installed album actions and contextual conflict review | macOS full frontend gate with 1,471 units; 19 of 20 broader browser cases initially passed, then the corrected full-review case and both affected album/conflict cases passed on final source; synthetic screenshots inspected; signed app-only package, sidecar smoke, persistent signature/distribution and installed desktop/web checks passed. Backend, Rust, Linux and frozen-integration evidence retained for unchanged source areas |
@@ -241,7 +244,11 @@ is not an owner-NAS or full-UI Update benchmark.
 - A disposable Samba share mounted through smbfs (relayed into the macOS guest)
   qualified Rename, Trash, Put Back, Undo, Trash again and Empty Trash at 1 MiB and
   512 MiB: every step succeeded in 0.7–3.2 s independent of size, with zero source
-  reads and no Keychain reread across forced reconnects. It first exposed a mounted
+  reads and no Keychain reread across forced reconnects. Most of that time was
+  smbfs keeping a cached absence for about 2 s after each direct SMB move; a probe
+  file in the target folder now clears it, and each step takes 0.8–1.2 s. The
+  remainder is safety checks: about 117 mount lookups, 369 direct SMB round trips
+  and 21 synchronous database commits per Rename. It first exposed a mounted
   visibility defect: after a direct SMB create or rename, an open through the mount
   could fail with ENOENT indefinitely. A stat by name now precedes such opens
   (ADR-0037). These are source results, not an installation or owner-NAS
@@ -250,7 +257,9 @@ is not an owner-NAS or full-UI Update benchmark.
 - The earlier feedback/retry fixes (activity wrapping, permission popup, duplicate
   admission, rename refresh ordering, no repeated acknowledged draft writes) are
   installed with it. Owner-NAS timing and the packaged Keychain prompt remain
-  unverified. No PR, merge or release is authorized for this follow-up; owner
+  unverified. The local app is now re-signed with the persistent build
+  certificate, so macOS privacy approvals such as Network Volumes survive later
+  local builds; the first launch of this build asks once more. No PR, merge or release is authorized for this follow-up; owner
   acceptance remains required.
 
 - The owner approved correcting the two verified privacy false positives: a

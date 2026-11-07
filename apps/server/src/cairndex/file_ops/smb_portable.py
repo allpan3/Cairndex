@@ -7,6 +7,7 @@ import os
 import stat
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
 from smbprotocol.open import FilePipePrinterAccessMask as Access  # type: ignore[import-untyped]
@@ -43,6 +44,26 @@ def refresh(parent: int, name: str) -> None:
             _refresh_data(path)
 
 
+def _forget_absent_names(directory: Path) -> None:
+    """Make smbfs drop the names it remembers as absent in this directory.
+
+    The checks before a direct SMB create or rename look the destination up
+    through the mount and find it absent. smbfs then answers that lookup from
+    its cache for about two seconds after the server already has the entry.
+    A change made through the mount in the same directory clears those cached
+    absences, so the new name shows at its next lookup. Measured against Samba
+    via smbfs: each wait fell from 0.4-2.6 s to about 20 ms. The probe name is
+    exclusive and never left behind; a refused probe only leaves the wait.
+    """
+    probe = directory / f".cairndex-refresh-{os.getpid()}-{time.monotonic_ns()}"
+    try:
+        os.close(os.open(probe, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600))
+    except OSError:
+        return
+    with suppress(FileNotFoundError):
+        os.unlink(probe)
+
+
 def _visible(
     source: Path, target: Path, expected: dict[str, int], *, move: bool, folder: bool
 ) -> None:
@@ -51,6 +72,7 @@ def _visible(
     This checks namespace visibility, type and length only. Callers still verify
     immutable bytes or the complete private source identity before completion.
     """
+    _forget_absent_names(target.parent)
     deadline = time.monotonic() + VISIBILITY_TIMEOUT
     while True:
         absent = not move
