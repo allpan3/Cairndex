@@ -11,7 +11,8 @@ from cairndex.replicas.catalog.model import key, value_text
 from cairndex.replicas.catalog.protocol import UnitChange
 from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.protocol import ReplicaError
-from cairndex.replicas.source_files import operation_directory, source_path
+from cairndex.replicas.source_claims import claim
+from cairndex.replicas.source_files import source_path
 from cairndex.replicas.source_journal import SourceRequest
 from cairndex.replicas.source_original_files import matches, move, observe, parent_identity
 
@@ -111,6 +112,7 @@ def prepare_original(store: CatalogStore, root: Path, request: SourceRequest) ->
         versions_before[destination] = None
         versions_after[destination] = version
     return plan(
+        store,
         root,
         request,
         source,
@@ -128,6 +130,7 @@ def prepare_original(store: CatalogStore, root: Path, request: SourceRequest) ->
 
 
 def plan(
+    store: CatalogStore,
     root: Path,
     request: SourceRequest,
     source: str,
@@ -143,12 +146,20 @@ def plan(
     *,
     case_change: bool = False,
 ) -> dict[str, Any]:
-    with operation_directory(root, request.operation, create=True):
-        pass
-    stage = {"operation": request.operation, "name": "original"}
-    steps: list[dict[str, Any]] = [{"origin": origin, "target": stage}]
-    if target:
-        steps.append({"origin": stage, "target": target})
+    # A move between library paths is one no-replace rename: a lost reply is
+    # resolved by finding the object at origin or target, and Undo renames it
+    # back. Only Trash, Empty Trash and a case-only rename stop in the
+    # operation's own directory. The worker claims it for Trash and Empty
+    # Trash; a relocation claims it here, only when it needs it.
+    if target and not case_change:
+        steps: list[dict[str, Any]] = [{"origin": origin, "target": target}]
+    else:
+        if request.action in {"relocate", "return"}:
+            claim(store, root, request.operation, request.model_dump(mode="json"))
+        stage = {"operation": request.operation, "name": "original"}
+        steps = [{"origin": origin, "target": stage}]
+        if target:
+            steps.append({"origin": stage, "target": target})
     for step in steps:
         step["origin_parent"] = parent_identity(root, step["origin"])
         step["target_parent"] = parent_identity(root, step["target"])
@@ -247,6 +258,7 @@ def prepare_return(store: CatalogStore, root: Path, request: SourceRequest) -> d
     with store.connection() as db:
         metadata, before, restores = inverse_metadata(store, db, root, prior)
     review = plan(
+        store,
         root,
         request,
         origin.get("path", prior["source"]),
@@ -311,7 +323,8 @@ def apply_original(
             step["origin_parent"],
             step["target_parent"],
         )
-        store.fault("source_after_capture" if index == 0 else "source_after_publication")
+        published = "path" in step["target"]
+        store.fault("source_after_publication" if published else "source_after_capture")
         result["step"] = index + 1
         checkpoint(store, request.operation, result)
     target = review["steps"][-1]["target"]

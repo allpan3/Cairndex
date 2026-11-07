@@ -66,7 +66,6 @@ def test_relocation_preserves_catalog_content_and_file_identity(tmp_path, monkey
     "boundary",
     [
         "source_before_capture",
-        "source_after_capture",
         "source_after_publication",
         "source_before_catalog_commit",
         "source_after_catalog_commit",
@@ -85,19 +84,54 @@ def test_relocation_restart_at_each_boundary(tmp_path, boundary):
     run_one(store, root, lambda: None)
     accept(store, "move", job(store, "move").receipt)
 
+    fired = []
+
     def fault(point):
         if point == boundary:
+            fired.append(point)
             raise OSError("Synthetic interruption")
 
     store.fault = fault
     run_one(store, root, lambda: None)
     store.fault = lambda point: None
+    assert fired == [boundary]
     if job(store, "move").state != "succeeded":
         retry(store, "move")
         run_one(store, root, lambda: None)
     assert job(store, "move").state == "succeeded", job(store, "move").error
     assert (root / "target.txt").stat().st_ino == inode
     assert not (root / "source.txt").exists()
+
+
+def test_rename_undo_and_put_back_each_move_once_without_an_operation_directory(
+    tmp_path, monkeypatch
+):
+    from cairndex.replicas import source_original_files
+
+    root, store = fixture(tmp_path)
+    (root / "sample.txt").write_bytes(b"Synthetic content")
+    moves = []
+    relocate = source_original_files.relocate
+
+    def counted(*args):
+        moves.append(args[1:4:2])
+        relocate(*args)
+
+    monkeypatch.setattr(source_original_files, "relocate", counted)
+    operations = root / ".cairndex/source-operations"
+    original(store, root, "rename", "relocate", "sample.txt", "renamed.txt")
+    original(store, root, "undo-rename", "return", prior="rename")
+    assert moves == [("sample.txt", "renamed.txt"), ("renamed.txt", "sample.txt")]
+    assert not (operations / "rename").exists()
+    assert not (operations / "undo-rename").exists()
+    moves.clear()
+    original(store, root, "trash", "retain", "sample.txt")
+    original(store, root, "put-back", "return", prior="trash")
+    # Trash keeps the original in its own claimed directory; Put Back is one move out
+    assert moves == [("sample.txt", "original"), ("original", "sample.txt")]
+    assert (operations / "trash/claim").is_file()
+    assert not (operations / "put-back").exists()
+    assert (root / "sample.txt").read_bytes() == b"Synthetic content"
 
 
 def test_return_refuses_changed_original_and_new_arrival(tmp_path):

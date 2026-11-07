@@ -441,12 +441,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
-- Make Rename, Trash and Put Back on a network share about three times faster.
-  After each server-side move, Cairndex waited about two seconds for the macOS
-  mount to stop answering from its cached "name absent" entry; it now clears
-  that entry first. The app also checks a running operation after 50 ms instead
-  of 400 ms, backing off for long copies. On the disposable test share, Rename
-  fell from 3.3–4.0 s to 1.2–1.3 s of backend time.
+- Make Rename, Move, Trash, Put Back and Undo on a network share several times
+  faster. After each server-side move, Cairndex waited about two seconds for the
+  macOS mount to stop answering from its cached "name absent" entry; it now
+  clears that entry first. Rename, Move, Put Back and Undo are one move instead
+  of two through the operation's folder, and a folder's SMB mapping is proven
+  once per mount and folder instead of before every move. The app also checks a
+  running operation after 50 ms instead of 400 ms, backing off for long copies.
+  On the disposable test share, with a fresh connection for each step, Rename
+  fell from 3.3–4.0 s to about 0.35 s and Undo to about 0.3 s of backend time;
+  Trash takes about 0.7 s.
 - Suggest a sensible folder for files dropped on a collection as a new bundle:
   beside that collection's bundles, in a new folder of its own when they each
   have one, never inside another bundle's folder. A collection with no bundles

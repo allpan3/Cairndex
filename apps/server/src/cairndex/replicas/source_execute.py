@@ -311,8 +311,10 @@ def run_one(
         authorize()
         from cairndex.replicas.source_claims import claim
 
-        step = "claim"
-        claim(store, root, request.operation, request.model_dump(mode="json"))
+        # Relocations claim their operation directory only when their plan uses it
+        if request.action not in {"relocate", "return"}:
+            step = "claim"
+            claim(store, root, request.operation, request.model_dump(mode="json"))
         if state == "preparing":
             step = "prepare"
             review = prepare(store, root, request, progress)
