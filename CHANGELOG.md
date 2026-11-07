@@ -449,6 +449,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   gains New Folder, and Undo trashes the copies before the folders it made.
 - Show grouping review section headings as titles only, without the "accept
   all additions" checkbox, and indent their rows one level inside them.
+- Keep macOS "access files on a network volume" approval across local rebuilds:
+  with the opted-in local signer, `just build-desktop` re-signs `Cairndex.app`
+  with that certificate instead of leaving a per-build ad-hoc identity.
 - Move original objects for same-volume Rename, Move and Trash, preserving their
   filesystem attributes without full recovery copies. Conditional Undo and Put
   Back return the original; Copy, Replace and existing journals keep their prior

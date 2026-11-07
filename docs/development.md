@@ -463,6 +463,15 @@ certificate. The first explicit SMB operation may require **Always Allow** for t
 new signer; grants can then survive rebuilt code. Merely choosing **Allow** grants
 one access, and a locked Keychain or changed certificate can still require action.
 
+`just build-desktop` then re-signs the outer `Cairndex.app` with the same
+certificate and the `dev.cairndex.desktop` identifier
+(`packaging/macos_signing.py sign-app`). macOS keeps privacy grants, such as
+"access files on a network volume", for an app's designated requirement. An
+ad-hoc app's requirement is its code hash, so each rebuild asked again; the
+certificate requirement survives rebuilds after one more approval. Nested code
+keeps its own signatures. The DMG still holds Tauri's ad-hoc copy, and builds
+without the local signer, including CI and releases, are unchanged.
+
 `just bundled` detects stale signing even when source timestamps are unchanged,
 and the desktop bundle preflight refuses an incorrectly signed backend. The
 configuration is `~/Library/Application Support/Cairndex/build-signing.json`;

@@ -256,9 +256,12 @@ release:
     @echo "→ open {{tauri_dir}}/target/release/cairndex-desktop"
 
 # Builds the PyInstaller sidecar first — the local server the app bundles.
+# With an opted-in local signer, the .app is then re-signed with it so macOS
+# keeps privacy grants across rebuilds; the .dmg keeps Tauri's ad-hoc copy.
 #
 # Package the desktop app (.app/.dmg).
 [group('build')]
 build-desktop:
     cd {{server_dir}} && uv run python packaging/build_sidecar.py
     cd {{desktop_dir}} && npm run tauri build
+    cd {{server_dir}} && uv run python packaging/macos_signing.py sign-app "{{justfile_directory()}}/{{tauri_dir}}/target/release/bundle/macos/Cairndex.app"

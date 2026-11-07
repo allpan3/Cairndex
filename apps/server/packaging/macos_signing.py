@@ -1,4 +1,4 @@
-"""Keep the credential-reading sidecar's macOS signing identity across builds.
+"""Keep the sidecar's and local app's macOS signing identity across builds.
 
 Local configuration contains only a certificate fingerprint and a Keychain path.
 Private keys stay in Keychain; builds never create or replace an identity.
@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 IDENTIFIER = "dev.cairndex.sidecar"
+APP_IDENTIFIER = "dev.cairndex.desktop"
 CONFIG_ENV = "CAIRNDEX_SIDECAR_SIGNING_CONFIG"
 _FINGERPRINT = re.compile(r"[0-9A-Fa-f]{40}\Z")
 
@@ -35,7 +36,10 @@ class SigningIdentity:
 
     @property
     def requirement(self) -> str:
-        return f'identifier "{IDENTIFIER}" and certificate leaf = H"{self.fingerprint}"'
+        return self.requirement_for(IDENTIFIER)
+
+    def requirement_for(self, identifier: str) -> str:
+        return f'identifier "{identifier}" and certificate leaf = H"{self.fingerprint}"'
 
 
 def default_config() -> Path:
@@ -291,6 +295,57 @@ def create_local_identity(config: Path, *, keychain: Path | None = None) -> Sign
     return SigningIdentity(fingerprint, keychain)
 
 
+def app_signature_matches(bundle: Path, identity: SigningIdentity) -> bool:
+    """Check the app bundle's seal, identifier and exact certificate together."""
+    if not bundle.is_dir() or bundle.is_symlink():
+        return False
+    result = subprocess.run(
+        [
+            "/usr/bin/codesign",
+            "--verify",
+            "--strict",
+            "-R",
+            "=" + identity.requirement_for(APP_IDENTIFIER),
+            str(bundle),
+        ],
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def sign_app(bundle: Path, identity: SigningIdentity | None) -> None:
+    """Give a locally built app bundle the persistent local signer.
+
+    macOS keeps privacy grants, such as access to files on a network volume,
+    for an app's designated requirement. An ad-hoc bundle's requirement is its
+    code hash, so every rebuild asks again; a certificate requirement survives
+    rebuilds. Only the outer bundle is signed: nested code, including the
+    sidecar and the notarized ffmpeg tools, keeps its own signature. Tauri
+    applies an explicit release identity itself, so this signs nothing then.
+    """
+    if identity is None or identity.timestamp:
+        return
+    if not bundle.is_dir() or bundle.is_symlink():
+        raise SigningError("The app bundle is missing or is a symbolic link")
+    if app_signature_matches(bundle, identity):
+        return
+    arguments = [
+        "/usr/bin/codesign",
+        "--force",
+        "--sign",
+        identity.fingerprint,
+        "--identifier",
+        APP_IDENTIFIER,
+        "--timestamp=none",
+    ]
+    if identity.keychain is not None:
+        arguments.extend(["--keychain", str(identity.keychain)])
+    _run([*arguments, str(bundle)])
+    if not app_signature_matches(bundle, identity):
+        raise SigningError("The app does not satisfy its configured signing identity")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -298,7 +353,7 @@ def main() -> int:
         "create-local", help="create or reuse a private local signing identity"
     )
     setup.add_argument("--config", type=Path, default=default_config())
-    for command in ("check", "sign"):
+    for command in ("check", "sign", "sign-app"):
         commands.add_parser(command).add_argument("binary", type=Path)
     args = parser.parse_args()
     try:
@@ -309,7 +364,10 @@ def main() -> int:
             identity = configured_identity()
             if args.command == "check":
                 return 0 if identity is None or signature_matches(args.binary, identity) else 1
-            sign_sidecar(args.binary, identity)
+            if args.command == "sign-app":
+                sign_app(args.binary, identity)
+            else:
+                sign_sidecar(args.binary, identity)
         return 0
     except (SigningError, OSError, subprocess.CalledProcessError) as error:
         print(f"Sidecar signing failed: {error}", file=sys.stderr)
