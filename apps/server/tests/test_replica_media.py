@@ -2,6 +2,7 @@
 
 import hashlib
 import shutil
+import time
 
 import pytest
 
@@ -37,10 +38,19 @@ def media_api(specimen, tmp_path, raw_client):
     identity = response.json()["id"]
     base = f"/api/v1/libraries/{identity}"
     raw_client.get(base + "/replica/status")
-    for _ in range(15):
-        service.exchange(identity)
     store = service._handles[identity][0]
     assert isinstance(store, CatalogStore)
+    # The app's ReplicaWorker exchanges too, and exchange() skips while it holds
+    # the lock, so a fixed number of passes can leave the import unfinished.
+    deadline = time.monotonic() + 60
+    while True:
+        service.exchange(identity)
+        with store.connection(readonly=True) as db:
+            ready = db.execute("SELECT 1 FROM config WHERE key='catalog_ready'").fetchone()
+        if ready and not service.pending(identity):
+            break
+        assert time.monotonic() < deadline, "the synthetic catalog never became ready"
+        time.sleep(0.05)
     peer = CatalogStore(tmp_path / "private-B", read_manifest(roots[1]).replica)
     transport = Transport(roots[1], peer)
     for _ in range(15):
