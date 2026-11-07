@@ -40,7 +40,13 @@ delaying metadata saves. Small synthetic-file tests missed these consequences.
   Do not invent full-content evidence or require a full Update merely to rename a
   locally observed file. Preserve existing content claims without upgrading them.
 - Trash retains the original in an operation-owned directory. Put Back refuses an
-  occupied destination. Permanent deletion targets only a verified retained object
+  occupied destination.
+- A relocation between two library paths is one no-replace rename. Its lost
+  reply resolves by observing the object at origin or target, and Undo renames it
+  back, so it needs no operation directory or claim. Only Trash, Empty Trash and
+  a case-only rename (which a no-replace rename may refuse on a case-insensitive
+  volume) pass through the operation's own claimed directory. Plans recorded with
+  the earlier two-step form keep that form when they resume. Permanent deletion targets only a verified retained object
   after explicit owner confirmation; deleting metadata alone never deletes bytes.
 - Separate long source preparation from metadata exchange. Keep one source mutation
   per library, with admission held through its operation and catalog conditions
@@ -49,6 +55,15 @@ delaying metadata saves. Small synthetic-file tests missed these consequences.
   their original interpretation and recovery bytes. A new explicit operation/receipt
   variant must fail closed on older readers. Do not reinterpret old reviews, purge
   their versions automatically, or add a generic format version field.
+
+## Amendment: one move per relocation (2026-11-07)
+
+The first implementation moved every relocation through the operation directory,
+then to its destination, and claimed that directory first. On a disposable SMB
+share each Rename therefore made two direct SMB moves, a claim publication and
+five mapping proofs, about 0.6 s of its 1.2 s. The owner approved one move with
+the no-replace rule unchanged. Plans are interpreted by their recorded steps, so
+no format version or migration is needed.
 
 ## Qualification required
 

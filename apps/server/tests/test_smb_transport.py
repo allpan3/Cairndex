@@ -24,6 +24,7 @@ def clear_sessions():
     smb_transport._authorized_passwords.clear()
     smb_transport._password_pending.clear()
     smb_transport._credential_epochs.clear()
+    smb_transport._proven.clear()
     yield
     smb_transport._connected.clear()
     smb_transport._connections.clear()
@@ -32,6 +33,7 @@ def clear_sessions():
     smb_transport._authorized_passwords.clear()
     smb_transport._password_pending.clear()
     smb_transport._credential_epochs.clear()
+    smb_transport._proven.clear()
 
 
 # Model open-object identity and deletion separately from replaceable pathnames
@@ -626,3 +628,32 @@ def test_disabling_unavailable_mount_revokes_registered_grant(tmp_path, monkeypa
     smb_transport.forget_credentials(tmp_path)
     assert credential not in smb_transport._authorized_passwords
     assert smb_transport._credential_epochs[credential] == 1
+
+
+# A proven directory mapping is reused for the same mount and directory object only
+def test_mapping_proof_is_reused_until_the_directory_or_mount_changes(
+    tmp_path, mounted, monkeypatch
+):
+    mount, share = mounted
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    proofs = []
+    opened = share.open
+
+    def counting(name, **kwargs):
+        if ".cairndex-map-" in name:
+            proofs.append(name)
+        return opened(name, **kwargs)
+
+    monkeypatch.setattr(share, "open", counting)
+    smb_transport._challenge(share, mount, folder)
+    smb_transport._challenge(share, mount, folder)
+    assert len(proofs) == 1
+    assert sorted(path.name for path in folder.iterdir()) == []
+    folder.rename(tmp_path / "old")
+    folder.mkdir()
+    smb_transport._challenge(share, mount, folder)
+    assert len(proofs) == 2
+    smb_transport._forget_mount(mount)
+    smb_transport._challenge(share, mount, folder)
+    assert len(proofs) == 3

@@ -27,6 +27,7 @@ def prepare_purge(
         raise ReplicaError("Trashed original changed; review it before permanent deletion")
     assert seen is not None
     review = plan(
+        store,
         root,
         request,
         prior["source"],

@@ -214,7 +214,9 @@ publication identity check on the disposable share; that check remains intact.
 These results do not establish Finder parity or full-app SMB throughput.
 
 On servers advertising `source_original`, same-volume Rename, Move and Trash
-relocate the original without reading its content. Put Back and Undo return that
+relocate the original without reading its content. Rename and Move are one
+no-replace rename; Trash moves the original into the operation's directory under
+`.cairndex/source-operations/`. Put Back and Undo return that
 object only while its observations, metadata and destination still match. These
 operations preserve filesystem identity and attributes but are not backups: an
 external writer can change the retained original. A directory relocation includes
