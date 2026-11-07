@@ -108,7 +108,10 @@ transfer, verification or saving phase. Transfer completion does not mean final
 publication has finished. Source work has its own per-library queue, so copying does not hold the metadata
 exchange lock. Metadata commits still validate their causal bases. **×** stops a task: files not yet applied are cancelled, a file
 already being applied finishes, and **Continue** resumes the rest. A task that ends
-cleanly leaves a message with **Undo** at the foot of the window. Undo is one new
+cleanly leaves a message with **Undo** at the foot of the window. **⌘Z** undoes
+the latest such operation too, after the message has gone, until another
+operation starts; text fields and open dialogs keep ⌘Z for themselves, and an
+operation is undone once. There is no Redo. Undo is one new
 journaled operation per changed item. A plain copy, move, rename or trash has an
 exact inverse. Copies that were then bundled cannot use it, because bundling
 changed their metadata after they landed, so their Undo moves them to the Trash
