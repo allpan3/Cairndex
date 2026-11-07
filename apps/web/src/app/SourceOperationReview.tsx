@@ -58,7 +58,15 @@ export function SourceOperationReview({
     }
   }
   function collision(policy: SourceRequest['collision']) {
-    if (job.data) void change({ ...job.data.request, collision: policy })
+    if (job.data)
+      void change({
+        ...job.data.request,
+        collision: policy,
+        action:
+          job.data.request.action === 'relocate' && policy === 'replace'
+            ? 'move'
+            : job.data.request.action,
+      })
   }
   const value = job.data
   const retained = value?.result?.retained_versions as Record<string, Version> | undefined
@@ -69,7 +77,7 @@ export function SourceOperationReview({
     source?: string
     destination?: string
     skipped?: boolean
-    versions_before?: Record<string, { evidence: { size: number } } | null>
+    versions_before?: Record<string, { evidence?: { size: number } } | null>
   } | null
   if (value && ['cancelled', 'succeeded'].includes(value.state)) return null
   const collisionError = value && isCollision(value)
@@ -133,7 +141,9 @@ export function SourceOperationReview({
                 .filter(([, version]) => version)
                 .map(([path, version]) => (
                   <p key={path}>
-                    Recoverable version: {path} · {version!.evidence.size.toLocaleString()} bytes
+                    {version?.evidence
+                      ? `Recoverable copy: ${path} · ${version.evidence.size.toLocaleString()} bytes`
+                      : `Retained original: ${path}`}
                   </p>
                 ))}
               <button

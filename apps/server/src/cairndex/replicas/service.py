@@ -26,6 +26,7 @@ from cairndex.replicas.transport import Transport
 _handles: dict[str, tuple[Store | CatalogStore, Transport, threading.Lock, str, BindingLock]] = {}
 _lock = threading.RLock()
 _source_transports: dict[str, SourceTransport] = {}
+_source_locks: dict[str, threading.Lock] = {}
 # Libraries whose last exchange needs the owner to allow or save the share's login.
 # Runtime state: after a restart the next exchange finds the same problem again.
 _storage_access: dict[str, Literal["authorization", "login"]] = {}
@@ -72,6 +73,7 @@ def get_store(library: RegisteredLibrary) -> Store | CatalogStore:
             _handles[library.id] = store, Transport(root, store), threading.Lock(), identity, guard
             if isinstance(store, CatalogStore):
                 _source_transports[library.id] = SourceTransport(root, store)
+                _source_locks[library.id] = threading.Lock()
         except BaseException:
             if registered:
                 smb_transport.close_root(root)
@@ -82,6 +84,9 @@ def get_store(library: RegisteredLibrary) -> Store | CatalogStore:
 
 # HTTP and background exchanges share a nonblocking per-replica lock and lifecycle admission
 def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) -> None:
+    if source_work is not None:
+        exchange_sources(library_id, source_work)
+        return
     with _lock:
         handle = _handles.get(library_id)
     if handle is None or not handle[2].acquire(blocking=False):
@@ -95,27 +100,6 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
                 run_one(handle[0], handle[1].root)
                 advance_discovery(handle[0], handle[1].root)
                 advance_grouping(handle[0])
-                from cairndex.file_ops.gate import ensure_portable_write_mode
-                from cairndex.media.hls import close_library_sessions
-                from cairndex.registry.engine import registry_session_scope
-                from cairndex.replicas.source_execute import run_one as run_source
-
-                def authorize_source() -> None:
-                    if source_work is not None and not source_work():
-                        raise ReplicaError("Source worker stopped; exact retry is required")
-                    info = handle[1].root.stat(follow_symlinks=False)
-                    if (info.st_dev, info.st_ino) != handle[1]._root_identity:
-                        raise ReplicaError("Library root changed; source operations are stopped")
-                    with registry_session_scope() as registry:
-                        ensure_portable_write_mode(registry, library_id)
-
-                if source_work is not None:
-                    run_source(
-                        handle[0],
-                        handle[1].root,
-                        authorize_source,
-                        lambda: close_library_sessions(library_id),
-                    )
             handle[1].tick()
             source_transport = _source_transports.get(library_id)
             if source_transport:
@@ -142,6 +126,46 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
         ) from error
     finally:
         handle[2].release()
+
+
+def exchange_sources(library_id: str, source_work: Callable[[], bool]) -> None:
+    """Serialize source phases without holding metadata exchange's lock.
+
+    Lifecycle admission covers the entire phase so Release drains it before
+    retiring storage. Catalog saves remain independently transactional; source
+    application rechecks its reviewed bases and retains recovery on a conflict.
+    """
+    with _lock:
+        handle = _handles.get(library_id)
+        lock = _source_locks.get(library_id)
+    if handle is None or lock is None or not lock.acquire(blocking=False):
+        return
+    try:
+        with lifecycle.work(library_id):
+            store, transport = handle[:2]
+            if not isinstance(store, CatalogStore):
+                return
+            manifest = read_manifest(transport.root)
+            if manifest.replica is None or manifest.replica.model_dump_json() != handle[3]:
+                raise ReplicaError("Library descriptor changed; recovery review required")
+            from cairndex.file_ops.gate import ensure_portable_write_mode
+            from cairndex.media.hls import close_library_sessions
+            from cairndex.registry.engine import registry_session_scope
+            from cairndex.replicas.source_execute import run_one as run_source
+
+            def authorize() -> None:
+                if not source_work():
+                    raise ReplicaError("Source worker stopped; exact retry is required")
+                info = transport.root.stat(follow_symlinks=False)
+                if (info.st_dev, info.st_ino) != transport._root_identity:
+                    raise ReplicaError("Library root changed; source operations are stopped")
+                with registry_session_scope() as registry:
+                    ensure_portable_write_mode(registry, library_id)
+
+            run_source(store, transport.root, authorize, lambda: close_library_sessions(library_id))
+    finally:
+        lock.release()
+        wake()
 
 
 def advance_discovery(store: CatalogStore, root: Path) -> None:
@@ -279,6 +303,7 @@ def close(library_id: str) -> None:
     with _lock:
         handle = _handles.pop(library_id, None)
         source_transport = _source_transports.pop(library_id, None)
+        _source_locks.pop(library_id, None)
         _storage_access.pop(library_id, None)
     if handle:
         if source_transport:
@@ -374,7 +399,8 @@ class ReplicaWorker:
         """Keep local media work independent of the size of shared history.
 
         Maintenance uses the same lifecycle admission and guarded media adapter
-        as playback. It needs no transport lock; source writes still use exchange.
+        as playback. Source writes have a separate serialized lane and do not
+        hold the metadata transport lock.
         """
         from cairndex.replicas.maintenance import advance
 

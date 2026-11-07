@@ -1,14 +1,14 @@
 # ADR-0041: Same-volume file operations
 
-- Status: proposed for owner review
+- Status: accepted by owner; implemented; owner-NAS qualification pending
 - Date: 2026-11-06
 - Amends: ADR-0036; retains ADR-0037's guarded SMB operations
 
-## Decision requested
+## Decision
 
-Rename, Move, Trash and Put Back should relocate the original object on the same
+Rename, Move, Trash and Put Back relocate the original object on the same
 filesystem without streaming its contents. Undo reverses that relocation when
-its recorded object and affected metadata still match. Empty Trash should be an
+its recorded object and affected metadata still match. Empty Trash is an
 explicit journaled permanent deletion of selected retained objects. Copy and
 Replace keep their independent-copy recovery contract.
 

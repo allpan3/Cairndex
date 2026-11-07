@@ -1,7 +1,8 @@
 """Descriptor-relative no-replace relocation for journaled source operations.
 
-There is deliberately no check-then-rename or cross-device fallback. Callers keep
-recovery copies before relocation and verify the captured object afterwards.
+There is deliberately no check-then-rename or cross-device fallback. Callers
+journal the chosen recovery contract before relocation and verify the captured
+object afterwards.
 """
 
 import ctypes

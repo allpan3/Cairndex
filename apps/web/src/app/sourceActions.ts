@@ -92,14 +92,17 @@ export type TrashRow =
  */
 export function trashRows(pages: ReceiptPage[]): TrashRow[] {
   const all = pages.flatMap((page) => page.items)
-  const undone = new Set(all.map((item) => item.receipt?.undo_of).filter(Boolean))
+  const undone = new Set(
+    all.flatMap((item) => [item.receipt?.undo_of, item.receipt?.purges]).filter(Boolean),
+  )
   return all.flatMap((item): TrashRow[] => {
     const receipt = item.receipt
     if (!receipt || undone.has(item.id) || receipt.undo_of) return []
     const pending = item.state === 'pending'
-    if (receipt.action === 'trash') return [{ kind: 'trashed', id: item.id, pending, receipt }]
+    if (receipt.action === 'trash' || receipt.action === 'retain')
+      return [{ kind: 'trashed', id: item.id, pending, receipt }]
     return Object.entries(receipt.versions_before).flatMap(([path, version]) =>
-      version && path === receipt.destination
+      version && version.version !== 'original' && path === receipt.destination
         ? [
             {
               kind: 'replaced' as const,
@@ -128,7 +131,11 @@ export function trashRowTask(row: TrashRow): NewTask {
         {
           name: leaf(path),
           size: null,
-          request: { operation: operationId(), action: 'undo', prior: row.id },
+          request: {
+            operation: operationId(),
+            action: row.receipt.action === 'retain' ? 'return' : 'undo',
+            prior: row.id,
+          },
         },
       ],
     }
@@ -183,5 +190,26 @@ export function newFolderTask(folder: string, name: string): NewTask {
         },
       },
     ],
+  }
+}
+
+/** Only new retained originals are eligible; historical recovery copies remain intact. */
+export function purgeTask(rows: TrashRow[]): NewTask {
+  return {
+    title: `Emptying Trash (${items(rows.length)})`,
+    summary: `Permanently deleted ${items(rows.length)}.`,
+    undoable: false,
+    finish: { kind: 'none' },
+    items: rows.flatMap((row) =>
+      row.kind === 'trashed' && row.receipt.action === 'retain'
+        ? [
+            {
+              name: leaf(row.receipt.source),
+              size: null,
+              request: { operation: operationId(), action: 'purge' as const, prior: row.id },
+            },
+          ]
+        : [],
+    ),
   }
 }

@@ -12,6 +12,7 @@ DISK_TESTS = {
     "tests/test_backup_restore_scripts.py",
     "tests/test_portable_source_operations.py",
     "tests/test_portable_source_mkdir.py",
+    "tests/test_source_original.py",
 }
 
 

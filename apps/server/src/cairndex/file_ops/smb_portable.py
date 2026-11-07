@@ -62,6 +62,9 @@ def _visible(
             except FileNotFoundError:
                 absent = True
         try:
+            # Rebind before the first open: an open that misses first can leave
+            # the name unopenable through the mount for the rest of the wait.
+            smb_transport.rebind(target)
             _refresh_data(target)
             mounted = smb_transport._mounted(target)
             matches = (
@@ -130,6 +133,10 @@ def transfer(source_fd: int, source: str, target_fd: int, target: str, *, move: 
                 smb_transport._challenge(share, mount, destination)
             if directory_path(source_fd) != origin or directory_path(target_fd) != destination:
                 raise OSError(errno.EXDEV, "The SMB parent directory moved")
+            # A just-closed mounted writer may still expose cached attributes.
+            # Flush its completed write before taking the observation that the
+            # direct handle must preserve; never adjust an original's timestamps.
+            _refresh_data(source_path)
             before = os.stat(source, dir_fd=source_fd, follow_symlinks=False)
             folder = stat.S_ISDIR(before.st_mode)
             if not stat.S_ISREG(before.st_mode) and not (move and folder):

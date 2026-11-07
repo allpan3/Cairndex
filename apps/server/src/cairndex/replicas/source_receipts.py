@@ -25,6 +25,14 @@ class SourceVersion(StrictModel):
     evidence: ContentVersion
 
 
+class OriginalVersion(StrictModel):
+    """Logical original-object lineage, without a claim of immutable content bytes."""
+
+    operation: Token
+    version: Literal["original"]
+    kind: Literal["file", "directory"]
+
+
 class SourceMetadata(StrictModel):
     changes: list[UnitChange] = Field(min_length=1, max_length=4096)
     parents: list[Digest] = Field(max_length=128)
@@ -37,24 +45,47 @@ class SourceReceipt(StrictModel):
     library: Token
     epoch: Token
     operation: Token
-    action: Literal["copy", "rename", "move", "trash", "undo", "restore", "mkdir"]
+    action: Literal[
+        "copy",
+        "rename",
+        "move",
+        "trash",
+        "undo",
+        "restore",
+        "mkdir",
+        "relocate",
+        "retain",
+        "return",
+        "purge",
+    ]
     event: Digest | None
     source: str = Field(max_length=4096)
     destination: str = Field(max_length=4096)
-    versions_before: dict[str, SourceVersion | None] = Field(min_length=1, max_length=2)
-    versions_after: dict[str, SourceVersion | None] = Field(min_length=1, max_length=2)
+    versions_before: dict[str, SourceVersion | OriginalVersion | None] = Field(
+        min_length=1, max_length=2
+    )
+    versions_after: dict[str, SourceVersion | OriginalVersion | None] = Field(
+        min_length=1, max_length=2
+    )
     undo_of: Token | None
     restores: dict[str, list[Digest]] = Field(max_length=4096)
     metadata: SourceMetadata | None
     before: dict[str, str | None] = Field(max_length=4096)
 
 
+class OriginalReceipt(SourceReceipt):
+    purges: Token | None
+
+
 def parse(store: CatalogStore, raw: str) -> SourceReceipt:
     if len(raw.encode()) > MAX_BYTES:
         raise ReplicaError("Source receipt exceeds its bounded size")
     try:
-        receipt = SourceReceipt.model_validate_json(raw)
-    except ValidationError as error:
+        kind = json.loads(raw).get("action")
+        receipt = (
+            OriginalReceipt if kind in {"relocate", "retain", "return", "purge"} else SourceReceipt
+        ).model_validate_json(raw)
+    except (ValidationError, ValueError, AttributeError) as error:
         raise ReplicaError("Unsupported source receipt; retain it for recovery review") from error
     if (
         value_text(receipt.model_dump(mode="json")) != raw
@@ -62,7 +93,7 @@ def parse(store: CatalogStore, raw: str) -> SourceReceipt:
         or receipt.epoch != store.descriptor.epoch
         or set(receipt.versions_before) != set(receipt.versions_after)
         or (receipt.metadata is None) != (receipt.event is None)
-        or (receipt.action == "undo") != (receipt.undo_of is not None)
+        or (receipt.action == "undo" or receipt.action == "return") != (receipt.undo_of is not None)
     ):
         raise ReplicaError("Source receipt identity or complete intent is inconsistent")
     for path in receipt.versions_before:
@@ -75,7 +106,29 @@ def parse(store: CatalogStore, raw: str) -> SourceReceipt:
 
 def dependencies(store: CatalogStore, db: sqlite3.Connection, receipt: SourceReceipt) -> bool:
     """Bind inverse metadata to the actual accepted event, not an untrusted description."""
-    if receipt.action != "undo" and receipt.restores:
+    if isinstance(receipt, OriginalReceipt):
+        if (receipt.action == "purge") != (receipt.purges is not None):
+            raise ReplicaError("Original deletion receipt has inconsistent intent")
+        if receipt.purges:
+            row = db.execute(
+                "SELECT raw FROM source_receipts WHERE id=? AND state IN ('local','accepted')",
+                (receipt.purges,),
+            ).fetchone()
+            if row is None:
+                return False
+            prior = parse(store, row[0])
+            if (
+                prior.action != "retain"
+                or receipt.versions_before != prior.versions_before
+                or any(receipt.versions_after.values())
+            ):
+                raise ReplicaError("Deletion does not name the recorded trashed original")
+    for version in [*receipt.versions_before.values(), *receipt.versions_after.values()]:
+        if version is not None and isinstance(version, OriginalVersion) != isinstance(
+            receipt, OriginalReceipt
+        ):
+            raise ReplicaError("Source receipt mixes copy and original recovery contracts")
+    if receipt.action not in {"undo", "return"} and receipt.restores:
         raise ReplicaError("Only a conditional Undo can restore prior revisions")
     if receipt.undo_of:
         row = db.execute(

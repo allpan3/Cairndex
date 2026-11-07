@@ -75,15 +75,18 @@ function copies(names: string[], finish: NewTask['finish']): NewTask {
   }
 }
 
-function mount() {
+function mount(originals = false) {
   const notices: CatalogNotice[] = []
   const client = new QueryClient()
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   )
-  const hook = renderHook(() => useSourceTasks('synthetic', (notice) => notices.push(notice)), {
-    wrapper,
-  })
+  const hook = renderHook(
+    () => useSourceTasks('synthetic', (notice) => notices.push(notice), originals),
+    {
+      wrapper,
+    },
+  )
   return { hook, notices, client }
 }
 
@@ -336,3 +339,40 @@ test('a name edit finishes only after the file views have refreshed', async () =
   expect(finished).toBe(true)
   expect(hook.result.current.tasks).toHaveLength(0)
 })
+
+test.each([true, false])(
+  'server original capability %s selects the matching recovery contract',
+  async (originals) => {
+    const posted = server()
+    const { hook, notices } = mount(originals)
+    act(() => {
+      hook.result.current.start({
+        title: 'Renaming',
+        summary: 'Renamed.',
+        finish: { kind: 'none' },
+        items: [
+          {
+            name: 'sample.txt',
+            size: null,
+            request: {
+              operation: 'rename-original',
+              action: 'rename',
+              source: 'sample.txt',
+              destination: 'renamed.txt',
+            },
+          },
+        ],
+      })
+    })
+    await waitFor(() => expect(notices).toHaveLength(1))
+    expect(posted[0]!.action).toBe(originals ? 'relocate' : 'rename')
+    act(() => {
+      notices[0]!.action!.run()
+    })
+    await waitFor(() => expect(notices).toHaveLength(2))
+    expect(posted[1]).toMatchObject({
+      action: originals ? 'return' : 'undo',
+      prior: 'rename-original',
+    })
+  },
+)

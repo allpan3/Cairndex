@@ -10,6 +10,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Add confirmed Empty Trash for retained originals. Existing independent recovery
+  copies remain available and are never purged by this action.
+
 - Show file activity in a compact bottom-right card with received bytes, speed, transfer
   percentage and completed-file counts. Resolve copy conflicts with a new name
   or collision choice; persist cancellation across reloads.
@@ -437,6 +440,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
 
 ### Fixed
+
+- Move original objects for same-volume Rename, Move and Trash, preserving their
+  filesystem attributes without full recovery copies. Conditional Undo and Put
+  Back return the original; Copy, Replace and existing journals keep their prior
+  recovery contract.
+- Allow metadata saves during source work. Reuse explicitly authorized SMB access
+  across transient reconnects and coalesce unanswered permission prompts; revoke
+  in-flight grants when access is disabled or the mounted library closes.
+- Stop network-share file operations from failing as "storage unavailable" when
+  the macOS SMB mount had not yet picked up an entry the operation had just
+  created or renamed on the server.
 
 - Keep file activity controls inside the card, show active inline naming progress,
   and present network-share access recovery in a dialog. Deduplicate naming

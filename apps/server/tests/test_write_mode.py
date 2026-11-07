@@ -104,7 +104,8 @@ def test_enabling_prepares_storage_before_permission_is_visible(
     root = tmp_path / "library"
     identity, _ = create(isolated_client, root)
     calls = []
-    monkeypatch.setattr(smb_transport, "mount_for", lambda path: object() if mounted else None)
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    monkeypatch.setattr(smb_transport, "mount_for", lambda path: mount if mounted else None)
 
     def authorize(path):
         assert path == root
@@ -124,7 +125,8 @@ def test_denied_storage_access_does_not_enable_write_mode(isolated_client, tmp_p
     from cairndex.file_ops import smb_transport
 
     identity, _ = create(isolated_client, tmp_path / "library")
-    monkeypatch.setattr(smb_transport, "mount_for", lambda path: object())
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    monkeypatch.setattr(smb_transport, "mount_for", lambda path: mount)
 
     def denied(path):
         raise smb_transport.KeychainError(13, "Synthetic denial")

@@ -10,7 +10,7 @@ import { isCollision, type SourceTasks } from './useSourceTasks'
 
 /** An occupied name is a refused edit, not an interrupted file mutation. */
 export const rejectedName = (job: SourceJob) =>
-  ['mkdir', 'rename'].includes(job.action) &&
+  ['mkdir', 'rename', 'relocate'].includes(job.action) &&
   job.state === 'interrupted' &&
   !job.result?.started &&
   isCollision(job)

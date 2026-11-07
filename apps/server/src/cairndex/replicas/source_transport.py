@@ -13,7 +13,7 @@ from cairndex.replicas.catalog.store import CatalogStore
 from cairndex.replicas.media import generation, open_source
 from cairndex.replicas.protocol import ReplicaError, checksum
 from cairndex.replicas.source_files import operation_directory
-from cairndex.replicas.source_receipts import dependencies, parse
+from cairndex.replicas.source_receipts import OriginalVersion, dependencies, parse
 from cairndex.replicas.transport import directory, read_file
 
 
@@ -177,7 +177,7 @@ class SourceTransport:
         receipt = parse(self.store, row["raw"])
         outputs = []
         for path, version in receipt.versions_after.items():
-            if version is None:
+            if version is None or isinstance(version, OriginalVersion):
                 continue
             if version.evidence.algorithm == "tree-sha256-v1":
                 with self.store.connection(readonly=True) as db:

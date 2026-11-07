@@ -56,6 +56,11 @@ def apply(
     progress: Callable[[int], None],
     authorize: Callable[[], None],
 ) -> None:
+    if request.action in {"relocate", "retain", "return", "purge"}:
+        from cairndex.replicas.source_original import apply_original
+
+        apply_original(store, root, request, review, result, authorize)
+        return
     if review["skipped"]:
         with store.connection() as db:
             db.execute(
@@ -316,7 +321,11 @@ def run_one(
             review["file_generations"] = []
             with store.connection(readonly=True) as db:
                 for path, seen in review.get("conditions", {}).items():
-                    if not seen or seen.get("kind") != "directory":
+                    if (
+                        request.action in {"relocate", "retain", "return", "purge"}
+                        or not seen
+                        or seen.get("kind") != "directory"
+                    ):
                         continue
                     for item in tracked(db, path):
                         if item["family"] == "asset_files":
@@ -375,6 +384,13 @@ def run_one(
             )
         )
         with store.connection() as db:
+            completed = db.execute(
+                "SELECT state FROM source_operations WHERE id=?", (request.operation,)
+            ).fetchone()
+            if completed and completed[0] == "succeeded":
+                # A lost acknowledgement after the durable commit cannot turn
+                # completed work into another application of the same intent.
+                return
             if isinstance(error, OSError):
                 current = db.execute(
                     "SELECT result FROM source_operations WHERE id=?", (request.operation,)

@@ -134,6 +134,8 @@ def prepare_undo(
 ) -> dict[str, Any]:
     with store.connection(readonly=True) as db:
         prior = receipt(db, request.prior)
+        if prior["action"] in {"relocate", "retain", "return", "purge"}:
+            raise ReplicaError("This original-object operation requires its explicit return action")
         if db.execute(
             "SELECT 1 FROM source_receipts WHERE json_extract(raw,'$.undo_of')=? "
             "AND state IN ('local','accepted')",

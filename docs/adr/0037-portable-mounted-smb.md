@@ -41,6 +41,15 @@ requests this access after deployment/passphrase checks and before acknowledging
 the enabled flag. This explicit owner action can show the macOS request; normal
 background work remains noninteractive. No source files change during access
 preparation. Conversion and library status retain recovery for refused access.
+After explicit authorization, the process retains a reconnect credential only
+for that mounted server/account/share. Background reconnection reuses it without
+opening another prompt. A timed-out interactive request is coalesced until its
+answer arrives. Write Mode off, mount identity change, last account close and
+shutdown revoke the grant and prevent an in-flight answer from restoring it.
+Authentication failures discard it; transient network failures retain it. Nothing
+is written to disk, and Keychain access rules are unchanged. Keychain interaction
+and connection setup do not hold the global transport registry lock.
+
 Missing authorization is a recoverable unavailable state. Creation and serving
 register roots; the last use of an account releases its private SMB session.
 
@@ -54,8 +63,8 @@ physical identities. Discovery and media generations retain native observations.
 Completed output staging is observed after its mounted writer closes. Only owned
 staging receives an explicit last-write timestamp to prevent a deferred SMB close
 from changing its recorded identity. Original sources and completed retained
-versions never receive that timestamp operation. Recovery versions remain
-independent copies, not hard links to mutable source files.
+versions never receive that timestamp operation. Copy and Replace recovery versions remain independent copies, not hard links
+to mutable source files. ADR-0041 relocations retain the original instead.
 
 Mounted source observations discard cached file pages before reopening a file.
 macOS can otherwise return old pages with a replacement file's new attributes.
@@ -65,7 +74,11 @@ not change mount settings. Directory reviews refresh each bounded child file.
 Direct publication verifies the server object and waits at most five seconds for
 mounted namespace visibility. A safe non-following, non-blocking open refreshes
 the former source name before checking absence; a cached positive stat alone
-cannot keep a completed rename pending. An arriving name is retained. A replaced
+cannot keep a completed rename pending. Before any mounted open of a name that
+was just created or renamed over direct SMB, a stat by that name rebinds it.
+Against Samba, an open or directory listing alone left such a name unopenable
+through smbfs indefinitely while the server already had it. An arriving name is
+retained. A replaced
 directory may wait up to thirty seconds
 for its mounted child listing while its server identity remains exact. A missing
 child requires retry; it never means that the whole directory is absent. These

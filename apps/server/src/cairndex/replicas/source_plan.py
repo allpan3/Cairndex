@@ -73,6 +73,10 @@ def prepare(
     store: CatalogStore, root: Path, request: SourceRequest, progress: Callable[[int], None]
 ) -> dict[str, Any]:
     """Retain byte snapshots before preparing catalog changes with their observed bases."""
+    if request.action in {"relocate", "retain", "return", "purge"}:
+        from cairndex.replicas.source_original import prepare_original
+
+        return prepare_original(store, root, request)
     if request.action == "mkdir":
         from cairndex.replicas.source_mkdir import prepare_directory
 
@@ -333,6 +337,10 @@ def prepare_restore(
                 raise
             intent = json.loads(row["intent"])
             prior = {"source": intent["source"], "versions_before": retained, "versions_after": {}}
+    if prior.get("action") in {"relocate", "retain", "return", "purge"}:
+        raise ReplicaError(
+            "Original-object recovery requires Put Back, not a retained-copy restore"
+        )
     candidates = [
         version
         for version in prior[

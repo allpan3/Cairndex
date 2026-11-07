@@ -146,6 +146,10 @@ def set_write_mode(
 
         prepare_write_access(library_id, root)
 
+    if not enabled:
+        from cairndex.file_ops.smb_transport import forget_credentials
+
+        forget_credentials(root)
     library.write_mode_enabled = enabled
     registry.flush()
     return _state(enabled=enabled, root=root)

@@ -225,25 +225,32 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
-- Owner testing found file-size-dependent Rename/Trash delays and repeated
-  attempts using the completed rename's old path. Source review confirms whole
-  recovery/output copies and exchange-lock starvation; prior small-file gates
-  did not qualify large-file usability. ADR-0041 proposes same-volume relocation
-  and awaits owner review. The local follow-up fixes activity overflow, access-dialog
-  presentation, duplicate operation admission, refresh ordering, unnecessary SMB
-  disconnects and repeated draft writes. The qualification row above covers this
-  bounded slice; it does not fix the byte-copy cost or exchange-lock contention.
-  It is not installed. Existing owner journals and user data remain untouched.
-  The current branch is `prepare/incoming-copy-dialog`; receipts are retained
-  locally under `20261106-operation-review`. No new push, PR, merge or installation
-  accompanies this checkpoint.
-- The requested Opus source review also found that relocation replaces original
-  filesystem attributes, folder operations refuse hidden or large subtrees,
-  case-only Rename fails, and Empty Trash is absent. Genuine SMB reconnects can
-  still require saved-login access; the Keychain wait holds a transport lock, and
-  Finder-created credential persistence and special-character name mapping need
-  real-share qualification. These remain open. The review did not qualify native
-  drop, the Rust host, packaging or the complete application UI.
+- The owner accepted ADR-0041. Uninstalled source now implements journaled
+  same-volume original relocation for Rename/Move/Trash, conditional Put Back/Undo
+  and confirmed Empty Trash. Copy/Replace and existing journals retain independent
+  recovery copies. Metadata exchange uses a separate lock from source work, and
+  final original-file observations run outside the database writer transaction.
+  Permission grants survive transient reconnects in process memory and are revoked
+  on access changes/closure; pending Keychain requests are coalesced.
+- Local macOS qualification includes 22 original-operation cases (including a
+  512 MiB zero-content-read regression), focused source/worker/credential checks,
+  five source-operation browser cases and the final Trash browser check. The final
+  frontend gate passes with 1,479 units; backend lint, format and mypy pass.
+- A disposable Samba share mounted through smbfs (relayed into the macOS guest)
+  qualified Rename, Trash, Put Back, Undo, Trash again and Empty Trash at 1 MiB and
+  512 MiB: every step succeeded in 0.7–3.2 s independent of size, with zero source
+  reads and no Keychain reread across forced reconnects. It first exposed a mounted
+  visibility defect: after a direct SMB create or rename, an open through the mount
+  could fail with ENOENT indefinitely. A stat by name now precedes such opens
+  (ADR-0037). These are source results, not an installation or owner-NAS
+  performance claim; timing uses an injected disposable credential and does not
+  qualify packaged credential access.
+- Earlier feedback/retry fixes remain local and qualified as recorded above:
+  activity wrapping, permission popup, duplicate admission, rename refresh ordering
+  and avoiding repeated acknowledged draft writes. Installed runtime remains the
+  current checkpoint at the top. Package/install, final privacy audit and normal
+  push to `prepare/incoming-copy-dialog` follow qualification. No PR, merge or
+  release is authorized for this follow-up; owner acceptance remains required.
 
 - The owner approved correcting the two verified privacy false positives: a
   generic temporary-directory prefix in the local profile and a literal inside

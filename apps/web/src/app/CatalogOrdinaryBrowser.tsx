@@ -352,7 +352,7 @@ export function CatalogOrdinaryBrowser(props: {
     onDeepLinkHandled?.()
   }, [deepLink, onDeepLinkHandled, onSelect])
   const libraryName = props.libraries.find((item) => item.id === props.library)?.name ?? 'Library'
-  const tasks = useSourceTasks(props.library, setNotice)
+  const tasks = useSourceTasks(props.library, setNotice, status?.source_original === true)
   // Write mode in Libraries is the one switch; each action below is its own operation
   const writeMode = useWriteMode(props.library, sourceEnabled)
   const writable = sourceEnabled && writeMode.data?.effective === true
