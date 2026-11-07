@@ -162,6 +162,54 @@ def test_signature_check_checks_signed_bytes_and_exact_identity(tmp_path, monkey
     ]
 
 
+def test_app_signing_seals_only_the_outer_bundle_with_the_local_signer(tmp_path, monkeypatch):
+    bundle = tmp_path / "Cairndex.app"
+    (bundle / "Contents").mkdir(parents=True)
+    keychain = tmp_path / "signing.keychain-db"
+    identity = signing.SigningIdentity(FINGERPRINT, keychain)
+    checks = iter([False, True])
+    monkeypatch.setattr(signing, "app_signature_matches", lambda *args: next(checks))
+    calls = []
+    monkeypatch.setattr(signing, "_run", lambda arguments: calls.append(arguments))
+    signing.sign_app(bundle, identity)
+    assert len(calls) == 1
+    command = calls[0]
+    assert command[-1] == str(bundle)
+    assert command[command.index("--sign") + 1] == FINGERPRINT
+    assert command[command.index("--identifier") + 1] == "dev.cairndex.desktop"
+    assert command[command.index("--keychain") + 1] == str(keychain)
+    # Nested code keeps its own signatures, including the sidecar's
+    assert "--deep" not in command
+
+
+def test_app_signing_leaves_ad_hoc_and_release_builds_to_tauri(tmp_path, monkeypatch):
+    bundle = tmp_path / "Cairndex.app"
+    bundle.mkdir()
+    monkeypatch.setattr(signing, "_run", lambda *args: pytest.fail("must not sign"))
+    signing.sign_app(bundle, None)
+    signing.sign_app(bundle, signing.SigningIdentity(FINGERPRINT, timestamp=True))
+
+
+def test_app_signature_check_names_the_app_and_exact_certificate(tmp_path, monkeypatch):
+    bundle = tmp_path / "Cairndex.app"
+    bundle.mkdir()
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 1)
+
+    monkeypatch.setattr(signing.subprocess, "run", run)
+    assert not signing.app_signature_matches(bundle, signing.SigningIdentity(FINGERPRINT))
+    assert calls[0][-2:] == [
+        f'=identifier "dev.cairndex.desktop" and certificate leaf = H"{FINGERPRINT}"',
+        str(bundle),
+    ]
+    monkeypatch.setattr(signing, "_run", lambda *args: "")
+    with pytest.raises(signing.SigningError, match="app does not satisfy"):
+        signing.sign_app(bundle, signing.SigningIdentity(FINGERPRINT))
+
+
 def test_signing_refuses_symlinks(tmp_path):
     target = tmp_path / "external"
     target.touch()
