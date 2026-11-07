@@ -161,14 +161,14 @@ what Accept selects. The side view keeps identity repair, replacement and saved
 prepared reviews reachable. Its category filter runs before server pagination.
 Earlier grouping choices opens candidate drafts made before the editable tree.
 
-Servers advertising `grouping_version: 2` show **Add to existing bundles**
-above **New bundles and collections**. Both populations are filtered before
+Servers advertising `grouping_version: 2` show **New files for existing bundles**
+above **New bundles and collections**, as title headings with their rows indented
+one level inside them. Both populations are filtered before
 pagination. Collection counts and branch checkboxes cover only that tree;
 Select all and Select none cover both
 sections. Moving an addition into its own display section changes no accepted
-collection membership. A section checkbox selects its additions only when the
-whole section is loaded and fits one command (at most 50 suggestions); larger
-sections retain individual selection and global Select all/none. Older servers
+collection membership. Headings have no checkbox: each addition is selected on
+its own, or with global Select all/none. Older servers
 retain their mixed tree. Full-content verification remains optional; its tooltip
 explains that it reads every byte.
 **Other drafts** appears only when another draft or page is available. The side-view
