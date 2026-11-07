@@ -2,8 +2,9 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `e0a364d`, qualified on
-2026-11-06. It includes contextual conflict review, album file actions, retained autosave
+The local desktop and web test installation is `18b4cd8`, qualified on
+2026-11-06. It includes copy-free same-volume Rename, Move and Trash
+(ADR-0041), operation feedback/retry fixes, contextual conflict review, album file actions, retained autosave
 acknowledgements, and SMB access preparation when enabling
 Write Mode, open-bundle incoming drops, exclusive file/bundle inspectors,
 inline name rejection, compact copy throughput/progress,
@@ -163,6 +164,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed same-volume original operations | Linux 2,061 memory plus 110 disk backend cases after one test update (the old Undo-race setup queued a second recovery that the new admission guard refuses); macOS backend lint/format/mypy and 97 focused SMB/source/write-mode cases; full frontend gate with 1,479 units; disposable Samba Rename/Trash/Put Back/Undo/Empty Trash at 1 MiB and 512 MiB; signed app-only package, sidecar smoke, four frozen integrations, persistent signature/distribution, installed sidecar smoke and profile preservation. The source-operation browser spec was not rerun after the final backend changes |
 | Uninstalled file-operation feedback/retry fixes | macOS 264 source/SMB/catalog backend cases; backend lint/format/mypy; full frontend gate with 1,474 units, then 11 naming-hook cases including the added refresh-order regression and a strengthened backend draft no-write case; seven source/conflict/draft browser scenarios; synthetic activity/access screenshots inspected. Whole backend suite, Linux, real SMB reconnect/large-file timing and packaging deferred until the recovery design is settled |
 | Installed album actions and contextual conflict review | macOS full frontend gate with 1,471 units; 19 of 20 broader browser cases initially passed, then the corrected full-review case and both affected album/conflict cases passed on final source; synthetic screenshots inspected; signed app-only package, sidecar smoke, persistent signature/distribution and installed desktop/web checks passed. Backend, Rust, Linux and frozen-integration evidence retained for unchanged source areas |
 | Installed autosave and Write Mode access | Linux 2,078 bulk cases passed with the known ARM manifest failure, plus 81 disk cases passed; backend static checks on both platforms, macOS 35 focused backend and 64 packaging/manifest cases; 1,463 frontend units, full frontend gate, 20 of 21 initial browser cases followed by five affected final-source cases and three inspector repeats passing; signed app-only package, sidecar smoke, five frozen cases across four integration modules, distribution and installed desktop/web checks |
@@ -225,7 +227,7 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
-- The owner accepted ADR-0041. Uninstalled source now implements journaled
+- The owner accepted ADR-0041. The installed build implements journaled
   same-volume original relocation for Rename/Move/Trash, conditional Put Back/Undo
   and confirmed Empty Trash. Copy/Replace and existing journals retain independent
   recovery copies. Metadata exchange uses a separate lock from source work, and
@@ -245,12 +247,11 @@ is not an owner-NAS or full-UI Update benchmark.
   (ADR-0037). These are source results, not an installation or owner-NAS
   performance claim; timing uses an injected disposable credential and does not
   qualify packaged credential access.
-- Earlier feedback/retry fixes remain local and qualified as recorded above:
-  activity wrapping, permission popup, duplicate admission, rename refresh ordering
-  and avoiding repeated acknowledged draft writes. Installed runtime remains the
-  current checkpoint at the top. Package/install, final privacy audit and normal
-  push to `prepare/incoming-copy-dialog` follow qualification. No PR, merge or
-  release is authorized for this follow-up; owner acceptance remains required.
+- The earlier feedback/retry fixes (activity wrapping, permission popup, duplicate
+  admission, rename refresh ordering, no repeated acknowledged draft writes) are
+  installed with it. Owner-NAS timing and the packaged Keychain prompt remain
+  unverified. No PR, merge or release is authorized for this follow-up; owner
+  acceptance remains required.
 
 - The owner approved correcting the two verified privacy false positives: a
   generic temporary-directory prefix in the local profile and a literal inside
