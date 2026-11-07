@@ -323,13 +323,16 @@ export function useSourceTasks(
    */
   function undo(task: SourceTask) {
     const bundle = created.current.get(task.id)
-    const landed = task.items.flatMap((item) =>
+    const done = task.items.flatMap((item) =>
       item.state.kind === 'done' && !item.state.skipped ? [{ item, state: item.state }] : [],
     )
+    // Folders the task created go last, innermost first, once the files inside them are gone
+    const folders = done.filter(({ item }) => item.request.action === 'mkdir').reverse()
+    const landed = [...done.filter(({ item }) => item.request.action !== 'mkdir'), ...folders]
     const bundled = task.finish.kind === 'new-bundle' || task.finish.kind === 'add-to-bundle'
     start({
       title: `Undoing: ${task.summary.replace(/\.$/, '')}`,
-      summary: bundled ? `Moved ${noun(landed.length)} to the Trash.` : 'Undone.',
+      summary: bundled ? `Moved ${noun(landed.length - folders.length)} to the Trash.` : 'Undone.',
       undoable: false,
       finish: bundle ? { kind: 'delete-bundle', bundle } : { kind: 'none' },
       items: landed.map(({ item, state }) => ({

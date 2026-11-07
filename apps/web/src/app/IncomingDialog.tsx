@@ -1,12 +1,21 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { replicaRequest } from '../api/replicas'
 import type { components } from '../api/schema'
 import { operationId } from '../api/catalog'
 import { useWriteMode } from '../api/hooks'
 import { formatBytes } from '../lib/format'
 import { FolderPicker } from './FolderPicker'
-import { folderLabel, joinPath, noun, parentFolder, suggestBundleTitle } from './sourceTasks'
+import { folderListing, pickedFolder } from './folderListing'
+import {
+  type BundleHome,
+  folderLabel,
+  folderNameFor,
+  joinPath,
+  noun,
+  parentFolder,
+  suggestBundleTitle,
+} from './sourceTasks'
 import type { CatalogCollection } from './useCatalogCollections'
 import { useModalDialog } from './useModalDialog'
 import type { NewTask } from './useSourceTasks'
@@ -17,23 +26,56 @@ import type { NewTask } from './useSourceTasks'
  * or plain files in a folder (the File Browser). Each target suggests a folder.
  */
 export type IncomingTarget =
-  | { kind: 'new-bundle'; collection: string | null; folder: string }
+  | {
+      kind: 'new-bundle'
+      collection: string | null
+      /** Where the dropped-on view's bundles are stored, when it shows any */
+      home: BundleHome | null
+      /** The last folder files went to, for a drop with no better hint */
+      folder: string
+    }
   | { kind: 'bundle'; bundle: string; title: string; folder: string }
   | { kind: 'folder'; folder: string }
 
 /** The open Bundle Browser view, including a bundle whose contents are open. */
 export type IncomingDropContext = {
   collection: string | null
-  folder: string | null
+  home: BundleHome | null
   bundle: { id: string; title: string } | null
 }
 
-function collectionPath(items: CatalogCollection[], id: string): string {
+function collectionNames(items: CatalogCollection[], id: string): string[] {
   const byId = new Map(items.map((item) => [item.id, item]))
   const names: string[] = []
   for (let item = byId.get(id); item && names.length < 32; item = byId.get(item.parent_id ?? ''))
     names.unshift(item.name)
-  return names.join(' / ')
+  return names
+}
+
+const collectionPath = (items: CatalogCollection[], id: string) =>
+  collectionNames(items, id).join(' / ')
+
+/**
+ * The folder a new bundle suggests before the owner chooses one. Its view's
+ * bundles say where bundles are kept. A collection with none yet maps its
+ * path onto folders of the same names. Without either, the last folder used.
+ * A bundle gets a folder of its own when its neighbours have one each, or,
+ * with no neighbours to follow, when it has more than one file.
+ */
+function newBundleFolder(
+  target: Extract<IncomingTarget, { kind: 'new-bundle' }>,
+  collections: CatalogCollection[],
+  title: string,
+  fileCount: number,
+): string[] {
+  const split = (folder: string) => (folder ? folder.split('/') : [])
+  let base: string[], own: boolean
+  if (target.home) [base, own] = [split(target.home.folder), target.home.perBundle]
+  else if (target.collection)
+    [base, own] = [collectionNames(collections, target.collection), fileCount > 1]
+  else [base, own] = [split(target.folder), false]
+  const name = own ? folderNameFor(title) : null
+  return name ? [...base, name] : base
 }
 
 /**
@@ -60,7 +102,8 @@ export function IncomingDialog({
 }) {
   const writeMode = useWriteMode(library)
   const enabled = writeMode.data?.effective === true
-  const [chosenFolder, setFolder] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const [choice, setChoice] = useState<{ folder: string; pending: string[] } | null>(null)
   const bundle = target.kind === 'bundle' ? target.bundle : null
   const suggestion = useQuery({
     queryKey: ['incoming-bundle-folder', library, bundle],
@@ -83,9 +126,50 @@ export function IncomingDialog({
     gcTime: 0,
     retry: false,
   })
-  const folder = chosenFolder ?? suggestion.data ?? target.folder
-  const folderReady = chosenFolder !== null || bundle === null || suggestion.isSuccess
   const [title, setTitle] = useState(() => suggestBundleTitle(files))
+  const candidate =
+    target.kind === 'new-bundle' ? newBundleFolder(target, collections, title, files.length) : []
+  // How much of the suggested path exists; the rest is created before the copy
+  const existing = useQuery({
+    queryKey: ['incoming-new-folder', library, candidate],
+    enabled: target.kind === 'new-bundle' && choice === null,
+    queryFn: async () => {
+      let folder = ''
+      for (const [index, name] of candidate.entries()) {
+        const listing = await queryClient.fetchQuery({
+          ...folderListing(library, folder),
+          staleTime: 30_000,
+        })
+        const next = joinPath(folder, name)
+        if (
+          !listing.entries.some(
+            (entry) => entry.kind === 'directory' && entry.relative_path === next,
+          )
+        )
+          return index
+        folder = next
+      }
+      return candidate.length
+    },
+    placeholderData: (previous) => previous,
+    retry: false,
+  })
+  const suggested =
+    target.kind === 'new-bundle' && existing.data !== undefined && !existing.isError
+      ? {
+          folder: candidate.slice(0, existing.data).join('/'),
+          pending: candidate.slice(existing.data),
+        }
+      : null
+  const picked = choice ?? suggested
+  const folder = picked
+    ? pickedFolder(picked.folder, picked.pending)
+    : (suggestion.data ?? target.folder)
+  const folderReady =
+    choice !== null ||
+    (target.kind === 'new-bundle'
+      ? existing.isSuccess && !existing.isPlaceholderData
+      : bundle === null || suggestion.isSuccess)
   const [chosen, setChosen] = useState<string[]>(() =>
     target.kind === 'new-bundle' && target.collection ? [target.collection] : [],
   )
@@ -108,7 +192,17 @@ export function IncomingDialog({
 
   function start() {
     const where = folderLabel(folder)
-    const items = files.map((file) => ({
+    // New folders are created first, outermost first; each needs its parent
+    const created = (picked?.pending ?? []).map((name, index, names) => ({
+      name,
+      size: null,
+      request: {
+        operation: operationId(),
+        action: 'mkdir' as const,
+        destination: pickedFolder(picked!.folder, names.slice(0, index + 1)),
+      },
+    }))
+    const copies = files.map((file) => ({
       name: file.name,
       size: file.size,
       file,
@@ -120,6 +214,7 @@ export function IncomingDialog({
         collision: 'fail' as const,
       },
     }))
+    const items = [...created, ...copies]
     const name = title.trim()
     onStart(
       target.kind === 'new-bundle'
@@ -237,12 +332,24 @@ export function IncomingDialog({
           )}
           <div className="incoming__field">
             <span>Folder</span>
-            <FolderPicker library={library} value={folder} onChange={setFolder} />
+            <FolderPicker
+              library={library}
+              value={picked?.folder ?? folder}
+              pending={picked?.pending ?? []}
+              allowNew
+              onChange={(next, pending) => setChoice({ folder: next, pending })}
+            />
           </div>
-          {bundle && chosenFolder === null && suggestion.isPending && (
+          {target.kind === 'new-bundle' && choice === null && existing.isPending && (
             <p role="status">Finding a destination folder…</p>
           )}
-          {bundle && chosenFolder === null && suggestion.isError && (
+          {target.kind === 'new-bundle' && choice === null && existing.isError && (
+            <p role="alert">The folder suggestion is unavailable. Choose a destination folder.</p>
+          )}
+          {bundle && choice === null && suggestion.isPending && (
+            <p role="status">Finding a destination folder…</p>
+          )}
+          {bundle && choice === null && suggestion.isError && (
             <p role="alert">The folder suggestion is unavailable. Choose a destination folder.</p>
           )}
           {writeMode.data && !enabled && (

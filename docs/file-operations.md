@@ -76,14 +76,21 @@ menu, opens one dialog. What the files become depends on where they arrive:
 
 The bundle name defaults to the stem the files share ("Harbor at dusk" for its
 `.mp4` and `.srt`), else the largest file's name. In a collection, that collection
-is pre-filled and others can be added, and the folder defaults to the one most of
-the collection's bundles are in. Elsewhere the folder defaults to the one last used
-for this library. Drops inside an open bundle, and **Add Files…** while it is
+is pre-filled and others can be added. The folder follows the collection's bundles:
+beside them when they share a folder, or in a new folder named after the bundle,
+under their common parent, when each has its own; never inside another bundle's
+folder. A collection with no bundles yet maps its path onto folders of the same
+names (*A / B* suggests `A/B`), and gives a bundle of several files its own folder.
+Elsewhere the folder defaults to the one last used for this library. Suggested and
+chosen folders that do not exist yet appear marked *new*; the copy task creates
+them first, outermost first, as journaled New Folder operations. Undo of such a
+task trashes the copies, then those folders. Drops inside an open bundle, and **Add Files…** while it is
 open, add to that bundle. Bundles have no single physical path. For an existing
 bundle, the suggested folder is the parent of its first ordered file, or its
 first directory member. One metadata read supplies this hint; it does not scan
 storage or load every file. An empty bundle uses the last chosen library folder.
-**Change…** browses existing library folders. A manual choice takes precedence
+**Change…** browses existing library folders, and **New Folder…** adds a folder to
+create inside the chosen one. A manual choice takes precedence
 over the suggestion, and Copy waits for a suggestion or an explicit choice.
 With write mode off, the dialog's next step is **Open Libraries…**. Opening the
 dialog changes no source files, and the originals stay where they are.
