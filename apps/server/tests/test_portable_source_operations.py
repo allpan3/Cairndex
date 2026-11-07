@@ -270,10 +270,28 @@ def test_undo_rechecks_completed_inverse_before_first_capture(tmp_path):
     root, store = fixture(tmp_path)
     (root / "source.txt").write_bytes(b"synthetic")
     perform(store, root, "unlinked-move", "move", "source.txt", "moved.txt")
-    for operation in ("undo-first", "undo-second"):
-        enqueue(store, SourceRequest(operation=operation, action="undo", prior="unlinked-move"))
-        run_one(store, root, lambda: None)
-        assert job(store, operation).state == "prepared"
+
+    def undo(operation):
+        return SourceRequest(operation=operation, action="undo", prior="unlinked-move")
+
+    from cairndex.replicas.protocol import ReplicaError
+    from cairndex.replicas.source_journal import cancel
+
+    enqueue(store, undo("undo-first"))
+    run_one(store, root, lambda: None)
+    assert job(store, "undo-first").state == "prepared"
+    # This journal refuses a second recovery of the same original while one is unfinished.
+    with pytest.raises(ReplicaError, match="unfinished recovery operation"):
+        enqueue(store, undo("undo-second"))
+    # An Undo that completes where this journal cannot see it at admission (another
+    # server's) must still stop an already prepared Undo before its first capture.
+    with store.connection() as db:
+        db.execute("UPDATE source_operations SET state='cancelled' WHERE id='undo-first'")
+    enqueue(store, undo("undo-second"))
+    run_one(store, root, lambda: None)
+    assert job(store, "undo-second").state == "prepared"
+    with store.connection() as db:
+        db.execute("UPDATE source_operations SET state='prepared' WHERE id='undo-first'")
     for operation in ("undo-first", "undo-second"):
         accept(store, operation, job(store, operation).receipt)
         run_one(store, root, lambda: None)
@@ -281,6 +299,15 @@ def test_undo_rechecks_completed_inverse_before_first_capture(tmp_path):
     assert job(store, "undo-second").state == "interrupted"
     assert "completed Undo" in job(store, "undo-second").error
     assert (root / "source.txt").read_bytes() == b"synthetic"
+    # The interrupted Undo still holds the original until it is cancelled; after
+    # that, a new Undo is refused when it is prepared.
+    with pytest.raises(ReplicaError, match="unfinished recovery operation"):
+        enqueue(store, undo("undo-third"))
+    cancel(store, "undo-second")
+    enqueue(store, undo("undo-third"))
+    run_one(store, root, lambda: None)
+    assert job(store, "undo-third").state == "interrupted"
+    assert "completed Undo" in job(store, "undo-third").error
 
 
 @pytest.mark.parametrize("action,budget", [("copy", 9), ("move", 14), ("rename", 14), ("trash", 9)])
