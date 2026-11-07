@@ -107,7 +107,7 @@ function setup(separate: boolean) {
   return { edit, toggleSection, items: screen.getAllByRole('treeitem') }
 }
 
-test('sections nest their rows and select a collection apart from the additions', () => {
+test('sections nest their rows, select a collection apart from the additions and are titles only', () => {
   const { edit, items } = setup(true)
   expect(items.map((item) => item.getAttribute('aria-level'))).toEqual(['1', '2', '1', '2'])
   expect(items[0]).toHaveAttribute('aria-expanded', 'true')
@@ -118,13 +118,15 @@ test('sections nest their rows and select a collection apart from the additions'
     selected: true,
     exclude_additions: true,
   })
-  // A complete additions section is selected as one command
+  // Rows are drawn one level inside their heading
+  expect(items[1]!.style.paddingLeft).toBe('22px')
+  expect(items[0]!.style.paddingLeft).toBe('0px')
+  // A heading has no checkbox and Space does not select through it
+  expect(items[0]).not.toHaveAttribute('aria-checked')
+  expect(within(items[0]!).queryByRole('checkbox')).not.toBeInTheDocument()
+  edit.mockClear()
   fireEvent.keyDown(items[0]!, { key: ' ' })
-  expect(edit).toHaveBeenLastCalledWith({
-    action: 'select',
-    nodes: ['Synthetic addition'],
-    selected: true,
-  })
+  expect(edit).not.toHaveBeenCalled()
 })
 
 test('Left from a top-level row reaches its section heading, which then folds', () => {

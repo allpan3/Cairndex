@@ -14,28 +14,14 @@ import type { GroupingWorkspaceState } from './useGroupingWorkspace'
 import type { GroupingTreeState, TreeRow } from './useGroupingTree'
 import { GroupingRollup } from './GroupingRollup'
 
-/** One selection command holds at most this many suggestions */
-const SELECT_LIMIT = 50
-
-type SectionRow = Extract<TreeRow, { kind: 'section' }>
 type FileRow = Extract<TreeRow, { kind: 'file' }>
-
-/** A section can be selected as one only when all of it is loaded and fits one command */
-function sectionSelectable(row: SectionRow) {
-  return (
-    row.section === 'additions' &&
-    row.complete &&
-    row.nodes.length > 0 &&
-    row.nodes.length <= SELECT_LIMIT
-  )
-}
 
 function checked(row: TreeRow): boolean | 'mixed' | undefined {
   if (row.kind === 'file') return row.file.selected
   let selected: number, total: number
   if (row.kind === 'node') ({ selected, files: total } = row.node)
   else if (row.kind === 'folder') ({ selected, files: total } = row.folder)
-  else if (row.kind === 'rollup' || (row.kind === 'section' && sectionSelectable(row))) {
+  else if (row.kind === 'rollup') {
     selected = row.nodes.reduce((sum, node) => sum + node.selected, 0)
     total = row.nodes.reduce((sum, node) => sum + node.files, 0)
   } else return undefined
@@ -355,7 +341,7 @@ export function GroupingTree({
         folder: row.folder.path,
         selected: row.folder.selected !== row.folder.files,
       })
-    else if (row.kind === 'rollup' || (row.kind === 'section' && sectionSelectable(row)))
+    else if (row.kind === 'rollup')
       state.edit({
         action: 'select',
         nodes: row.nodes.map((node) => node.id),
@@ -363,8 +349,8 @@ export function GroupingTree({
       })
   }
   function render(row: TreeRow) {
+    // A section heading is a title only; each row under it is chosen on its own.
     if (row.kind === 'section') {
-      const selectable = sectionSelectable(row)
       return (
         <div className="grp-section">
           <button
@@ -375,23 +361,6 @@ export function GroupingTree({
           >
             <IconChevron open={row.open} />
           </button>
-          {/* The spacer keeps both titles in one column when only one heading selects */}
-          {!selectable && <span className="grp-check-spacer" aria-hidden="true" />}
-          {selectable && (
-            <GroupingCheck
-              selected={row.nodes.reduce((sum, node) => sum + node.selected, 0)}
-              total={row.nodes.reduce((sum, node) => sum + node.files, 0)}
-              disabled={blocked}
-              label={
-                row.nodes.length === 1
-                  ? 'Accept the addition'
-                  : `Accept all ${row.nodes.length} additions`
-              }
-              change={(selected) =>
-                state.edit({ action: 'select', nodes: row.nodes.map((node) => node.id), selected })
-              }
-            />
-          )}
           <span
             className="grp-section__title"
             title={
@@ -624,7 +593,8 @@ export function GroupingTree({
                 left: 0,
                 width: '100%',
                 transform: `translateY(${item.start}px)`,
-                paddingLeft: row.depth * 22,
+                // Rows sit one level inside their section heading, as aria-level says
+                paddingLeft: (row.depth + (tree.sectioned && row.kind !== 'section' ? 1 : 0)) * 22,
                 boxSizing: 'border-box',
               }}
             >
