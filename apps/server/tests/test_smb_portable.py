@@ -414,3 +414,53 @@ def test_missing_child_is_not_interpreted_as_absent_directory(tmp_path, monkeypa
     with pytest.raises(OSError) as caught:
         observation(tmp_path, "folder")
     assert caught.value.errno == errno.EAGAIN
+
+
+def test_publication_refreshes_completed_mounted_writer_before_observation(
+    tmp_path, portable, monkeypatch
+):
+    parents, _ = portable
+    source = tmp_path / "claim-stage"
+    source.write_bytes(b"Synthetic journal claim")
+    descriptor = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    parents[descriptor] = tmp_path
+    real_refresh = smb_portable._refresh_data
+    calls = []
+
+    def refresh(path):
+        calls.append(path.name)
+        if path == source and len(calls) == 1:
+            # Simulate the mounted writer's deferred final timestamp becoming
+            # visible on refresh. The later identity check must still apply.
+            os.utime(path, ns=(1_600_000_000_000_000_000, 1_600_000_000_000_000_000))
+        real_refresh(path)
+
+    monkeypatch.setattr(smb_portable, "_refresh_data", refresh)
+    try:
+        assert smb_portable.transfer(descriptor, source.name, descriptor, "claim", move=True)
+        assert calls[0] == source.name
+        assert (tmp_path / "claim").stat().st_mtime_ns == 1_600_000_000_000_000_000
+    finally:
+        os.close(descriptor)
+
+
+def test_visibility_rebinds_each_name_before_its_first_mounted_open(tmp_path, monkeypatch):
+    # smbfs can keep failing an open of a directly renamed name until a stat
+    # rebinds it, so the stat must come before any open of that name.
+    target = tmp_path / "claim"
+    target.write_bytes(b"Synthetic journal claim")
+    events = []
+    monkeypatch.setattr(smb_portable, "_uncache", lambda _: None)
+    real_rebind, real_refresh = smb_transport.rebind, smb_portable._refresh_data
+    monkeypatch.setattr(
+        smb_transport, "rebind", lambda path: (events.append(("stat", path)), real_rebind(path))
+    )
+    monkeypatch.setattr(
+        smb_portable,
+        "_refresh_data",
+        lambda path: (events.append(("open", path)), real_refresh(path)),
+    )
+    expected = {"size": target.stat().st_size}
+    smb_portable._visible(tmp_path / ".claim-stage", target, expected, move=True, folder=False)
+    first_target = [kind for kind, path in events if path == target]
+    assert first_target[0] == "stat"

@@ -9,8 +9,11 @@ Turning write mode on asks for confirmation and checks saved-login access for
 a mounted macOS SMB share before reporting success. If macOS requires approval,
 its request appears as part of enabling Write Mode; no separate Allow Access
 step is needed. A live verified SMB session is reused. Name-validation and namespace
-visibility errors retain that session; a genuine disconnect can still require
-saved-login authorization again. Turning it off takes effect at once
+visibility errors retain that session. After explicit authorization, a transient
+disconnect reuses a process-memory grant for that server/account/share. Write Mode
+off, mount identity change, last account close and shutdown revoke the grant.
+Authentication failure requires fresh saved-login access; background work does
+not open a prompt. An unanswered interactive request is reused on retry. Turning it off takes effect at once
 for an authorized session. A locked library asks for its passphrase. Released
 libraries must be reopened before enabling writes. A read-only deployment keeps
 the control visible and explains why it is blocked. Library **Settings…** opens
@@ -95,10 +98,8 @@ as a compact activity card at the bottom right, visible with the sidebar closed.
 It floats over the browser without moving the toolbar or reducing the grid
 height. It shows completed-file counts, received bytes, transfer percentage, speed and the current
 transfer, verification or saving phase. Transfer completion does not mean final
-publication has finished. Browsing remains available, but source byte work currently
-holds the library exchange lock and can delay metadata saves and Update.
-[ADR-0041](adr/0041-same-volume-file-operations.md) proposes correcting this together
-with copy-free relocation; it is not implemented. **×** stops a task: files not yet applied are cancelled, a file
+publication has finished. Source work has its own per-library queue, so copying does not hold the metadata
+exchange lock. Metadata commits still validate their causal bases. **×** stops a task: files not yet applied are cancelled, a file
 already being applied finishes, and **Continue** resumes the rest. A task that ends
 cleanly leaves a message with **Undo** at the foot of the window. Undo is one new
 journaled operation per changed item. A plain copy, move, rename or trash has an
@@ -127,7 +128,7 @@ the old intent before preparing the new one.
 
 Saved operations have stable identities. A retry uses the same paths, collision choice
 and review. Changed input requires a new operation. Interrupted operations retain their
-intent, independent content versions and any captured originals. Completed versions from
+intent and their recorded original objects or independent content versions. Completed versions from
 interrupted work also support a separate recovery copy. Retry is explicit. Cancellation
 stops preparation and application before capture; after capture, recovery must finish
 the saved operation. Release and write-mode revocation stop admission and are checked
@@ -165,8 +166,10 @@ file under a Keep Both name. Trash shows while write mode is on, or while it hol
 anything. Each of its actions is a journaled operation. Undo requires the
 recorded output bytes, affected metadata revisions and destination conditions. Later
 changes to those conditions stop Undo. A separate recovery copy can be made at a vacant
-path. Source versions have no automatic expiry or permanent-delete UI. Storage grows
-with retained operations. Back up `.cairndex/source-operations/` along with source files
+path for copy-based recovery. **Empty Trash…** loads the complete receipt list
+and asks for confirmation before permanently deleting retained originals. Cancel
+leaves them intact. Older copy-based Trash and Replace recovery versions remain;
+they cannot be deleted through this action. There is no automatic expiry. Back up `.cairndex/source-operations/` along with source files
 and `.cairndex/replica/`.
 
 ## Delivery and limits
@@ -203,7 +206,18 @@ data, not the owner's NAS. Full SMB pipeline qualification stopped at a
 publication identity check on the disposable share; that check remains intact.
 These results do not establish Finder parity or full-app SMB throughput.
 
-The current implementation accepts regular files and directories with at most 128
+On servers advertising `source_original`, same-volume Rename, Move and Trash
+relocate the original without reading its content. Put Back and Undo return that
+object only while its observations, metadata and destination still match. These
+operations preserve filesystem identity and attributes but are not backups: an
+external writer can change the retained original. A directory relocation includes
+hidden and untracked children without recursively copying them, with at most
+1,024 affected catalog identities. Permanent directory deletion checks a bounded
+metadata inventory (at most 4,096 entries and depth 64); the review-byte bound
+may impose a lower limit. It refuses linked, special or cross-device descendants.
+Deletion time depends on entry count and storage; it is not guaranteed instant.
+
+Copy, Replace and older operations accept regular files and directories with at most 128
 visible entries and 128 catalog identities per affected tree. A review also has a
 4,096-unit and bounded-byte metadata limit. Nested and empty directories are retained.
 Larger operations require smaller source selections. Symlinks, hidden paths, cross-
@@ -217,8 +231,8 @@ source workers serve the process; source copying does not run in HTTP exchange h
 Namespace changes by an external process can race with path checks. Parent identity
 checks detect observed changes, but cannot exclude an external rename between the final
 check and a filesystem call. External processes must not move library directories during
-application. An already-open file can still be changed after capture; its independent
-version remains the recovery source. Local synthetic tests do not qualify NAS storage,
+application. An already-open file can still be changed after capture. Copy and Replace retain
+an independent recovery version; original relocation does not. Local synthetic tests do not qualify NAS storage,
 providers or power-loss behavior.
 
 On positively identified macOS SMB mounts, portable publication uses signed,

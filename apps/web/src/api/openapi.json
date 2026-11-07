@@ -9677,6 +9677,11 @@
             ],
             "title": "Source Operations Version"
           },
+          "source_original": {
+            "default": false,
+            "title": "Source Original",
+            "type": "boolean"
+          },
           "storage_access": {
             "anyOf": [
               {
@@ -10212,7 +10217,11 @@
               "trash",
               "undo",
               "restore",
-              "mkdir"
+              "mkdir",
+              "relocate",
+              "retain",
+              "return",
+              "purge"
             ],
             "title": "Action",
             "type": "string"

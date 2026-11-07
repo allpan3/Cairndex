@@ -198,3 +198,87 @@ def test_media_pass_advances_while_transport_lock_is_busy(tmp_path, monkeypatch)
     finally:
         transport_lock.release()
         worker._sources.shutdown(wait=True)
+
+
+def test_source_phase_allows_catalog_saves_serializes_sources_and_drains_release(
+    tmp_path, monkeypatch
+):
+    from cairndex.ownership.lifecycle import LibraryLifecycle
+    from cairndex.replicas import source_execute
+    from tests.test_replica_catalog import edit
+
+    converted = prepare_disposable(create_disposable(parent=tmp_path, bundles=3))
+    store = converted.store
+    root = converted.package
+    info = root.stat()
+    transport = SimpleNamespace(
+        root=root, _root_identity=(info.st_dev, info.st_ino), tick=lambda: None
+    )
+    lane = threading.Lock()
+    lifecycle = LibraryLifecycle()
+    monkeypatch.setattr(service, "lifecycle", lifecycle)
+    monkeypatch.setattr(
+        service,
+        "_handles",
+        {
+            "independent": (
+                store,
+                transport,
+                threading.Lock(),
+                store.descriptor.model_dump_json(),
+                None,
+            )
+        },
+    )
+    monkeypatch.setattr(service, "_source_locks", {"independent": lane})
+    monkeypatch.setattr(service, "_source_transports", {})
+    monkeypatch.setattr(
+        service, "read_manifest", lambda root: SimpleNamespace(replica=store.descriptor)
+    )
+    monkeypatch.setattr(service, "advance_discovery", lambda *args: None)
+    monkeypatch.setattr(service, "advance_grouping", lambda *args: None)
+    entered, release, closed = threading.Event(), threading.Event(), threading.Event()
+    calls = []
+
+    def slow_source(*args):
+        calls.append(1)
+        entered.set()
+        assert release.wait(10)
+
+    monkeypatch.setattr(source_execute, "run_one", slow_source)
+    monkeypatch.setattr(service, "close", lambda identity: closed.set())
+    worker = threading.Thread(target=service.exchange_sources, args=("independent", lambda: True))
+    worker.start()
+    closer = None
+    try:
+        assert entered.wait(5)
+        service.exchange_sources("independent", lambda: True)
+        assert calls == [1]
+        body = {
+            "changes": [
+                change.model_dump()
+                for change in edit(
+                    store, "asset_bundles", "bundle-000000", "title", "Saved during copy"
+                )
+            ],
+            "parents": store.frontier(),
+            "resolve": False,
+            "recover": False,
+        }
+        jobs.enqueue(store, "during-copy", "save", body)
+        service.exchange("independent")
+        assert jobs.job(store, "during-copy")["state"] == "succeeded"
+        assert not release.is_set()
+        closer = threading.Thread(target=lifecycle.close, args=("independent",))
+        closer.start()
+        assert not closed.wait(0.05)
+        release.set()
+        worker.join(5)
+        closer.join(5)
+        assert closed.is_set()
+        assert not worker.is_alive() and not closer.is_alive()
+    finally:
+        release.set()
+        worker.join(10)
+        if closer:
+            closer.join(10)

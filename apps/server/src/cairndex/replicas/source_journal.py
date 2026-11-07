@@ -32,7 +32,19 @@ TABLES = {
 
 class SourceRequest(StrictModel):
     operation: Token
-    action: Literal["copy", "rename", "move", "trash", "undo", "restore", "mkdir"]
+    action: Literal[
+        "copy",
+        "rename",
+        "move",
+        "trash",
+        "undo",
+        "restore",
+        "mkdir",
+        "relocate",
+        "retain",
+        "return",
+        "purge",
+    ]
     source: str = Field(default="", max_length=4096)
     destination: str = Field(default="", max_length=4096)
     collision: Literal["fail", "skip", "suffix", "replace"] = "fail"
@@ -76,6 +88,16 @@ def enqueue(store: CatalogStore, request: SourceRequest) -> SourceJob:
         if prior and prior[0] != intent:
             raise ReplicaError("Source operation identity was reused for different intent")
         if not prior:
+            if (
+                request.prior
+                and db.execute(
+                    "SELECT 1 FROM source_operations WHERE state IN "
+                    "('queued','preparing','prepared','accepted','applying','interrupted') "
+                    "AND json_extract(intent,'$.prior')=? LIMIT 1",
+                    (request.prior,),
+                ).fetchone()
+            ):
+                raise ReplicaError("An unfinished recovery operation already uses this original")
             # Different editor instances must not queue overlapping namespace
             # mutations against a path an unfinished operation may already own.
             for path in {request.source, request.destination} - {""}:
@@ -94,7 +116,7 @@ def enqueue(store: CatalogStore, request: SourceRequest) -> SourceJob:
                     # cancelling the journal row. They changed no source names
                     # and must not reserve a location indefinitely.
                     if (
-                        other["action"] in {"rename", "mkdir"}
+                        other["action"] in {"rename", "mkdir", "relocate"}
                         and other["state"] == "interrupted"
                         and other["phase"] == "prepare"
                         and not json.loads(other["result"] or "{}").get("started")

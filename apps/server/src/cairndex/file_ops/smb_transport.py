@@ -73,6 +73,12 @@ class _DarwinStatfs(ctypes.Structure):
 
 _lock = threading.RLock()
 _keychain_lock = threading.Lock()
+_connect_locks: dict[tuple[str, str], threading.Lock] = {}
+# Explicit access grants survive transient reconnects only in this process.
+# Scope is the mounted server/account/share, never an arbitrary host credential.
+_authorized_passwords: dict[tuple[str, str, str], str] = {}
+_credential_epochs: dict[tuple[str, str, str], int] = {}
+_password_pending: dict[tuple[Mount, bool], tuple[threading.Event, list[str], list[Exception]]] = {}
 _connected: dict[tuple[str, str], Any] = {}
 _connections: dict[tuple[str, str], dict[str, Any]] = {}
 _roots: dict[Path, Mount] = {}
@@ -283,27 +289,40 @@ def _password_sync(mount: Mount, *, allow_prompt: bool) -> str:
 
 # Bound an unanswered SecurityAgent prompt so requests and shutdown can recover
 def _password(mount: Mount, *, allow_prompt: bool, timeout: float | None = None) -> str:
-    done = threading.Event()
-    result: list[str] = []
-    failure: list[Exception] = []
+    key = (mount, allow_prompt)
+    with _lock:
+        # A previously requested macOS prompt may outlive its HTTP timeout.
+        # Reuse it, including its eventual answer, instead of opening another.
+        if (mount, True) in _password_pending:
+            key = (mount, True)
+        pending = _password_pending.get(key)
+        if pending is None:
+            done = threading.Event()
+            result: list[str] = []
+            failure: list[Exception] = []
+            pending = done, result, failure
+            _password_pending[key] = pending
 
-    def retrieve() -> None:
-        try:
-            result.append(_password_sync(mount, allow_prompt=allow_prompt))
-        except Exception as error:
-            failure.append(error)
-        finally:
-            done.set()
+            def retrieve() -> None:
+                try:
+                    result.append(_password_sync(mount, allow_prompt=allow_prompt))
+                except Exception as error:
+                    failure.append(error)
+                finally:
+                    done.set()
 
-    threading.Thread(target=retrieve, name="smb-keychain", daemon=True).start()
+            threading.Thread(target=retrieve, name="smb-keychain", daemon=True).start()
+    done, result, failure = pending
     if not done.wait(_KEYCHAIN_TIMEOUT if timeout is None else timeout):
         raise KeychainError(
-            errno.ETIMEDOUT,
-            "SMB Keychain authorization timed out; allow access and retry",
+            errno.ETIMEDOUT, "SMB Keychain authorization timed out; allow access and retry"
         )
+    with _lock:
+        if _password_pending.get(key) is pending:
+            _password_pending.pop(key, None)
     if failure:
         raise failure[0]
-    return result.pop()
+    return result[0]
 
 
 # Preserve only definite file absence and occupied-name errors as ordinary filesystem outcomes
@@ -344,8 +363,7 @@ def _errors(
             with suppress(OSError):
                 mount = mount_for(path)
                 if mount is not None:
-                    with _lock:
-                        _release((mount.server, mount.account))
+                    _release((mount.server, mount.account))
         failure = SmbTransportError(
             code or errno.EIO, "The SMB identity or publication path is unavailable"
         )
@@ -357,28 +375,39 @@ def _errors(
 # Failed connections are discarded so the next attempt retrieves the exact login again
 def _connect(mount: Mount, *, allow_prompt: bool, timeout: float | None = None) -> Any:
     key = (mount.server, mount.account)
+    credential = (mount.server, mount.account, mount.share)
     with _lock:
-        session = _connected.get(key)
-        if session is not None and session.connection.transport.connected:
-            return session
+        gate = _connect_locks.setdefault(key, threading.Lock())
+    # Keychain interaction and connection setup must not hold the registry lock:
+    # unrelated mounts and status requests remain available while macOS prompts.
+    with gate:
+        with _lock:
+            session = _connected.get(key)
+            password = _authorized_passwords.get(credential)
+            credential_epoch = _credential_epochs.setdefault(credential, 0)
+            if (
+                session is not None
+                and session.connection.transport.connected
+                and (not allow_prompt or password is not None)
+            ):
+                return session
         _release(key)
         cache: dict[str, Any] = {}
-        _connections[key] = cache
+        with _lock:
+            _connections[key] = cache
         try:
-            password = _password(mount, allow_prompt=allow_prompt, timeout=timeout)
-            try:
-                session = smbclient.register_session(
-                    mount.server,
-                    username=mount.account,
-                    password=password,
-                    port=445,
-                    encrypt=True,
-                    require_signing=True,
-                    connection_timeout=15,
-                    connection_cache=cache,
-                )
-            finally:
-                password = ""
+            if password is None:
+                password = _password(mount, allow_prompt=allow_prompt, timeout=timeout)
+            session = smbclient.register_session(
+                mount.server,
+                username=mount.account,
+                password=password,
+                port=445,
+                encrypt=True,
+                require_signing=True,
+                connection_timeout=15,
+                connection_cache=cache,
+            )
             if (
                 int(session.connection.dialect) < 0x0300
                 or not session.encrypt_data
@@ -389,22 +418,66 @@ def _connect(mount: Mount, *, allow_prompt: bool, timeout: float | None = None) 
                 raise SmbTransportError(
                     errno.EPROTONOSUPPORT, "Authenticated encrypted SMB3 is required"
                 )
-            _connected[key] = session
+            with _lock:
+                if (
+                    _connections.get(key) is not cache
+                    or _credential_epochs.get(credential, 0) != credential_epoch
+                ):
+                    raise SmbTransportError(errno.ECANCELED, "SMB authorization was closed")
+                _connected[key] = session
+                if allow_prompt:
+                    _authorized_passwords[credential] = password
             return session
-        except SmbTransportError:
+        except Exception as error:
+            # Network failures keep the explicit reconnect grant. Authentication
+            # or policy failures discard it so a corrected Keychain item is read.
+            status = getattr(error, "status", getattr(error, "ntstatus", None))
+            if (
+                status in {0xC000006D, 0xC000006A, 0xC0000071, 0xC0000072}
+                or isinstance(error, KeychainError)
+                or (isinstance(error, SmbTransportError) and error.errno == errno.EPROTONOSUPPORT)
+            ):
+                with _lock:
+                    _authorized_passwords.pop(credential, None)
             _release(key)
-            raise
-        except Exception:
-            _release(key)
+            if isinstance(error, SmbTransportError):
+                raise
             raise SmbTransportError(
                 errno.EACCES, "The SMB connection or saved login is unavailable"
             ) from None
+        finally:
+            password = None
+
+
+def forget_credentials(root: Path) -> None:
+    """Drop the transient reconnect grant when the owner disables Write Mode."""
+    with _lock:
+        registered = _roots.get(root)
+    if registered is not None:
+        _forget_mount(registered)
+    # Revocation must also work while the mount is unavailable or remapped.
+    with suppress(OSError):
+        mount = mount_for(root)
+        if mount is not None and mount != registered:
+            _forget_mount(mount)
+
+
+def _forget_mount(mount: Mount) -> None:
+    with _lock:
+        credential = (mount.server, mount.account, mount.share)
+        _authorized_passwords.pop(credential, None)
+        _credential_epochs[credential] = _credential_epochs.get(credential, 0) + 1
+        for pending in list(_password_pending):
+            candidate = pending[0]
+            if (candidate.server, candidate.account, candidate.share) == credential:
+                _password_pending.pop(pending, None)
 
 
 # Close only this account's private pool, leaving other libraries and clients intact
 def _release(key: tuple[str, str]) -> None:
-    _connected.pop(key, None)
-    cache = _connections.pop(key, None)
+    with _lock:
+        _connected.pop(key, None)
+        cache = _connections.pop(key, None)
     if cache is not None:
         with suppress(Exception):
             smbclient.delete_session(key[0], port=445, connection_cache=cache, timeout=15)
@@ -417,6 +490,7 @@ def register_root(root: Path) -> None:
         return
     with _lock:
         if root in _roots and _roots[root] != mount:
+            _forget_mount(_roots[root])
             raise SmbTransportError(errno.EXDEV, "The SMB library mount changed")
         _roots[root] = mount
         _root_users[root] = _root_users.get(root, 0) + 1
@@ -439,6 +513,7 @@ def _mount(path: Path) -> Mount | None:
     with _lock:
         for root, registered in _roots.items():
             if path.is_relative_to(root) and mount != registered:
+                _forget_mount(registered)
                 raise SmbTransportError(errno.EXDEV, "The SMB library mount changed")
     return mount
 
@@ -460,8 +535,21 @@ def _name(mount: Mount, path: Path) -> str:
     return "\\".join(parts)
 
 
+def rebind(path: Path) -> None:
+    """Make smbfs resolve a name that this process changed over direct SMB.
+
+    After a direct create or rename, an open through the mount can fail with
+    ENOENT for as long as smbfs keeps its cached binding, while the server and
+    a directory listing already show the entry. A stat by name refreshes the
+    binding; an open or listing does not. Measured against Samba via smbfs.
+    """
+    with suppress(FileNotFoundError):
+        os.stat(path, follow_symlinks=False)
+
+
 # Read a nonce through the mount while retaining the native file identity
 def _mounted(path: Path, expected: bytes | None = None) -> os.stat_result:
+    rebind(path)
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     try:
         info = os.fstat(descriptor)
@@ -731,6 +819,10 @@ def close_sessions() -> None:
             _release(key)
         _roots.clear()
         _root_users.clear()
+        for credential in _credential_epochs.keys() | _authorized_passwords.keys():
+            _credential_epochs[credential] = _credential_epochs.get(credential, 0) + 1
+        _authorized_passwords.clear()
+        _password_pending.clear()
 
 
 # Release only this account after its last registered library closes
@@ -746,4 +838,11 @@ def close_root(root: Path) -> None:
         key = (removed.server, removed.account)
         if any((mount.server, mount.account) == key for mount in _roots.values()):
             return
+        for credential in _credential_epochs.keys() | _authorized_passwords.keys():
+            if credential[:2] == key:
+                _authorized_passwords.pop(credential, None)
+                _credential_epochs[credential] = _credential_epochs.get(credential, 0) + 1
+        for pending in list(_password_pending):
+            if (pending[0].server, pending[0].account) == key:
+                _password_pending.pop(pending, None)
         _release(key)

@@ -50,7 +50,11 @@ inventories and private storage paths. See [conversion](replica-migration.md).
 Portable source work uses the already-provisioned private `source_operations`,
 `source_receipts` and `source_uploads` tables. Journals retain exact intent,
 phase/progress, review and result; completed receipts reference the catalog event
-and independent content versions. Immutable versions and receipts live under
+and either independent content versions or original-object lineage. The explicit
+`relocate`, `retain`, `return` and `purge` actions use original observations in the
+private journal; their shared receipts make no content-hash claim. New servers
+advertise `source_original`. Older readers refuse these variants. Existing
+actions keep their recovery semantics. Versions and immutable receipts live under
 `.cairndex/source-operations/`; physical identities and credentials remain private.
 An uploaded copy may reference its ready upload's `source` version directly.
 Private recovery validates the request's upload identity and exact recorded

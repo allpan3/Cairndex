@@ -51,7 +51,11 @@ export type NewTask = Pick<SourceTask, 'title' | 'summary' | 'finish'> & {
  * Skip. A lost reply repeats the same intent, which the server deduplicates.
  * Stop cancels what has not been accepted; an accepted operation finishes.
  */
-export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice) => void) {
+export function useSourceTasks(
+  library: string,
+  onNotice: (notice: CatalogNotice) => void,
+  originals = false,
+) {
   const cache = useQueryClient()
   // The ref is what the running loops read; the state is what renders
   const tasks = useRef<SourceTask[]>([])
@@ -282,7 +286,22 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
         id,
         inline,
         undoable: task.undoable ?? true,
-        items: task.items.map((item) => ({ ...item, state: { kind: 'waiting' } })),
+        items: task.items.map((item) => ({
+          ...item,
+          request: originals
+            ? {
+                ...item.request,
+                action:
+                  item.request.action === 'trash'
+                    ? 'retain'
+                    : ['rename', 'move'].includes(item.request.action) &&
+                        item.request.collision !== 'replace'
+                      ? 'relocate'
+                      : item.request.action,
+              }
+            : item.request,
+          state: { kind: 'waiting' },
+        })),
         running: false,
         stopping: false,
         error: '',
@@ -323,7 +342,13 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
               source: state.destination,
               destination: '',
             }
-          : { operation: operationId(), action: 'undo', prior: state.operation },
+          : {
+              operation: operationId(),
+              action: ['relocate', 'retain', 'return'].includes(item.request.action)
+                ? 'return'
+                : 'undo',
+              prior: state.operation,
+            },
       })),
     })
   }
@@ -398,7 +423,15 @@ export function useSourceTasks(library: string, onNotice: (notice: CatalogNotice
         return
       }
       setItem(id, index, {
-        request: { ...item.request, operation: operationId(), collision },
+        request: {
+          ...item.request,
+          operation: operationId(),
+          collision,
+          action:
+            item.request.action === 'relocate' && collision === 'replace'
+              ? 'move'
+              : item.request.action,
+        },
         state: { kind: 'waiting' },
       })
       enqueue(id, [index])
