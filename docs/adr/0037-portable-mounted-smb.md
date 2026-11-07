@@ -26,7 +26,11 @@ Resolve parent paths from held kernel directory descriptors. Verify their native
 identity and canonical path. Require the same mounted endpoint, share and account
 for both parents. Hold direct SMB ancestors against deletion, reject reparse
 objects and referrals, and prove each mutation's parent mapping with temporary
-nonce bytes read through the mount. Recheck held parent paths after publication.
+nonce bytes read through the mount. A proof is kept in process memory for the
+same mount and mounted directory object (device and inode) and reused; a
+remount, a replaced directory or a forgotten mount proves it again. A reused
+proof still creates and removes a probe through the mount, which clears smbfs's
+cached absences in that directory as the nonce file did. Recheck held parent paths after publication.
 Background work retrieves only the saved login for the exact mounted server,
 account and share path, with interaction disabled. The Keychain path is the
 mounted share name, without an added leading slash. A pathless lookup must not

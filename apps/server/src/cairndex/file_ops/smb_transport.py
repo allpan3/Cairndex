@@ -7,6 +7,7 @@ import os
 import secrets
 import sys
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -83,6 +84,9 @@ _connected: dict[tuple[str, str], Any] = {}
 _connections: dict[tuple[str, str], dict[str, Any]] = {}
 _roots: dict[Path, Mount] = {}
 _root_users: dict[Path, int] = {}
+# Directory mappings proven by `_challenge`, with the mounted directory's identity
+_proven: dict[tuple[Mount, Path], tuple[int, int]] = {}
+_PROVEN_LIMIT = 1024
 _KEYCHAIN_TIMEOUT = 20.0
 # An owner who asked for access needs time to read the request and type a password
 _AUTHORIZATION_TIMEOUT = 120.0
@@ -464,6 +468,8 @@ def forget_credentials(root: Path) -> None:
 
 def _forget_mount(mount: Mount) -> None:
     with _lock:
+        for proven in [key for key in _proven if key[0] == mount]:
+            del _proven[proven]
         credential = (mount.server, mount.account, mount.share)
         _authorized_passwords.pop(credential, None)
         _credential_epochs[credential] = _credential_epochs.get(credential, 0) + 1
@@ -566,9 +572,44 @@ def _refresh_absence(path: Path) -> None:
         _mounted(path)
 
 
+def _forget_absent_names(directory: Path) -> None:
+    """Make smbfs drop the names it remembers as absent in this directory.
+
+    The checks before a direct SMB create or rename look the destination up
+    through the mount and find it absent. smbfs then answers that lookup from
+    its cache for about two seconds after the server already has the entry.
+    A change made through the mount in the same directory clears those cached
+    absences, so the new name shows at its next lookup. Measured against Samba
+    via smbfs: each wait fell from 0.4-2.6 s to about 20 ms. The probe name is
+    exclusive and never left behind; a refused probe only leaves the wait.
+    """
+    probe = directory / f".cairndex-refresh-{os.getpid()}-{time.monotonic_ns()}"
+    try:
+        os.close(os.open(probe, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600))
+    except OSError:
+        return
+    with suppress(FileNotFoundError):
+        os.unlink(probe)
+
+
 # Prove each directory mapping with fresh bytes visible through both access paths
 # Delete-on-close applies only to the exclusively created challenge handle
 def _challenge(share: smb_handles.Share, mount: Mount, directory: Path) -> None:
+    """Prove once per mount and mounted directory object, then reuse the proof.
+
+    The mapping from a mounted path to its share name depends only on the mount
+    and the names, so it holds while the same mount serves the same directory
+    object. A remount, a replaced directory or `_forget_mount` proves it again.
+    A reused proof still clears cached absences, as the nonce file used to.
+    """
+    held = os.stat(directory, follow_symlinks=False)
+    with _lock:
+        reused = _proven.get((mount, directory)) == (held.st_dev, held.st_ino)
+    if reused:
+        _forget_absent_names(directory)
+        if _mount(directory) != mount:
+            raise SmbTransportError(errno.EXDEV, "The SMB mount changed during verification")
+        return
     nonce = secrets.token_bytes(32)
     path = directory / f".cairndex-map-{secrets.token_hex(16)}"
     with share.open(
@@ -583,6 +624,12 @@ def _challenge(share: smb_handles.Share, mount: Mount, directory: Path) -> None:
     _refresh_absence(path)
     if _mount(directory) != mount:
         raise SmbTransportError(errno.EXDEV, "The SMB mount changed during verification")
+    after = os.stat(directory, follow_symlinks=False)
+    if (after.st_dev, after.st_ino) == (held.st_dev, held.st_ino):
+        with _lock:
+            if len(_proven) >= _PROVEN_LIMIT:
+                _proven.clear()
+            _proven[(mount, directory)] = (held.st_dev, held.st_ino)
 
 
 # Observe server identity after stabilizing only completed staging bytes
