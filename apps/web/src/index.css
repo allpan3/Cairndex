@@ -3794,12 +3794,6 @@ code {
   width: 14px;
   height: 18px;
 }
-.grp-section > .grp-check,
-.grp-section > .grp-check-spacer {
-  flex: 0 0 14px;
-  width: 14px;
-  height: 14px;
-}
 .grp-section .grp-hint {
   text-transform: none;
   letter-spacing: normal;
