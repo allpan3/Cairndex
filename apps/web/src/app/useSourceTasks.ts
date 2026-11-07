@@ -69,6 +69,11 @@ export function useSourceTasks(
   const created = useRef(new Map<string, string>())
   const queue = useRef(Promise.resolve())
   const names = useRef(new Map<string, { destination: string; completion: Promise<void> }>())
+  // ⌘Z undoes the latest finished operation; any later operation replaces it
+  const latest = useRef<SourceTask | null>(null)
+  const newest = useRef('')
+  const undone = useRef(new Set<string>())
+  const undoLatest = useRef<(task: SourceTask) => void>(() => undefined)
   useEffect(() => {
     const running = controllers.current
     return () => running.forEach((controller) => controller.abort())
@@ -241,6 +246,7 @@ export function useSourceTasks(
         task.undoable &&
         done.some((state) => !state.skipped) &&
         (task.finish.kind === 'none' || done.every((state) => state.skipped || state.created))
+      if (undoable && newest.current === id) latest.current = task
       onNotice({
         text: summary,
         action: undoable ? { label: 'Undo', run: () => undo(task) } : undefined,
@@ -283,6 +289,8 @@ export function useSourceTasks(
 
   function start(task: NewTask, inline = false) {
     const id = operationId()
+    newest.current = id
+    latest.current = null
     commit([
       ...tasks.current,
       {
@@ -326,6 +334,9 @@ export function useSourceTasks(
    * the task made is removed once they are gone.
    */
   function undo(task: SourceTask) {
+    // The notice's button and ⌘Z can both reach one task; its inverse runs once
+    if (undone.current.has(task.id)) return
+    undone.current.add(task.id)
     const bundle = created.current.get(task.id)
     const done = task.items.flatMap((item) =>
       item.state.kind === 'done' && !item.state.skipped ? [{ item, state: item.state }] : [],
@@ -359,6 +370,35 @@ export function useSourceTasks(
       })),
     })
   }
+
+  useEffect(() => {
+    undoLatest.current = undo
+  })
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const task = latest.current
+      if (
+        !task ||
+        event.defaultPrevented ||
+        event.shiftKey ||
+        event.altKey ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.key.toLowerCase() !== 'z'
+      )
+        return
+      // Text fields keep their own undo, and a dialog's question comes first
+      const target = event.target instanceof Element ? event.target : null
+      if (
+        target?.closest('input, textarea, select, [contenteditable="true"]') ||
+        document.querySelector('[aria-modal="true"]')
+      )
+        return
+      event.preventDefault()
+      undoLatest.current(task)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   async function finishName(id: string) {
     await queue.current
