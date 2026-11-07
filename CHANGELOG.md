@@ -455,6 +455,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   gains New Folder, and Undo trashes the copies before the folders it made.
 - Show grouping review section headings as titles only, without the "accept
   all additions" checkbox, and indent their rows one level inside them.
+  The action that splits new files off an existing bundle now reads **Make new
+  bundle**, so it no longer looks like a status tag.
 - Keep macOS "access files on a network volume" approval across local rebuilds:
   with the opted-in local signer, `just build-desktop` re-signs `Cairndex.app`
   with that certificate instead of leaving a per-build ad-hoc identity.
