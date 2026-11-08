@@ -217,3 +217,38 @@ def test_completed_upload_cannot_adopt_changed_bytes_on_retry(tmp_path):
     with pytest.raises(ReplicaError, match="original evidence"):
         asyncio.run(source_uploads.receive(store, root, "upload", 3, chunks(b"new"), lambda: None))
     assert source_uploads.uploaded_version(store, root, "upload", 3) == expected
+
+
+def test_copied_large_file_reports_unconfirmed_rather_than_different_content(tmp_path):
+    """A remount changes the device number of every file on a share; that alone
+    must not describe a complete-hash copy as different content."""
+    from cairndex.core.errors import NotFoundError
+    from cairndex.replicas.media import ReplicaMedia
+
+    root, store = fixture(tmp_path)
+    data = bytes(range(256)) * 4096
+
+    async def chunks():
+        yield data
+
+    asyncio.run(source_uploads.receive(store, root, "upload", len(data), chunks(), lambda: None))
+    enqueue(
+        store,
+        SourceRequest(operation="copy", action="copy", upload="upload", destination="copy.bin"),
+    )
+    run_one(store, root, lambda: None)
+    accept(store, "copy", job(store, "copy").receipt)
+    run_one(store, root, lambda: None)
+    with store.connection(readonly=True) as db:
+        identity = db.execute(
+            "SELECT entity FROM catalog_paths WHERE path='copy.bin' AND family='asset_files'"
+        ).fetchone()[0]
+    media = ReplicaMedia(store, root, "synthetic")
+    media.check_content(identity, "copy.bin")
+    (root / "copy.bin").chmod(0o640)  # a metadata-only change, like a remount
+    with pytest.raises(NotFoundError, match="can't confirm this file is unchanged"):
+        media.check_content(identity, "copy.bin")
+    # Samples cannot tell an edit from a remount either; only Update's full hash can
+    (root / "copy.bin").write_bytes(b"X" * len(data))
+    with pytest.raises(NotFoundError, match="can't confirm"):
+        media.check_content(identity, "copy.bin")
