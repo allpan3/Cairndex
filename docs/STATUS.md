@@ -66,8 +66,12 @@ request. Conflict review remains explicit. Enabling Write Mode verifies the
 mounted-SMB saved login before reporting success. The macOS package uses
 a persistent sidecar signing identity; one approval can be required when moving
 from the former ad-hoc signer. Two different synthetic executables verified
-Keychain access in fresh processes without prompting. Actual owner-share access
-remains an owner check. Existing conflict alternatives are preserved.
+Keychain access in fresh processes without prompting, but only for an item the
+executable created in a disposable Keychain. For the owner's Finder-saved share
+login, macOS's partition list records the self-signed sidecar by code hash, so
+each rebuilt sidecar asks once (2026-11-08). File tasks now ask before their
+first step; an Apple-issued signing identity is the owner decision that would
+remove the request. Actual owner-share access remains an owner check. Existing conflict alternatives are preserved.
 Album file menus now include Open, Locate in File Browser, and gated Rename/Trash;
 the selected file inspector also supports filename editing. Ordinary conflicts
 open in a compact dialog with readable alternatives. Structural conflicts retain

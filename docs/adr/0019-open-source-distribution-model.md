@@ -167,6 +167,12 @@ Corrected here rather than left standing.
 
   Keychain tracks designated requirements and accepts a stable self-signed identity
   without installing a trusted root; see [Apple TN2206](https://developer.apple.com/library/archive/technotes/tn2206/_index.html).
+  *Correction (2026-11-08):* this holds for the access list, not for the
+  partition list macOS added in 10.12. For a login that Finder saved, **Always
+  Allow** records a self-signed signer by its code hash, so each rebuilt sidecar
+  asks once more. Only an Apple-issued identity, recorded by its Team ID, removes
+  that request; Cairndex now asks once when a file task starts instead.
+
   This solves local permission continuity after the owner grants the new signer
   access. It does not confer Gatekeeper trust, notarization or a public release
   identity. Private keys and workstation configuration never enter the source tree
