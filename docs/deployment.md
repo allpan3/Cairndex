@@ -678,6 +678,10 @@ Keychain grants may not cover a rebuilt executable. Local source builders can
 with `uv run python packaging/macos_signing.py create-local` from `apps/server`.
 Both build variants then retain the same certificate and `dev.cairndex.sidecar`
 identifier. The first operation with the new signer can require **Always Allow**.
+For a login that Finder saved, macOS records a self-signed sidecar by its code
+hash, so each rebuilt sidecar asks once more; an Apple-issued Team ID would not.
+A file task asks before its first step, so the request comes while the owner is
+starting it, and the task continues after the answer.
 Verify access in a fresh process after a rebuild; existing Keychain rules can
 require authorization for the new executable. This local
 identity changes neither system trust nor Gatekeeper/notarization requirements.

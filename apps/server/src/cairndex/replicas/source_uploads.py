@@ -22,25 +22,60 @@ class UploadProgress(StrictModel):
     state: Literal["waiting", "receiving", "ready", "interrupted"]
     received: int
     size: int | None
+    # Why the server stopped the latest attempt. A refusal sent before the body
+    # was read reaches a browser only as a network error, so the client asks here.
+    error: str | None = None
 
 
 # Only active requests live here. Progress is observational, not a durability
 # checkpoint; restart uses the existing upload journal and exact-byte retry.
 _active: dict[tuple[Path, str], int] = {}
+_failures: dict[tuple[Path, str], str] = {}
+_FAILURES_KEPT = 64
 _progress_lock = threading.Lock()
+
+
+def _failure_text(error: BaseException) -> str | None:
+    """What the owner reads about a stopped upload; it names no path or login."""
+    from cairndex.core.errors import DomainError
+    from cairndex.file_ops import smb_transport
+
+    if isinstance(error, DomainError):
+        return error.message
+    if isinstance(error, OSError):
+        if smb_transport.access_problem(error):
+            return smb_transport.access_message(error)
+        return (
+            "The library's storage could not save this file. "
+            "Check that it is available, then try again."
+        )
+    # A closed request or a stopped server is already visible to the client
+    return None
+
+
+def _record_failure(store: CatalogStore, upload: str, error: BaseException) -> None:
+    text = _failure_text(error)
+    with _progress_lock:
+        _failures.pop((store.path, upload), None)
+        if text is not None:
+            _failures[(store.path, upload)] = text
+            while len(_failures) > _FAILURES_KEPT:
+                _failures.pop(next(iter(_failures)))
 
 
 def progress(store: CatalogStore, upload: str) -> UploadProgress:
     with store.connection(readonly=True) as db:
         row = db.execute("SELECT size,state FROM source_uploads WHERE id=?", (upload,)).fetchone()
-    if row is None:
-        return UploadProgress(state="waiting", received=0, size=None)
     with _progress_lock:
         received = _active.get((store.path, upload), 0)
+        error = _failures.get((store.path, upload))
+    if row is None:
+        return UploadProgress(state="waiting", received=0, size=None, error=error)
     return UploadProgress(
         state=row["state"],
         received=row["size"] if row["state"] == "ready" else received,
         size=row["size"],
+        error=None if row["state"] == "ready" else error,
     )
 
 
@@ -62,6 +97,24 @@ async def blocks(chunks: AsyncIterator[bytes], size: int = 4 * 1024 * 1024) -> A
 
 
 async def receive(
+    store: CatalogStore,
+    root: Path,
+    upload: str,
+    size: int,
+    chunks: AsyncIterator[bytes],
+    authorize: Callable[[], None],
+) -> dict[str, Any]:
+    """Stage one upload's exact bytes, remembering why an attempt stopped."""
+    with _progress_lock:
+        _failures.pop((store.path, upload), None)
+    try:
+        return await _receive(store, root, upload, size, chunks, authorize)
+    except BaseException as error:
+        _record_failure(store, upload, error)
+        raise
+
+
+async def _receive(
     store: CatalogStore,
     root: Path,
     upload: str,

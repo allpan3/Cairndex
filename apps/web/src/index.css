@@ -8770,14 +8770,55 @@ button.pick-row:disabled {
 .file-activity .job-progress__row {
   align-items: flex-start;
 }
-.source-task__cancel {
-  flex: 0 0 auto;
-}
 .source-task p,
 .source-task__question,
 .source-stopped section > span {
   overflow-wrap: anywhere;
   min-width: 0;
+}
+.source-task p {
+  margin: 0;
+}
+/* What stopped, one row per item, so a long list stays short and readable */
+.source-task__failures {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.source-task__failures li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 10px;
+}
+.source-task__failures li + li {
+  border-top: 1px solid var(--border);
+}
+.source-task__failure-name {
+  overflow: hidden;
+  color: var(--text-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-task__failure-message {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.source-task__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+.source-task__actions .source-task__note {
+  margin-right: auto;
 }
 .source-task__metrics {
   display: flex;

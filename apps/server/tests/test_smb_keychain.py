@@ -249,3 +249,30 @@ def test_authorization_needs_a_mounted_share_directory(tmp_path, monkeypatch):
         smb_transport.authorize(tmp_path / "file")
     with pytest.raises(FileNotFoundError):
         smb_transport.authorize(tmp_path / "missing")
+
+
+@pytest.mark.parametrize("status,prompts", [(None, []), (-25308, [True]), (-25300, None)])
+def test_ensure_access_asks_macos_only_after_a_refusal(tmp_path, monkeypatch, status, prompts):
+    mount = smb_transport.Mount(tmp_path, "example.com", "fixtures", "owner")
+    calls = []
+
+    def connect(target, *, allow_prompt, timeout=None):
+        calls.append(allow_prompt)
+        if not allow_prompt and status is not None:
+            error = smb_transport.KeychainError(errno.EACCES, "synthetic refusal")
+            error.keychain_status = status
+            raise error
+
+    monkeypatch.setattr(smb_transport, "_connect", connect)
+    monkeypatch.setattr(smb_transport, "mount_for", lambda _: None)
+    smb_transport.ensure_access(tmp_path)
+    assert calls == []
+    monkeypatch.setattr(smb_transport, "mount_for", lambda _: mount)
+    if prompts is None:
+        # A missing login cannot be fixed by a Keychain request
+        with pytest.raises(smb_transport.KeychainError):
+            smb_transport.ensure_access(tmp_path)
+        assert calls == [False]
+    else:
+        smb_transport.ensure_access(tmp_path)
+        assert calls == [False, *prompts]

@@ -6,7 +6,10 @@ import { CatalogTrashBrowser } from './CatalogTrashBrowser'
 import { useTrash } from './useSourceLists'
 import type { SourceTasks } from './useSourceTasks'
 
-vi.mock('../api/sourceOperations', () => ({ sourceRequest: vi.fn() }))
+vi.mock('../api/sourceOperations', () => ({
+  prepareSourceAccess: vi.fn(async () => undefined),
+  sourceRequest: vi.fn(),
+}))
 
 function item(id: string, action = 'retain'): ReceiptPage['items'][number] {
   return {

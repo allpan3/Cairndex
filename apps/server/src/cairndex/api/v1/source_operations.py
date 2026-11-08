@@ -49,6 +49,26 @@ async def upload_bytes(
     return await receive(store, root, upload, size, request.stream(), authorize_upload)
 
 
+@router.post("/access", status_code=204)
+def prepare_access(library_id: str, registry: RegistryDbSession) -> Response:
+    """Before a file task's first step, let macOS ask once for the share's saved login.
+
+    The owner just started the task, so macOS may show its Keychain request on
+    this computer's screen; it waits up to two minutes for an answer. Already
+    allowed access and libraries outside a network share answer at once.
+    """
+    from pathlib import Path
+
+    from cairndex.registry.services import get_library
+    from cairndex.replicas.service import prepare_source_access
+
+    ensure_portable_write_mode(registry, library_id)
+    root = Path(get_library(registry, library_id).root_path)
+    registry.commit()
+    prepare_source_access(library_id, root)
+    return Response(status_code=204)
+
+
 @router.post("", response_model=SourceJob, status_code=202)
 def enqueue(
     library_id: str, payload: SourceRequest, store: Catalog, registry: RegistryDbSession

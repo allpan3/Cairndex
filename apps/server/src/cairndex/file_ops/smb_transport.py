@@ -825,6 +825,26 @@ def authorize(path: Path) -> None:
     _connect(mount, allow_prompt=True, timeout=_AUTHORIZATION_TIMEOUT)
 
 
+def ensure_access(path: Path) -> None:
+    """Before an owner-started file operation, make sure the share's saved login is usable.
+
+    Nothing happens outside a macOS SMB mount. A connected session, or a login
+    macOS already lets this application read, is used without a request. Only
+    a refusal asks macOS, as :func:`authorize` does, so the owner answers one
+    Keychain request before the operation starts instead of after it fails.
+    """
+    mount = mount_for(path.resolve(strict=True))
+    if mount is None:
+        return
+    try:
+        _connect(mount, allow_prompt=False)
+        return
+    except KeychainError as error:
+        if access_problem(error) != "authorization":
+            raise
+    _connect(mount, allow_prompt=True, timeout=_AUTHORIZATION_TIMEOUT)
+
+
 def access_problem(error: BaseException) -> Literal["authorization", "login"] | None:
     """What the owner must do when ``error`` came from reading the share's saved login.
 

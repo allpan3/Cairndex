@@ -3,9 +3,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { bundleFiles, deleteBundles, setCollectionMembership } from '../api/catalogOrganize'
-import { sourceRequest, uploadSource, type SourceRequest } from '../api/sourceOperations'
+import {
+  prepareSourceAccess,
+  sourceRequest,
+  uploadSource,
+  type SourceRequest,
+} from '../api/sourceOperations'
 import type { CatalogNotice } from './CatalogToast'
-import { useSourceTasks, type NewTask } from './useSourceTasks'
+import { rateMeter, useSourceTasks, type NewTask } from './useSourceTasks'
 
 let ids = 0
 vi.mock('../api/catalog', () => ({ catalog: vi.fn(), operationId: () => `synthetic-${++ids}` }))
@@ -16,6 +21,7 @@ vi.mock('../api/catalogOrganize', () => ({
 }))
 vi.mock('../api/sourceOperations', async (original) => ({
   ...(await original<typeof import('../api/sourceOperations')>()),
+  prepareSourceAccess: vi.fn(),
   sourceRequest: vi.fn(),
   uploadSource: vi.fn(),
 }))
@@ -92,6 +98,7 @@ function mount(originals = false) {
 
 beforeEach(() => {
   vi.mocked(uploadSource).mockReset().mockResolvedValue(undefined)
+  vi.mocked(prepareSourceAccess).mockReset().mockResolvedValue(undefined)
   vi.mocked(sourceRequest).mockReset()
   vi.mocked(bundleFiles).mockReset().mockResolvedValue('bundle-1')
   vi.mocked(setCollectionMembership).mockReset().mockResolvedValue(undefined)
@@ -165,6 +172,58 @@ test('a failed copy stays with Try Again and makes no bundle', async () => {
   act(() => hook.result.current.resume(hook.result.current.tasks[0]!.id))
   await waitFor(() => expect(notices).toHaveLength(1))
   expect(bundleFiles).toHaveBeenCalledTimes(1)
+})
+
+test('a failed step stops the steps after it, and Try Again continues from it', async () => {
+  vi.mocked(uploadSource).mockRejectedValueOnce(new Error('The server went away'))
+  server()
+  const { hook } = mount()
+  act(() => {
+    hook.result.current.start(copies(['a.mp4', 'b.mp4'], { kind: 'none' }))
+  })
+  await waitFor(() => expect(hook.result.current.tasks[0]?.running).toBe(false))
+  expect(hook.result.current.tasks[0]!.items.map((item) => item.state.kind)).toEqual([
+    'failed',
+    'waiting',
+  ])
+  expect(uploadSource).toHaveBeenCalledTimes(1)
+  act(() => hook.result.current.resume(hook.result.current.tasks[0]!.id))
+  await waitFor(() => expect(hook.result.current.tasks).toHaveLength(0))
+  expect(uploadSource).toHaveBeenCalledTimes(3)
+})
+
+test('a task asks for share access first and starts no step without it', async () => {
+  const posted = server()
+  vi.mocked(prepareSourceAccess).mockRejectedValueOnce(
+    new Error('Cairndex needs your permission to use the login saved for this share.'),
+  )
+  const { hook } = mount()
+  act(() => {
+    hook.result.current.start(copies(['a.mp4'], { kind: 'none' }))
+  })
+  await waitFor(() => expect(hook.result.current.tasks[0]?.error).toContain('Always Allow'))
+  expect(hook.result.current.tasks[0]!.running).toBe(false)
+  expect(uploadSource).not.toHaveBeenCalled()
+  expect(posted).toHaveLength(0)
+  act(() => hook.result.current.resume(hook.result.current.tasks[0]!.id))
+  await waitFor(() => expect(hook.result.current.tasks).toHaveLength(0))
+  expect(posted).toHaveLength(1)
+})
+
+test('speed holds through repeated readings instead of resetting', () => {
+  let now = 0
+  const read = rateMeter(() => now)
+  now = 200
+  // Too soon to say
+  expect(read(1_000_000).speed).toBeUndefined()
+  now = 1000
+  expect(read(4_000_000).speed).toBe(4_000_000)
+  now = 1500
+  // A reading with no new bytes lowers the average instead of resetting it
+  expect(read(4_000_000).speed).toBeCloseTo(4_000_000 / 1.5)
+  now = 6000
+  // Only the last few seconds count
+  expect(read(9_000_000).speed).toBe(5_000_000 / 4.5)
 })
 
 test('Undo of a new bundle moves its copies to the Trash, then removes the bundle', async () => {

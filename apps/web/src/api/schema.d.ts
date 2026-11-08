@@ -3989,6 +3989,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/source-operations/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare Access
+         * @description Before a file task's first step, let macOS ask once for the share's saved login.
+         *
+         *     The owner just started the task, so macOS may show its Keychain request on
+         *     this computer's screen; it waits up to two minutes for an answer. Already
+         *     allowed access and libraries outside a network share answer at once.
+         */
+        post: operations["prepare_access_api_v1_libraries__library_id__source_operations_access_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/source-operations/receipts": {
         parameters: {
             query?: never;
@@ -7988,6 +8012,8 @@ export interface components {
         };
         /** UploadProgress */
         UploadProgress: {
+            /** Error */
+            error?: string | null;
             /** Received */
             received: number;
             /** Size */
@@ -16769,6 +16795,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SourceJob"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_access_api_v1_libraries__library_id__source_operations_access_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

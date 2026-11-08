@@ -11028,6 +11028,17 @@
       "UploadProgress": {
         "additionalProperties": false,
         "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
           "received": {
             "title": "Received",
             "type": "integer"
@@ -31568,6 +31579,42 @@
           }
         },
         "summary": "Enqueue",
+        "tags": [
+          "source-operations"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/source-operations/access": {
+      "post": {
+        "description": "Before a file task's first step, let macOS ask once for the share's saved login.\n\nThe owner just started the task, so macOS may show its Keychain request on\nthis computer's screen; it waits up to two minutes for an answer. Already\nallowed access and libraries outside a network share answer at once.",
+        "operationId": "prepare_access_api_v1_libraries__library_id__source_operations_access_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prepare Access",
         "tags": [
           "source-operations"
         ]

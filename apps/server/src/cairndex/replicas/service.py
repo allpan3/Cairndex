@@ -271,9 +271,19 @@ def prepare_write_access(library_id: str, root: Path) -> None:
         _authorize_storage(library_id, root)
 
 
-def _authorize_storage(library_id: str, root: Path) -> None:
+def prepare_source_access(library_id: str, root: Path) -> None:
+    """An owner-started file task asks macOS for the share's login before its first step.
+
+    The request is silent when access is already allowed and does nothing off SMB.
+    """
+    _authorize_storage(library_id, root, smb_transport.ensure_access)
+
+
+def _authorize_storage(
+    library_id: str, root: Path, request: Callable[[Path], None] | None = None
+) -> None:
     try:
-        smb_transport.authorize(root)
+        (request or smb_transport.authorize)(root)
     except OSError as error:
         raise ReplicaError(smb_transport.access_message(error)) from None
     _storage_access.pop(library_id, None)

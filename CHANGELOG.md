@@ -444,6 +444,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Ask macOS for a network share's saved login when a file task starts, before its
+  first step, instead of failing every step and asking afterwards. Allowed access
+  answers at once. A failed step now stops the steps after it, so one cause is
+  reported once; Try Again continues from it. An upload the server refused before
+  reading it reports the server's reason instead of the browser's "Load failed".
+  The activity card counts only the files the owner chose, not the folders made
+  for them, averages its speed over the last few seconds, and lists what stopped
+  as compact separated rows with Cancel and Try Again together.
 - Make Rename, Move, Trash, Put Back and Undo on a network share several times
   faster. After each server-side move, Cairndex waited about two seconds for the
   macOS mount to stop answering from its cached "name absent" entry; it now

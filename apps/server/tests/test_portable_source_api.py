@@ -103,7 +103,12 @@ def test_picker_upload_copies_with_exact_retry(isolated_client, registry_session
     assert not (root / ".cairndex/source-operations/copy-upload/source").exists()
     assert prepared["review"]["versions_after"]["uploaded.txt"]["operation"] == "upload-one"
     progress = isolated_client.get(path + "/uploads/upload-one").json()
-    assert progress == {"state": "ready", "received": len(content), "size": len(content)}
+    assert progress == {
+        "state": "ready",
+        "received": len(content),
+        "size": len(content),
+        "error": None,
+    }
     from cairndex.replicas.source_receipts import validate_private
 
     with store.connection(readonly=True) as db:
@@ -223,6 +228,69 @@ def test_source_login_failure_survives_exchange_and_authorization_preserves_inte
     run_one(store, root, lambda: ensure_portable_write_mode(registry_session, identity))
     assert isolated_client.get(target).json()["state"] == "succeeded"
     assert (root / "Nested").is_dir()
+
+
+def test_file_task_prepares_share_access_before_its_first_step(
+    isolated_client, tmp_path, monkeypatch
+):
+    import errno
+
+    from cairndex.file_ops import smb_transport
+
+    root = tmp_path / "library"
+    identity, _ = create(isolated_client, root)
+    base = f"/api/v1/libraries/{identity}"
+    access = base + "/source-operations/access"
+    assert isolated_client.post(access).status_code == 403
+    isolated_client.put(base + "/write-mode", json={"enabled": True})
+    # A library outside a network share needs nothing from macOS
+    assert isolated_client.post(access).status_code == 204
+    asked = []
+    monkeypatch.setattr(smb_transport, "ensure_access", asked.append)
+    assert isolated_client.post(access).status_code == 204
+    assert asked == [root]
+
+    def refuse(path):
+        error = smb_transport.KeychainError(errno.EACCES, "synthetic private login detail")
+        error.keychain_status = -25308
+        raise error
+
+    monkeypatch.setattr(smb_transport, "ensure_access", refuse)
+    refused = isolated_client.post(access)
+    assert refused.status_code == 409
+    assert "needs your permission" in refused.text
+    assert "synthetic private" not in refused.text
+
+
+def test_refused_upload_says_why_after_the_connection_closes(
+    isolated_client, tmp_path, monkeypatch
+):
+    from cairndex.replicas import source_claims
+    from cairndex.replicas.protocol import ReplicaError
+
+    root = tmp_path / "library"
+    identity, _ = create(isolated_client, root)
+    base = f"/api/v1/libraries/{identity}/source-operations/uploads/refused"
+    isolated_client.put(f"/api/v1/libraries/{identity}/write-mode", json={"enabled": True})
+    claim = source_claims.claim
+
+    def refuse(*args):
+        raise ReplicaError("Synthetic storage refusal")
+
+    monkeypatch.setattr(source_claims, "claim", refuse)
+    assert isolated_client.put(base + "?size=9", content=b"synthetic").status_code == 409
+    stopped = isolated_client.get(base).json()
+    assert stopped["state"] == "interrupted"
+    assert stopped["error"] == "Synthetic storage refusal"
+    # A later attempt starts clean and a finished upload reports no failure
+    monkeypatch.setattr(source_claims, "claim", claim)
+    assert isolated_client.put(base + "?size=9", content=b"synthetic").status_code == 201
+    assert isolated_client.get(base).json() == {
+        "state": "ready",
+        "received": 9,
+        "size": 9,
+        "error": None,
+    }
 
 
 def test_interrupted_folder_collision_can_be_cancelled(isolated_client, tmp_path):

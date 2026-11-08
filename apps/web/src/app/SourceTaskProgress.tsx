@@ -26,8 +26,11 @@ export function SourceTaskProgress({ tasks }: { tasks: SourceTasks }) {
 }
 
 function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
-  const total = task.items.length
-  const done = task.items.filter((item) => item.state.kind === 'done').length
+  // Folders a copy makes for its files are steps, not the files the owner chose
+  const files = task.items.filter((item) => item.request.action !== 'mkdir')
+  const counted = files.length > 0 ? files : task.items
+  const total = counted.length
+  const done = counted.filter((item) => item.state.kind === 'done').length
   const current = task.items.find((item) =>
     ['sending', 'checking', 'applying'].includes(item.state.kind),
   )
@@ -35,7 +38,7 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
     item.state.kind === 'exists' ? [{ item, index }] : [],
   )
   const failed = task.items.filter((item) => item.state.kind === 'failed')
-  const waiting = task.items.filter((item) => item.state.kind === 'waiting').length
+  const waiting = counted.filter((item) => item.state.kind === 'waiting').length
   const transfer = transferProgress(task)
   const percent = Math.round(
     transfer && transfer.total
@@ -45,7 +48,19 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
   const state = current?.state
   const speed = state && 'speed' in state ? state.speed : undefined
   const phase =
-    state?.kind === 'sending' ? 'Transferring' : state?.kind === 'checking' ? 'Verifying' : 'Saving'
+    current?.request.action === 'mkdir'
+      ? 'Creating folder'
+      : state?.kind === 'sending'
+        ? 'Transferring'
+        : state?.kind === 'checking'
+          ? 'Verifying'
+          : 'Saving'
+  const rate =
+    speed !== undefined && speed > 0
+      ? `${formatBytes(speed)}/s`
+      : state?.kind === 'sending'
+        ? 'Measuring speed…'
+        : null
 
   if (task.running)
     return (
@@ -77,17 +92,21 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
         >
           <div className="job-progress__bar" style={{ width: `${percent}%` }} />
         </div>
-        <div className="source-task__metrics">
-          {transfer && (
-            <span>
-              {transfer.received === 0 ? '0 B' : formatBytes(transfer.received)} of{' '}
-              {transfer.total === 0 ? '0 B' : formatBytes(transfer.total)} transferred · {percent}%
-            </span>
-          )}
-          <span>
-            {speed !== undefined && speed > 0 ? `${formatBytes(speed)}/s` : 'Measuring speed…'}
-          </span>
-        </div>
+        {(transfer || rate) && (
+          <div className="source-task__metrics">
+            {transfer && (
+              <span>
+                {`${transfer.received === 0 ? '0 B' : formatBytes(transfer.received)} of `}
+                {`${transfer.total === 0 ? '0 B' : formatBytes(transfer.total)} transferred · `}
+                {`${percent}%`}
+              </span>
+            )}
+            {rate && <span>{rate}</span>}
+          </div>
+        )}
+        {task.access && !current && (
+          <div className="source-task__filename">Checking access to the network share…</div>
+        )}
         {current && (
           <div className="source-task__filename" title={current.name}>
             {phase}: {current.name}
@@ -104,16 +123,6 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
         <span className="job-progress__label source-task__title" title={task.title}>
           {task.title}
         </span>
-        <button
-          type="button"
-          className="btn btn--sm source-task__cancel"
-          disabled={task.busy}
-          onClick={() => void tasks.dismiss(task.id)}
-          title="Cancel remaining items"
-          aria-label={`Cancel ${task.title}`}
-        >
-          Cancel
-        </button>
       </div>
       {conflicts.map(({ item, index }) => (
         <div key={index} className="source-task__question" role="group" aria-label={item.name}>
@@ -154,26 +163,58 @@ function TaskRow({ task, tasks }: { task: SourceTask; tasks: SourceTasks }) {
           )}
         </div>
       ))}
-      {failed.map((item, index) => (
-        <p key={index} role="alert">
-          {item.name}: {item.state.kind === 'failed' ? item.state.message : ''}
-        </p>
-      ))}
-      {task.error && <p role="alert">{task.error}</p>}
-      {(failed.length > 0 || waiting > 0 || task.error) && (
-        <div className="source-task__choices">
-          {waiting > 0 && failed.length === 0 && (
-            <span className="source-task__note">Stopped · {noun(waiting)} not started</span>
+      {(failed.length > 0 || task.error) && (
+        <ul className="source-task__failures" role="alert">
+          {task.error && (
+            <li>
+              <span className="source-task__failure-message">{task.error}</span>
+            </li>
           )}
+          {failed.map((item, index) => (
+            <li key={index}>
+              <span className="source-task__failure-name" title={item.name}>
+                {item.name}
+              </span>
+              <span className="source-task__failure-message">
+                {item.state.kind === 'failed' ? item.state.message : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="source-task__actions">
+        {waiting > 0 && (
+          <span className="source-task__note">
+            {failed.length > 0 || task.error ? '' : 'Stopped · '}
+            {files.length > 0
+              ? noun(waiting)
+              : waiting === 1
+                ? '1 folder'
+                : `${waiting} folders`}{' '}
+            not started
+          </span>
+        )}
+        <button
+          type="button"
+          className="btn btn--sm"
+          disabled={task.busy}
+          onClick={() => void tasks.dismiss(task.id)}
+          title="Cancel remaining items"
+          aria-label={`Cancel ${task.title}`}
+        >
+          Cancel
+        </button>
+        {(failed.length > 0 || waiting > 0 || task.error) && (
           <button
-            className="btn btn--sm"
+            type="button"
+            className="btn btn--sm btn--primary"
             disabled={task.busy}
             onClick={() => tasks.resume(task.id)}
           >
             {failed.length > 0 || task.error ? 'Try Again' : 'Continue'}
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

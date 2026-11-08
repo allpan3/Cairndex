@@ -54,6 +54,8 @@ export interface SourceTask {
   running: boolean
   stopping: boolean
   busy?: boolean
+  /** Waiting for macOS to let the server use the network share's saved login. */
+  access?: boolean
   /** Naming stays in its editor until the server accepts or rejects it. */
   inline?: boolean
   /** A failure of the finishing step, after every item landed. */
