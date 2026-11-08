@@ -428,11 +428,20 @@ test('long stopped file tasks keep controls visible and share access opens a dia
       })
     })
     const name = 'Synthetic'.repeat(24) + '.txt'
-    await drop(page.locator('.catalog-ordinary-layout'), [{ name, text: 'Synthetic bytes' }])
+    await drop(page.locator('.catalog-ordinary-layout'), [
+      { name, text: 'Synthetic bytes' },
+      { name: 'second.txt', text: 'Synthetic bytes' },
+      { name: 'third.txt', text: 'Synthetic bytes' },
+    ])
     await page.getByRole('dialog').getByRole('button', { name: 'Copy', exact: true }).click()
     const activity = page.locator('.file-activity')
     const cancel = activity.getByRole('button', { name: /^Cancel / })
     await expect(cancel).toBeVisible()
+    // One cause is reported once; the steps after it wait for Try Again
+    await expect(activity.locator('.source-task__failures li')).toHaveCount(1)
+    await expect(activity).toContainText('2 files not started')
+    await expect(activity.getByRole('button', { name: 'Try Again', exact: true })).toBeVisible()
+    expect(await activity.evaluate((node) => node.scrollHeight <= node.clientHeight)).toBe(true)
     for (const width of [320, 400]) {
       await activity.evaluate((node, value) => {
         ;(node as HTMLElement).style.width = `${value}px`

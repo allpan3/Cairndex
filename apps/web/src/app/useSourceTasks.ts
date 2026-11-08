@@ -3,7 +3,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import { operationId } from '../api/catalog'
 import { bundleFiles, deleteBundles, setCollectionMembership } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
-import { sourceRequest, uploadSource, type SourceJob } from '../api/sourceOperations'
+import {
+  prepareSourceAccess,
+  sourceRequest,
+  uploadSource,
+  type SourceJob,
+} from '../api/sourceOperations'
 import type { CatalogNotice } from './CatalogToast'
 import { noun, type SourceTask, type TaskItem, type TaskItemState } from './sourceTasks'
 
@@ -30,6 +35,36 @@ function sleep(ms: number, signal: AbortSignal) {
       { once: true },
     )
   })
+}
+
+/**
+ * Bytes per second over the last few seconds of one phase. A single slow or
+ * repeated reading neither resets the figure nor makes it jump; it stays
+ * undefined until bytes have moved for a moment.
+ */
+export function rateMeter(now = () => performance.now()) {
+  const samples: [number, number][] = [[now(), 0]]
+  let speed: number | undefined
+  return (bytes: number) => {
+    const at = now()
+    samples.push([at, bytes])
+    // Keep one reading from before the window, so a slow poll still has a start
+    while (samples.length > 2 && at - samples[1]![0] >= 3000) samples.shift()
+    const [start, from] = samples[0]!
+    if (at - start >= 400 && bytes > from) speed = ((bytes - from) * 1000) / (at - start)
+    // Nothing moved for the whole window: an old figure would be misleading
+    else if (at - start >= 3000) speed = 0
+    return { bytes, speed }
+  }
+}
+
+/** What the owner reads when macOS did not let the server use the share's login. */
+const accessError = (reason: unknown) => {
+  const message = (reason as Error).message
+  return message.includes('needs your permission')
+    ? 'macOS did not let Cairndex use the login saved for this network share. ' +
+        'Choose Try Again, then Always Allow when macOS asks.'
+    : message
 }
 
 const percent = (job: SourceJob, size: number | null) =>
@@ -126,16 +161,7 @@ export function useSourceTasks(
     const { request, file, size } = item
     let queued: SourceJob | null = null
     let accepted = false
-    let sampled = performance.now()
-    let previousBytes = 0
-    const reading = (bytes: number) => {
-      const now = performance.now()
-      const elapsed = (now - sampled) / 1000
-      const speed = elapsed > 0 ? Math.max(0, bytes - previousBytes) / elapsed : 0
-      sampled = now
-      previousBytes = bytes
-      return { bytes, speed }
-    }
+    let reading = rateMeter()
     try {
       if (file && request.upload && !uploaded.current.has(request.upload)) {
         setItem(id, index, { state: { kind: 'sending' } })
@@ -146,8 +172,7 @@ export function useSourceTasks(
         uploaded.current.add(request.upload)
         scope()
       }
-      sampled = performance.now()
-      previousBytes = 0
+      reading = rateMeter()
       setItem(id, index, { state: { kind: 'checking', percent: null } })
       queued = await sourceRequest<SourceJob>(library, '', 'POST', request)
       scope()
@@ -168,8 +193,7 @@ export function useSourceTasks(
       // Also reached when a repeated request was accepted before its reply was lost
       if (APPLYING.includes(job.state)) {
         accepted = true
-        sampled = performance.now()
-        previousBytes = 0
+        reading = rateMeter()
         job = await settle(job, APPLYING, new AbortController().signal, (next) =>
           setItem(id, index, {
             state: { kind: 'applying', percent: percent(next, size), ...reading(next.progress) },
@@ -268,11 +292,24 @@ export function useSourceTasks(
     const scope = captureRequestScope()
     const controller = new AbortController()
     controllers.current.set(id, controller)
-    patch(id, (task) => ({ ...task, running: true, stopping: false, error: '' }))
+    patch(id, (task) => ({ ...task, running: true, stopping: false, error: '', access: true }))
     try {
+      // macOS asks for the share's login now, while the owner is here, rather
+      // than failing every step that follows
+      try {
+        await prepareSourceAccess(library)
+        scope()
+      } catch (reason) {
+        patch(id, (task) => ({ ...task, error: accessError(reason) }))
+        return
+      } finally {
+        patch(id, (task) => ({ ...task, access: false }))
+      }
       for (const index of indexes) {
         if (controller.signal.aborted) break
         await runItem(id, index, controller.signal, scope)
+        // Later steps usually need this one, such as files going into a new folder
+        if (find(id)?.items[index]?.state.kind === 'failed') break
       }
     } finally {
       controllers.current.delete(id)
