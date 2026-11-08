@@ -57,6 +57,14 @@ export async function sourceRequest<T>(
   return result as T
 }
 
+/**
+ * Before a file task's first step, lets macOS ask once for the network share's
+ * saved login. It answers at once when access is allowed or the library is not
+ * on a share, and waits for the owner's answer otherwise.
+ */
+export const prepareSourceAccess = (library: string) =>
+  sourceRequest<void>(library, '/access', 'POST')
+
 export async function uploadSource(
   library: string,
   upload: string,
@@ -99,17 +107,32 @@ export async function uploadSource(
       })()
     : Promise.resolve()
   try {
-    const response = await hostFetch(
-      resolveApiUrl(
-        `/api/v1/libraries/${library}/source-operations/uploads/${upload}?size=${file.size}`,
-      ),
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: file,
-        signal,
-      },
-    )
+    let response: Response
+    try {
+      response = await hostFetch(
+        resolveApiUrl(
+          `/api/v1/libraries/${library}/source-operations/uploads/${upload}?size=${file.size}`,
+        ),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file,
+          signal,
+        },
+      )
+    } catch (reason) {
+      if (signal.aborted) throw reason
+      // A server that refuses before reading the bytes closes the connection,
+      // which the browser reports only as "Load failed"; the server kept why.
+      const progress = await hostFetch(progressUrl)
+        .then((reply) => (reply.ok ? (reply.json() as Promise<{ error?: string | null }>) : null))
+        .catch(() => null)
+      current()
+      throw new Error(
+        progress?.error ?? 'The connection closed while this file was being sent. Try again.',
+        { cause: reason },
+      )
+    }
     current()
     if (!response.ok) {
       const error = (await response.json().catch(() => ({}))) as { message?: string }
