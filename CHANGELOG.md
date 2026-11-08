@@ -450,6 +450,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   through samples. The bundle inspector now says the file is unconfirmed and that
   Update can verify it. A difference between like fingerprints still reads as
   different content.
+- Lay out the Network Share Access dialog like other confirmations: a narrow box
+  with one paragraph, and Cancel and Allow Access… together on one row.
 - Ask macOS for a network share's saved login when a file task starts, before its
   first step, instead of failing every step and asking afterwards. Allowed access
   answers at once. A failed step now stops the steps after it, so one cause is
