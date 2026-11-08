@@ -1,4 +1,9 @@
-import { useState } from 'react'
+import {
+  ACCESS_REQUEST,
+  ACCESS_WAITING,
+  NO_SAVED_LOGIN,
+  useStorageAuthorization,
+} from './useStorageAuthorization'
 
 /** Why the server cannot read a network share's saved login. */
 export type StorageAccess = 'authorization' | 'login'
@@ -23,37 +28,17 @@ export function StorageAccessNotice({
   onAuthorized?: () => void
   showMessage?: boolean
 }) {
-  const [waiting, setWaiting] = useState(false)
-  const [error, setError] = useState('')
-  async function allow() {
-    setWaiting(true)
-    setError('')
-    try {
-      await authorize()
-      onAuthorized?.()
-    } catch (reason) {
-      setError((reason as Error).message)
-    } finally {
-      setWaiting(false)
-    }
-  }
+  const { waiting, error, allow } = useStorageAuthorization(authorize, onAuthorized)
   if (access === 'login')
     return showMessage ? (
       <p className="storage-access" role="alert">
-        No saved login matches this network share. In Finder, connect to the share and choose to
-        remember the password in your keychain. Then retry.
+        {NO_SAVED_LOGIN}
       </p>
     ) : null
   return (
     <div className="storage-access" role={showMessage ? 'alert' : undefined}>
-      {showMessage && (
-        <p>Cairndex needs your permission to use the login saved for this network share.</p>
-      )}
-      {waiting && (
-        <p role="status">
-          macOS asks for your Mac login password. Type it, then choose Always Allow.
-        </p>
-      )}
+      {showMessage && <p>{ACCESS_REQUEST}</p>}
+      {waiting && <p role="status">{ACCESS_WAITING}</p>}
       {error && <p className="modal__error">{error}</p>}
       <button className="btn btn--primary" disabled={waiting} onClick={() => void allow()}>
         {waiting ? 'Waiting for macOS…' : 'Allow Access…'}

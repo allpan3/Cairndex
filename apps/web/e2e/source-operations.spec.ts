@@ -465,6 +465,12 @@ test('long stopped file tasks keep controls visible and share access opens a dia
     const access = page.getByRole('dialog', { name: 'Network Share Access' })
     await expect(access).toBeVisible()
     await expect(access.getByRole('button', { name: 'Allow Access…' })).toBeVisible()
+    // A compact confirm shape: both choices on one row, the primary one on the right
+    const allowBox = (await access.getByRole('button', { name: 'Allow Access…' }).boundingBox())!
+    const cancelBox = (await access.getByRole('button', { name: 'Cancel' }).boundingBox())!
+    expect(Math.abs(allowBox.y - cancelBox.y)).toBeLessThan(2)
+    expect(cancelBox.x).toBeLessThan(allowBox.x)
+    expect((await access.boundingBox())!.width).toBeLessThanOrEqual(440)
     await page.screenshot({ path: test.info().outputPath('synthetic-share-access.png') })
     await page.keyboard.press('Escape')
     await expect(access).toHaveCount(0)

@@ -1,6 +1,12 @@
 import { useId, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { StorageAccessNotice, type StorageAccess } from './StorageAccessNotice'
+import type { StorageAccess } from './StorageAccessNotice'
+import {
+  ACCESS_REQUEST,
+  ACCESS_WAITING,
+  NO_SAVED_LOGIN,
+  useStorageAuthorization,
+} from './useStorageAuthorization'
 import { useModalDialog } from './useModalDialog'
 
 /** Show an actionable request once; dismissing keeps a small way to reopen it. */
@@ -30,39 +36,47 @@ function AccessDialog({
   onAuthorized: () => void
   onClose: () => void
 }) {
-  const [waiting, setWaiting] = useState(false)
+  const { waiting, error, allow } = useStorageAuthorization(authorize, () => {
+    onAuthorized()
+    onClose()
+  })
   const title = useId()
   const { ref, close } = useModalDialog(onClose, waiting)
+  const login = access === 'login'
   return createPortal(
     <div className="modal-backdrop" onMouseDown={close}>
       <div
         ref={ref}
-        className="modal"
+        className="modal modal--confirm storage-access-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby={title}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 id={title}>Network Share Access</h2>
-        <StorageAccessNotice
-          access={access}
-          authorize={async () => {
-            setWaiting(true)
-            try {
-              await authorize()
-            } finally {
-              setWaiting(false)
-            }
-          }}
-          onAuthorized={() => {
-            onAuthorized()
-            onClose()
-          }}
-        />
+        <p className="modal__preview" role={login ? 'alert' : undefined}>
+          {login ? NO_SAVED_LOGIN : waiting ? ACCESS_WAITING : ACCESS_REQUEST}
+        </p>
+        {error && (
+          <p className="modal__error" role="alert">
+            {error}
+          </p>
+        )}
         <div className="modal__actions">
+          <span className="toolbar__spacer" />
           <button className="btn" onClick={close} disabled={waiting}>
-            Cancel
+            {login ? 'Close' : 'Cancel'}
           </button>
+          {!login && (
+            <button
+              className="btn btn--primary"
+              disabled={waiting}
+              onClick={() => void allow()}
+              autoFocus
+            >
+              {waiting ? 'Waiting for macOS…' : 'Allow Access…'}
+            </button>
+          )}
         </div>
       </div>
     </div>,

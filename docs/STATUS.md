@@ -2,8 +2,10 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `897c87c`, qualified on
-2026-11-08. It asks for network-share access before a file task's first step,
+The local desktop and web test installation is `b82188c`, qualified on
+2026-11-08. It lays out Network Share Access as a compact confirmation and
+reports a large copied file that a remount left unconfirmed as unconfirmed
+rather than different. It asks for network-share access before a file task's first step,
 stops a task at its first failed step, reports why a refused upload stopped,
 and counts and lays out the activity card as described in the changelog. It is
 signed by a new local signer in the build VM's login Keychain, so the owner's
@@ -176,6 +178,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed compact share-access dialog and unconfirmed-content wording | Disposable Samba share: a 1 MiB copy kept its generation while mounted for 31 s; one remount changed only `st_dev` and raised the old warning. Host: 107 related backend cases (one more needs host ffmpeg and fails identically without the change) with ruff/format/mypy on the changed files; macOS full frontend gate with 1,488 units, source-operation browser spec 5 of 5 and the synthetic dialog screenshot inspected; signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
 | Installed share-access preflight and stopped-task card | macOS 135 focused source/SMB/write-mode/conversion backend cases with lint/format/mypy; the full host backend run's 59 failures and errors were all missing host ffmpeg/ffprobe or the packaged binary, none in changed files; full frontend gate with 1,488 units; source-operation browser spec 5 of 5 (one test-server startup failure passed on two reruns) with the stopped-card screenshot inspected; signed app-only package with the new login-Keychain signer, sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit. The macOS Keychain request and copy flow on the owner's NAS remain owner checks |
 | Installed one-move relocation and ⌘Z | Linux 2,039 backend cases plus 172 disk-backed source/file cases, with the one known ARM manifest case deselected; backend lint/format/mypy on both platforms; macOS 193 focused source/SMB cases; full frontend gate with 1,485 units in packaging, including the ⌘Z hook test; source-operation and grouping browser specs, with the drop scenario failing 2 of 11 runs on a proxy connection reset that names no assertion; disposable Samba Rename 0.35–0.37 s, Put Back 0.32–0.40 s, Undo 0.25–0.34 s, Trash 0.58–0.79 s and Empty Trash 0.85 s with a fresh connection per step, zero copies and preserved identity; signed app-only package with the persistent app signer, sidecar smoke, four frozen integrations, distribution, installed sidecar smoke and profile preservation |
 | Installed network-share speed, folder suggestion and grouping headings | Linux 57 SMB/signing backend cases; macOS backend lint/format/mypy, 119 focused backend cases and the full frontend gate with 1,484 units on the packaged commit; source-operation and grouping-section browser specs (one known teardown flake passed on rerun); synthetic new-folder and grouping screenshots inspected; disposable Samba Rename/Trash/Put Back/Undo/Empty Trash at 1 MiB and 512 MiB in 0.8–1.2 s per step; signed app-only package with the persistent app signer, sidecar smoke, four frozen integrations, distribution, installed sidecar smoke and profile preservation |
