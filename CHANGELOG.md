@@ -444,6 +444,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Stop calling a large copied file "different local content" when Cairndex only
+  cannot confirm it. Mounting a share again gives every file on it a new device
+  number, so a file over 192 KiB whose complete hash is known is seen again only
+  through samples. The bundle inspector now says the file is unconfirmed and that
+  Update can verify it. A difference between like fingerprints still reads as
+  different content.
 - Ask macOS for a network share's saved login when a file task starts, before its
   first step, instead of failing every step and asking afterwards. Allowed access
   answers at once. A failed step now stops the steps after it, so one cause is

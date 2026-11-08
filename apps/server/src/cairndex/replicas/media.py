@@ -159,10 +159,21 @@ class ReplicaMedia:
             if value and value[0]
             else (baseline["evidence"] if baseline and baseline["path"] == path else None)
         )
-        if expected is not None and inspect(self.root, path, baseline)["evidence"] != expected:
+        if expected is None:
+            return
+        observed = inspect(self.root, path, baseline)["evidence"]
+        if observed == expected:
+            return
+        # A complete hash seen again only through samples is unproven, not different:
+        # this happens to every large file after its share is mounted again
+        if expected["algorithm"] == "sha256" and observed["algorithm"] != "sha256":
             raise NotFoundError(
-                "Different local content at this path; run Update and review its identity"
+                "Cairndex can't confirm this file is unchanged since it was last checked; "
+                "run Update and verify its content"
             )
+        raise NotFoundError(
+            "Different local content at this path; run Update and review its identity"
+        )
 
     # Local observations never establish shared presence or overwrite authored choices
     def file(
