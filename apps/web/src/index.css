@@ -8704,6 +8704,16 @@ button.pick-row:disabled {
 .storage-access p {
   margin: 0;
 }
+/* The confirm-dialog shape: title, one short paragraph, buttons on one row. */
+.storage-access-dialog h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-strong);
+}
+.storage-access-dialog p {
+  margin: 0;
+  line-height: 1.45;
+}
 .conversion-dialog .modal__actions {
   flex-wrap: wrap;
 }
