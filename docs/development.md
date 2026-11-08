@@ -460,8 +460,16 @@ trust nor existing password access rules. Repeating setup reuses the same identi
 a missing key or invalid configuration stops the build instead of rotating it.
 Both development and self-contained builds use `dev.cairndex.sidecar` with that
 certificate. The first explicit SMB operation may require **Always Allow** for the
-new signer; grants can then survive rebuilt code. Merely choosing **Allow** grants
-one access, and a locked Keychain or changed certificate can still require action.
+new signer. Merely choosing **Allow** grants one access, and a locked Keychain or
+changed certificate can still require action. A self-signed certificate does not
+carry **Always Allow** to a rebuilt sidecar for a login that Finder saved: since
+macOS 10.12, a Keychain item also has a partition list, and macOS records code
+without an Apple-issued Team ID there by its code hash. Each new local build
+therefore asks once. Cairndex asks when a file task starts (see
+[deployment](deployment.md)); only an Apple-issued signing identity would remove
+the request. The disposable-Keychain smoke test cannot show this, because the
+test executable creates its own item and `security create-keychain` keychains do
+not enforce partitions.
 
 `just build-desktop` then re-signs the outer `Cairndex.app` with the same
 certificate and the `dev.cairndex.desktop` identifier
