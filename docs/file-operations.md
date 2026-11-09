@@ -179,7 +179,11 @@ changes to those conditions stop Undo. A separate recovery copy can be made at a
 path for copy-based recovery. **Empty Trash…** loads the complete receipt list
 and asks for confirmation before permanently deleting retained originals. Cancel
 leaves them intact. Older copy-based Trash and Replace recovery versions remain;
-they cannot be deleted through this action. There is no automatic expiry. Back up `.cairndex/source-operations/` along with source files
+they cannot be deleted through this action. Earlier versions also kept a second
+copy of every copied file; **Delete Kept Copies…** in Trash shows their total size
+and, after confirmation, permanently deletes them. The copied files in the library
+are not changed, and Undo of those copies still works. Restore a Copy of a copy's
+output then refuses, because no separate version remains. There is no automatic expiry. Back up `.cairndex/source-operations/` along with source files
 and `.cairndex/replica/`.
 
 ## Delivery and limits
@@ -196,9 +200,11 @@ Recovered unfinished operations require exact Retry after Reopen.
 
 Uploads coalesce incoming fragments into bounded 4 MiB writes. Preparation uses
 that completed upload as the retained source version instead of copying it again.
-Publication still creates and hashes an independent output, verifies its digest
-against the received bytes and uses no-replace publication. Later output edits
-cannot change the retained upload. An unsuccessful retry of a completed upload
+Publication moves that version into place with no-replace publication
+(ADR-0042): it is not read or copied again and no duplicate is kept. Review
+records the version's inode, size and modification time, and publication
+refuses a version that changed. One upload serves one completed copy. A library
+file copy publishes its own snapshot the same way. An unsuccessful retry of a completed upload
 leaves its original ready evidence intact. Progress commits are limited to four
 per second plus phase completion; permission and cancellation checks still run
 between every copy block. Recovery does not use progress counts as checkpoints. Interrupted operations

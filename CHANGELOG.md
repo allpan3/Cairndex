@@ -304,6 +304,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Copying a file into the library now writes it once. The copy's own upload, or
+  its snapshot of a library file, is moved into place instead of being copied and
+  hashed a second time, and no hidden duplicate is kept (ADR-0042). On a test
+  share this halves the copy time. Trash gains **Delete Kept Copies…**, which
+  shows the total size of the duplicates earlier versions kept and deletes them
+  after confirmation; the copied files and their Undo are unaffected.
 - Review Conflicts in the bundle, viewer and multi-bundle inspectors now opens a
   compact dialog over the browser instead of switching to Metadata review. It
   shows title, rating, notes, cover and main-file versions as readable values

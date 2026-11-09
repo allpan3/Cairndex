@@ -146,9 +146,11 @@ def prepare(
         # independent version. Preserve its identity through an exact retry.
         if retained and retained["operation"] == request.operation:
             version_operation = request.operation
-    # Count independent versions, captured originals and the output copy. The
-    # upload remains retained as well. This is logical storage, before compression.
+    # Count independent versions, captured originals and the output copy. A file
+    # copy publishes its one version as the output. This is logical storage.
     source_versions = 3 if request.action in {"move", "rename"} else 2
+    if request.action == "copy" and not is_tree:
+        source_versions = 1
     if request.upload and version_operation == request.operation:
         source_versions = 3
     total = source_versions * source_seen["size"] + 2 * (
@@ -316,6 +318,11 @@ def prepare(
             versions_before=versions_before,
             versions_after=versions_after,
         )
+        if request.action == "copy" and not is_tree:
+            from cairndex.replicas.source_files import version_stamp
+
+            # Application moves this exact file into place instead of copying it
+            review["version_stamp"] = version_stamp(root, version_operation)
         return review
 
 
@@ -351,6 +358,14 @@ def prepare_restore(
     if not candidates:
         raise ReplicaError("This receipt does not contain the selected recovery version")
     version = candidates[0]
+    from cairndex.replicas.source_files import artifact_identity
+
+    if artifact_identity(root, version["operation"], version["version"]) is None:
+        # A copy publishes its version, and kept copies can be deleted from Trash
+        raise ReplicaError(
+            "Cairndex keeps no separate copy of this version; copy the file again "
+            "from where it came from"
+        )
     if version["evidence"]["size"] > request.byte_limit:
         raise ReplicaError("Recovery copy exceeds the operation byte budget")
     destination = source_path(request.destination)

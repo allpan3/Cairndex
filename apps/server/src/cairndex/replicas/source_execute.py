@@ -17,6 +17,7 @@ from cairndex.replicas.source_files import (
     artifact_identity,
     assert_observation,
     capture,
+    consume_output,
     observation,
     publish_output,
     stage_output,
@@ -121,6 +122,27 @@ def apply(
         result["outputs"] = {}
         for index, (path, version) in enumerate(outputs):
             name = f"output-stage-{index}"
+            if (
+                request.action == "copy"
+                and "version_stamp" in review
+                and version["version"] == "source"
+                and version["operation"] in (request.operation, request.upload)
+                and version["evidence"]["algorithm"] == "sha256"
+            ):
+                # The copy's own version becomes its output; no duplicate is kept.
+                # Reviews from before the stamp keep the independent copy.
+                result["outputs"][path] = consume_output(
+                    root,
+                    request.operation,
+                    version["operation"],
+                    version["evidence"],
+                    review["version_stamp"],
+                    progress,
+                    request.byte_limit,
+                    name,
+                )
+                result["kept_copy"] = False
+                continue
             result["outputs"][path] = stage_output(
                 root,
                 request.operation,

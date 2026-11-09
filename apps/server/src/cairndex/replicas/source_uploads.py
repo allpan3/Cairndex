@@ -222,11 +222,11 @@ async def _receive(
 
 
 def uploaded_version(store: CatalogStore, root: Path, upload: str, limit: int) -> dict[str, Any]:
-    """Reference the verified immutable upload; apply hashes its independent output copy.
+    """Reference the verified immutable upload; apply moves it into place as the output.
 
     The upload already has its own durable intent and received-byte digest.
-    Copying it into another recovery file adds a complete network round trip
-    without another safety boundary. Never link the editable output to it.
+    Copying it into another file adds a complete network round trip without
+    another safety boundary. Never link the editable output to it.
     """
     with store.connection(readonly=True) as db:
         row = db.execute(
@@ -238,7 +238,12 @@ def uploaded_version(store: CatalogStore, root: Path, upload: str, limit: int) -
     if expected["size"] > limit:
         raise ReplicaError("Upload exceeds the operation byte limit")
     with operation_directory(root, upload) as origin:
-        source = os.open("source", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=origin)
+        try:
+            source = os.open("source", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=origin)
+        except FileNotFoundError:
+            raise ReplicaError(
+                "This upload was already used by a completed copy; send the file again"
+            ) from None
         try:
             info = os.fstat(source)
             if (

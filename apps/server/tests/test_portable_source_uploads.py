@@ -67,48 +67,51 @@ def test_upload_failure_clears_live_progress(tmp_path):
     assert source_uploads.progress(store, "upload").state == "interrupted"
 
 
-def test_reused_upload_survives_bad_retry_and_restores_independent_outputs(tmp_path):
+def copy_upload(store, root, operation, upload, destination, size):
+    enqueue(
+        store,
+        SourceRequest(
+            operation=operation,
+            action="copy",
+            upload=upload,
+            destination=destination,
+            byte_limit=size * 2,
+        ),
+    )
+    run_one(store, root, lambda: None)
+    return job(store, operation)
+
+
+def test_copy_publishes_its_upload_without_keeping_a_second_copy(tmp_path):
+    from cairndex.replicas import source_kept
     from cairndex.replicas.source_journal import cancel
     from cairndex.replicas.source_receipts import validate_private
     from tests.test_portable_source_operations import perform
 
     root, store = fixture(tmp_path)
     data = b"synthetic original"
+    upload = root / ".cairndex/source-operations/upload/source"
 
     async def chunks(value=data):
         yield value
 
     asyncio.run(source_uploads.receive(store, root, "upload", len(data), chunks(), lambda: None))
-    for operation in ("first", "second"):
-        enqueue(
-            store,
-            SourceRequest(
-                operation=operation,
-                action="copy",
-                upload="upload",
-                destination=operation + ".txt",
-                byte_limit=len(data) * 2,
-            ),
-        )
-        run_one(store, root, lambda: None)
-        prepared = job(store, operation)
-        assert prepared.state == "prepared"
-        accept(store, operation, prepared.receipt)
-        run_one(store, root, lambda: None)
-        assert job(store, operation).state == "succeeded"
-    from cairndex.replicas.protocol import ReplicaError
-
-    with pytest.raises(ReplicaError, match="different bytes"):
-        asyncio.run(
-            source_uploads.receive(
-                store, root, "upload", len(data), chunks(b"X" * len(data)), lambda: None
-            )
-        )
-    assert source_uploads.progress(store, "upload").state == "ready"
+    inode = upload.stat().st_ino
+    prepared = copy_upload(store, root, "first", "upload", "first.txt", len(data))
+    assert prepared.state == "prepared"
+    accept(store, "first", prepared.receipt)
+    run_one(store, root, lambda: None)
+    assert job(store, "first").state == "succeeded"
+    # The uploaded file itself became the output; nothing was copied or kept
+    assert (root / "first.txt").read_bytes() == data
+    assert (root / "first.txt").stat().st_ino == inode
+    assert not upload.exists()
+    assert source_kept.summary(store, root) == {"count": 0, "size_bytes": 0}
     with store.connection(readonly=True) as db:
         validate_private(db, store)
-    (root / "first.txt").write_bytes(b"changed independently")
-    assert (root / "second.txt").read_bytes() == data
+    second = copy_upload(store, root, "second", "upload", "second.txt", len(data))
+    assert second.state == "interrupted"
+    assert "already used" in (second.error or "")
     enqueue(
         store,
         SourceRequest(
@@ -120,15 +123,84 @@ def test_reused_upload_survives_bad_retry_and_restores_independent_outputs(tmp_p
         ),
     )
     run_one(store, root, lambda: None)
-    accept(store, "restore", job(store, "restore").receipt)
-    run_one(store, root, lambda: None)
-    assert job(store, "restore").state == "succeeded"
-    assert (root / "restored.txt").read_bytes() == data
-    perform(store, root, "undo-second", "undo", prior="second")
-    assert not (root / "second.txt").exists()
-    assert (root / ".cairndex/source-operations/upload/source").read_bytes() == data
+    assert "no separate copy" in (job(store, "restore").error or "")
+    assert not (root / "restored.txt").exists()
+    cancel(store, "restore")
+    perform(store, root, "undo-first", "undo", prior="first")
+    assert not (root / "first.txt").exists()
     cancel(store, "first")  # Completed operations are idempotently left complete.
     assert job(store, "first").state == "succeeded"
+
+
+def test_interrupted_publication_resumes_from_the_moved_upload(tmp_path, monkeypatch):
+    from cairndex.replicas import source_execute
+
+    root, store = fixture(tmp_path)
+    data = b"synthetic resumed bytes"
+
+    async def chunks():
+        yield data
+
+    asyncio.run(source_uploads.receive(store, root, "upload", len(data), chunks(), lambda: None))
+    prepared = copy_upload(store, root, "copy", "upload", "copy.txt", len(data))
+    accept(store, "copy", prepared.receipt)
+    moved = source_execute.consume_output
+
+    def stop_after_move(*args, **kwargs):
+        moved(*args, **kwargs)
+        raise OSError("synthetic stop after the move")
+
+    monkeypatch.setattr(source_execute, "consume_output", stop_after_move)
+    run_one(store, root, lambda: None)
+    assert job(store, "copy").state == "interrupted"
+    assert not (root / ".cairndex/source-operations/upload/source").exists()
+    monkeypatch.setattr(source_execute, "consume_output", moved)
+    from cairndex.replicas.source_journal import retry
+
+    retry(store, "copy")
+    run_one(store, root, lambda: None)
+    assert job(store, "copy").state == "succeeded"
+    assert (root / "copy.txt").read_bytes() == data
+
+
+def test_deleting_kept_copies_leaves_the_library_and_undo_intact(tmp_path):
+    import json
+    import shutil
+
+    from cairndex.replicas import source_kept
+    from tests.test_portable_source_operations import perform
+
+    root, store = fixture(tmp_path)
+    data = b"synthetic kept bytes"
+    upload = root / ".cairndex/source-operations/upload/source"
+
+    async def chunks():
+        yield data
+
+    asyncio.run(source_uploads.receive(store, root, "upload", len(data), chunks(), lambda: None))
+    prepared = copy_upload(store, root, "copy", "upload", "copy.txt", len(data))
+    accept(store, "copy", prepared.receipt)
+    run_one(store, root, lambda: None)
+    # What an earlier copier left behind: the upload beside the published file
+    shutil.copyfile(root / "copy.txt", upload)
+    with store.connection() as db:
+        result = json.loads(
+            db.execute("SELECT result FROM source_operations WHERE id='copy'").fetchone()[0]
+        )
+        result.pop("kept_copy")
+        db.execute("UPDATE source_operations SET result=? WHERE id='copy'", (json.dumps(result),))
+    assert source_kept.summary(store, root) == {"count": 1, "size_bytes": len(data)}
+    checks = []
+    assert source_kept.delete(store, root, lambda: checks.append(True)) == {
+        "count": 1,
+        "size_bytes": len(data),
+    }
+    assert checks
+    assert not upload.exists()
+    assert (root / "copy.txt").read_bytes() == data
+    assert source_kept.summary(store, root) == {"count": 0, "size_bytes": 0}
+    perform(store, root, "undo-copy", "undo", prior="copy")
+    assert not (root / "copy.txt").exists()
 
 
 @pytest.mark.parametrize("state", ["interrupted", "accepted", "applying"])

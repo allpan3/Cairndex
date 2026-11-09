@@ -626,6 +626,7 @@ export function CatalogOrdinaryBrowser(props: {
           )}
           {mode === 'file' && fileScope === 'trash' && (
             <CatalogTrashBrowser
+              library={props.library}
               trash={trash}
               tasks={tasks}
               writable={writable}

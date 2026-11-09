@@ -6937,6 +6937,25 @@
         "title": "JobType",
         "type": "string"
       },
+      "KeptCopies": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "size_bytes"
+        ],
+        "title": "KeptCopies",
+        "type": "object"
+      },
       "LeaseHolderRead": {
         "description": "The server currently recorded in a library's lease.\n\nNever carries a filesystem path \u2014 only what a user needs to recognize the\nmachine and, when ``advertised_url`` is set, reach it.",
         "properties": {
@@ -31615,6 +31634,156 @@
           }
         },
         "summary": "Prepare Access",
+        "tags": [
+          "source-operations"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/source-operations/kept-copies": {
+      "get": {
+        "description": "Second copies that earlier Copy operations kept beside the published file.",
+        "operationId": "kept_copies_api_v1_libraries__library_id__source_operations_kept_copies_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeptCopies"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Kept Copies",
+        "tags": [
+          "source-operations"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/source-operations/kept-copies/delete": {
+      "post": {
+        "description": "Permanently delete those copies; the library's own files are not touched.",
+        "operationId": "delete_kept_copies_api_v1_libraries__library_id__source_operations_kept_copies_delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeptCopies"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Kept Copies",
         "tags": [
           "source-operations"
         ]
