@@ -228,6 +228,29 @@ def absent(root: Path, path: str) -> bool:
         return True
 
 
+def confirms(
+    baseline: dict[str, Any] | None, path: str, expected: dict[str, Any], new: dict[str, Any]
+) -> bool:
+    """Whether a complete hash still covers a same-path file seen only through samples.
+
+    The baseline must hold that hash, the samples read with it, and an inode and
+    mtime that are unchanged; the samples fix the size. The device number is not
+    compared, because macOS numbers a network share anew on every mount. An edit
+    outside the sampled regions that keeps size, mtime and inode stays undetected
+    until Verify complete content, as it does for files whose evidence is a sample.
+    """
+    return (
+        baseline is not None
+        and baseline["path"] == path
+        and expected["algorithm"] == "sha256"
+        and baseline["evidence"] == expected
+        and baseline.get("sample") == new["evidence"]
+        and bool(baseline.get("inode"))
+        and baseline.get("inode") == new["inode"]
+        and baseline.get("mtime") == new["mtime"]
+    )
+
+
 # A sample match requires an earlier local physical identity; full evidence is portable
 def matches(old: dict[str, Any], new: dict[str, Any]) -> bool:
     return old["evidence"] == new["evidence"] and (

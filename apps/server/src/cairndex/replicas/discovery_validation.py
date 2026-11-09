@@ -23,6 +23,8 @@ def observation(body: dict[str, Any], *, physical: bool = True) -> None:
     ):
         raise ReplicaError("Invalid private discovery path")
     validate_unit("asset_files/validation/$content", value_text(body["evidence"]))
+    if "sample" in body:
+        validate_unit("asset_files/validation/$content", value_text(body["sample"]))
     if physical and (
         not re.fullmatch(r"[a-f0-9]{64}", body["generation"])
         or any(type(body[name]) is not int for name in ("device", "inode", "mtime"))
