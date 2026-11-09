@@ -1,9 +1,11 @@
 // Manual Update keeps pending discoveries and grouping review separate from catalog editors
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { discovery, type DiscoveryCandidate, type DiscoveryRun } from '../api/discovery'
 import { CandidateReview } from './DiscoveryCandidateReview'
 import { DiscoveryPrepared } from './DiscoveryPrepared'
+import { FILE_CHANGE_LABEL, isFileChange, type FileChangeKind } from './fileChange'
+import { FileChangeReview } from './FileChangeReview'
 import { useModalDialog } from './useModalDialog'
 import type { ReplicaDiscoveryState } from './useReplicaDiscovery'
 
@@ -236,9 +238,10 @@ export function DiscoveryReviewDialog({
 }) {
   const { ref, close } = useModalDialog(() => d.setOpen(false), d.busy)
   const [earlierChoices, setEarlierChoices] = useState(earlier)
+  const changesView = fileChangesOnly && !earlierChoices
   const changes = useQuery({
     queryKey: ['discovery-file-changes', library, d.after],
-    enabled: fileChangesOnly && !earlierChoices,
+    enabled: changesView,
     queryFn: ({ signal }) =>
       discovery<{ items: DiscoveryCandidate[]; next_cursor: string | null }>(
         library,
@@ -249,15 +252,27 @@ export function DiscoveryReviewDialog({
       ),
     refetchInterval: 1500,
   })
-  const candidates = fileChangesOnly && !earlierChoices ? changes : d.candidates
+  const candidates = changesView ? changes : d.candidates
   const { reviews, review, reviewId } = d
-  const candidate =
-    fileChangesOnly &&
-    !earlierChoices &&
-    d.candidate &&
-    ['new', 'collection'].includes(d.candidate.body.kind)
-      ? null
-      : d.candidate
+  const candidate = changesView && d.candidate && !isFileChange(d.candidate) ? null : d.candidate
+  const items = candidates.data?.items ?? []
+  // The first change is open by default, so the pane never starts empty
+  const shown = candidate ?? (changesView && !reviewId ? (items[0] ?? null) : null)
+  const [notice, setNotice] = useState('')
+  const { setCandidate, refresh } = d
+  const refetch = candidates.refetch
+  const settled = useCallback(
+    (line: string) => {
+      setNotice(line)
+      setCandidate(null)
+      void refetch()
+      refresh()
+    },
+    [setCandidate, refetch, refresh],
+  )
+  const savedCount = reviews.data?.items.length ?? 0
+  // The earlier choices are offered only when grouping proposals exist to choose from
+  const hasGrouping = Boolean(d.candidates.data?.items.some((item) => !isFileChange(item)))
   return (
     <div className="modal-backdrop" onMouseDown={close}>
       <div
@@ -265,174 +280,263 @@ export function DiscoveryReviewDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Discovery review"
-        className="modal discovery-review-dialog"
+        className="modal discovery-review-dialog fc-dialog"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="modal__head">
-          <h2>Review discovered files</h2>
+        <div className="modal__head fc-head">
+          <h2>{changesView ? 'File changes' : 'Earlier grouping choices'}</h2>
+          {changesView && items.length > 0 && (
+            <span className="fc-count">
+              {items.length}
+              {candidates.data?.next_cursor ? '+' : ''}
+            </span>
+          )}
+          <span className="fc-spacer" />
+          {fileChangesOnly && (earlierChoices || hasGrouping) && (
+            <button
+              className="btn btn--compact"
+              onClick={() => {
+                if (earlierChoices && d.candidate && !isFileChange(d.candidate))
+                  d.setCandidate(null)
+                setEarlierChoices((value) => !value)
+                d.setAfter('')
+              }}
+            >
+              {earlierChoices ? 'File changes only' : 'Earlier grouping choices…'}
+            </button>
+          )}
           {onBack && (
-            <button className="btn" disabled={d.busy} onClick={onBack}>
+            <button className="btn btn--compact" disabled={d.busy} onClick={onBack}>
               Back to grouping
             </button>
           )}
-          <button className="btn" disabled={d.busy} onClick={close}>
-            Close
+          <button className="modal__close" aria-label="Close" disabled={d.busy} onClick={close}>
+            ×
           </button>
         </div>
-        <p>Choices stay private until you accept a prepared review.</p>
-        {fileChangesOnly && (
-          <button
-            className="btn"
-            onClick={() => {
-              if (
-                earlierChoices &&
-                d.candidate &&
-                ['new', 'collection'].includes(d.candidate.body.kind)
-              )
-                d.setCandidate(null)
-              setEarlierChoices((value) => !value)
-              d.setAfter('')
-            }}
-          >
-            {earlierChoices ? 'File changes only' : 'Earlier grouping choices…'}
-          </button>
-        )}
-        {candidates.isPending && <p>Loading discoveries…</p>}
-        {candidates.error && (
-          <p role="alert">
-            {candidates.error.message}
-            <button onClick={() => void candidates.refetch()}>Retry discoveries</button>
+        <div className="fc-intro">
+          <p>
+            {changesView
+              ? 'Files that changed on disk since Cairndex last checked them. Your library changes only when you act on one.'
+              : 'Choices stay private until you accept a prepared review.'}
           </p>
-        )}
-        {candidates.data?.items.length === 0 && (
-          <p>No new files or identity choices on this page.</p>
-        )}
-        <nav aria-label="Discovery suggestions">
-          {candidates.data?.items.map((item) => (
-            <button
-              key={item.id}
-              aria-pressed={candidate?.id === item.id}
-              onClick={() => {
-                d.setCandidate(item)
-                d.setReviewId(null)
-              }}
-            >
-              {item.body.title} · {item.body.file_count ?? item.body.files.length} files
-            </button>
-          ))}
-        </nav>
-        {candidates.data?.next_cursor && (
-          <button onClick={() => d.setAfter(candidates.data!.next_cursor!)}>
-            Next discoveries
-          </button>
-        )}
-        {d.after && <button onClick={() => d.setAfter('')}>First discoveries</button>}
-        {candidate && !reviewId && (
-          <CandidateReview
-            key={candidate.id}
-            library={library}
-            editor={editor}
-            candidate={candidate}
-            onPrepared={d.setReviewId}
-          />
-        )}
-        {reviewId && (
-          <section aria-label="Prepared discovery review">
-            {review.isPending && <p>Loading prepared review…</p>}
-            {review.error && (
-              <p role="alert">
-                {review.error.message}
-                <button onClick={() => void review.refetch()}>Retry prepared review</button>
+          {notice && (
+            <p className="fc-notice" role="status">
+              {notice}
+            </p>
+          )}
+        </div>
+        <div className="fc-body">
+          <div className="fc-list">
+            {candidates.isPending && <p className="fc-muted">Loading discoveries…</p>}
+            {candidates.error && (
+              <div className="fc-alert" role="alert">
+                <p>{candidates.error.message}</p>
+                <button className="btn btn--compact" onClick={() => void candidates.refetch()}>
+                  Retry discoveries
+                </button>
+              </div>
+            )}
+            {candidates.data?.items.length === 0 && (
+              <p className="fc-muted">No new files or identity choices on this page.</p>
+            )}
+            <nav aria-label="Discovery suggestions">
+              {items.map((item) => {
+                const change = isFileChange(item)
+                const folder = item.path.includes('/')
+                  ? item.path.slice(0, item.path.lastIndexOf('/'))
+                  : ''
+                const count = item.body.file_count ?? item.body.files.length
+                return (
+                  <button
+                    key={item.id}
+                    className="fc-row"
+                    aria-pressed={shown?.id === item.id && !reviewId}
+                    aria-label={change ? undefined : `${item.body.title} · ${count} files`}
+                    title={item.path}
+                    onClick={() => {
+                      setNotice('')
+                      d.setCandidate(item)
+                      d.setReviewId(null)
+                    }}
+                  >
+                    <span className="fc-row__name">{item.body.title}</span>
+                    <span className="fc-row__meta">
+                      {change ? (
+                        <span className={`fc-badge fc-badge--${item.body.kind}`}>
+                          {FILE_CHANGE_LABEL[item.body.kind as FileChangeKind]}
+                        </span>
+                      ) : (
+                        <span>{count === 1 ? '1 file' : `${count} files`}</span>
+                      )}
+                      {folder && <span className="fc-row__folder">{folder}</span>}
+                    </span>
+                  </button>
+                )
+              })}
+            </nav>
+            {(candidates.data?.next_cursor || d.after) && (
+              <div className="fc-pager">
+                {d.after && (
+                  <button className="btn btn--compact" onClick={() => d.setAfter('')}>
+                    First discoveries
+                  </button>
+                )}
+                {candidates.data?.next_cursor && (
+                  <button
+                    className="btn btn--compact"
+                    onClick={() => d.setAfter(candidates.data!.next_cursor!)}
+                  >
+                    Next discoveries
+                  </button>
+                )}
+              </div>
+            )}
+            {savedCount > 0 && (
+              <details className="fc-saved">
+                <summary>Saved discovery reviews</summary>
+                {reviews.isPending && <p className="fc-muted">Loading saved reviews…</p>}
+                {reviews.error && <p className="fc-alert">{reviews.error.message}</p>}
+                {reviews.data?.items.map((item) => (
+                  <button
+                    key={item.id}
+                    className="fc-row"
+                    aria-pressed={reviewId === item.id}
+                    onClick={() => d.setReviewId(item.id)}
+                  >
+                    {item.prepared?.title ?? 'Discovery review'} · {item.state}
+                  </button>
+                ))}
+                {reviews.data?.next_cursor && (
+                  <button
+                    className="btn btn--compact"
+                    onClick={() => d.setReviewsAfter(reviews.data!.next_cursor!)}
+                  >
+                    Next saved reviews
+                  </button>
+                )}
+                {d.reviewsAfter && (
+                  <button className="btn btn--compact" onClick={() => d.setReviewsAfter('')}>
+                    First saved reviews
+                  </button>
+                )}
+              </details>
+            )}
+          </div>
+          <div className="fc-pane">
+            {!shown && !reviewId && (
+              <p className="fc-muted fc-pane__empty">
+                {changesView ? 'Nothing to review.' : 'Choose a discovery to review it.'}
               </p>
             )}
-            {review.data && (
-              <>
-                <p role="status">
-                  {review.data.state === 'queued'
-                    ? 'Preparing reviewed grouping…'
-                    : review.data.state === 'apply_queued'
-                      ? 'Revalidating files and saving…'
-                      : review.data.state === 'applied'
-                        ? 'Reviewed changes saved here. Any competing changes remain in catalog conflict review.'
-                        : review.data.state === 'ready'
-                          ? 'Ready for your confirmation'
-                          : 'Review retained; prepare again before applying.'}
-                </p>
-                {review.data.progress && ['queued', 'apply_queued'].includes(review.data.state) && (
-                  <p>
-                    {review.data.progress.phase} · {review.data.progress.progress} /{' '}
-                    {review.data.progress.total} files
+            {shown && !reviewId && isFileChange(shown) && (
+              <FileChangeReview
+                key={shown.id}
+                library={library}
+                editor={editor}
+                candidate={shown}
+                onSettled={settled}
+                onUpdate={d.canStart ? () => void d.start() : undefined}
+              />
+            )}
+            {shown && !reviewId && !isFileChange(shown) && (
+              <CandidateReview
+                key={shown.id}
+                library={library}
+                editor={editor}
+                candidate={shown}
+                onPrepared={d.setReviewId}
+              />
+            )}
+            {reviewId && (
+              <section aria-label="Prepared discovery review">
+                {review.isPending && <p>Loading prepared review…</p>}
+                {review.error && (
+                  <p role="alert">
+                    {review.error.message}
+                    <button onClick={() => void review.refetch()}>Retry prepared review</button>
                   </p>
                 )}
-                {review.data.error && <p role="alert">{review.data.error}</p>}
-                {review.data.prepared && (
-                  <DiscoveryPrepared library={library} review={review.data} />
+                {review.data && (
+                  <>
+                    <p role="status">
+                      {review.data.state === 'queued'
+                        ? 'Preparing reviewed grouping…'
+                        : review.data.state === 'apply_queued'
+                          ? 'Revalidating files and saving…'
+                          : review.data.state === 'applied'
+                            ? 'Reviewed changes saved here. Any competing changes remain in catalog conflict review.'
+                            : review.data.state === 'ready'
+                              ? 'Ready for your confirmation'
+                              : 'Review retained; prepare again before applying.'}
+                    </p>
+                    {review.data.progress &&
+                      ['queued', 'apply_queued'].includes(review.data.state) && (
+                        <p>
+                          {review.data.progress.phase} · {review.data.progress.progress} /{' '}
+                          {review.data.progress.total} files
+                        </p>
+                      )}
+                    {review.data.error && <p role="alert">{review.data.error}</p>}
+                    {review.data.prepared && (
+                      <DiscoveryPrepared library={library} review={review.data} />
+                    )}
+                    <div className="fc-actions">
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          d.setReviewId(null)
+                          d.setCandidate(null)
+                          void candidates.refetch()
+                          d.refresh()
+                        }}
+                      >
+                        Back to discoveries
+                      </button>
+                      <span className="fc-spacer" />
+                      {['queued', 'ready', 'apply_queued'].includes(review.data.state) && (
+                        <button
+                          className="btn"
+                          disabled={d.busy}
+                          onClick={() => void d.action(`/reviews/${reviewId}`, 'DELETE')}
+                        >
+                          Cancel this review
+                        </button>
+                      )}
+                      {['failed', 'cancelled'].includes(review.data.state) && (
+                        <button
+                          className="btn"
+                          disabled={d.busy}
+                          onClick={() =>
+                            void d.action('/reviews', 'POST', {
+                              operation: reviewId,
+                              ...review.data!.intent,
+                            })
+                          }
+                        >
+                          Revalidate saved review
+                        </button>
+                      )}
+                      {review.data.state === 'ready' && (
+                        <button
+                          className="btn btn--primary"
+                          disabled={d.busy}
+                          onClick={() =>
+                            void d.action(`/reviews/${reviewId}/accept`, 'POST', {
+                              receipt: review.data!.receipt,
+                            })
+                          }
+                        >
+                          Accept reviewed changes
+                        </button>
+                      )}
+                    </div>
+                  </>
                 )}
-                {review.data.state === 'ready' && (
-                  <button
-                    disabled={d.busy}
-                    onClick={() =>
-                      void d.action(`/reviews/${reviewId}/accept`, 'POST', {
-                        receipt: review.data!.receipt,
-                      })
-                    }
-                  >
-                    Accept reviewed changes
-                  </button>
-                )}
-                {['failed', 'cancelled'].includes(review.data.state) && (
-                  <button
-                    disabled={d.busy}
-                    onClick={() =>
-                      void d.action('/reviews', 'POST', {
-                        operation: reviewId,
-                        ...review.data!.intent,
-                      })
-                    }
-                  >
-                    Revalidate saved review
-                  </button>
-                )}
-                {['queued', 'ready', 'apply_queued'].includes(review.data.state) && (
-                  <button
-                    disabled={d.busy}
-                    onClick={() => void d.action(`/reviews/${reviewId}`, 'DELETE')}
-                  >
-                    Cancel this review
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    d.setReviewId(null)
-                    d.setCandidate(null)
-                    void candidates.refetch()
-                    d.refresh()
-                  }}
-                >
-                  Back to discoveries
-                </button>
-              </>
+              </section>
             )}
-          </section>
-        )}
-        <details>
-          <summary>Saved discovery reviews</summary>
-          {reviews.isPending && <p>Loading saved reviews…</p>}
-          {reviews.error && <p role="alert">{reviews.error.message}</p>}
-          {reviews.data?.items.map((item) => (
-            <button key={item.id} onClick={() => d.setReviewId(item.id)}>
-              {item.prepared?.title ?? 'Discovery review'} · {item.state}
-            </button>
-          ))}
-          {reviews.data?.next_cursor && (
-            <button onClick={() => d.setReviewsAfter(reviews.data!.next_cursor!)}>
-              Next saved reviews
-            </button>
-          )}
-          {d.reviewsAfter && (
-            <button onClick={() => d.setReviewsAfter('')}>First saved reviews</button>
-          )}
-        </details>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -254,7 +254,7 @@ is not an owner-NAS or full-UI Update benchmark.
   candidates after every remount. Copies now also record their samples, and a
   same-path file whose samples, inode and mtime are unchanged keeps its complete
   hash ([replica discovery](replica-discovery.md#evidence-and-limits)). Copies
-  made before this change need one Verify complete content from Update's review.
+  made before this change need one Check and Restore in Update's file changes.
   The refusal still answers as "not found"; a distinct unconfirmed state would
   change the local-media API and is not built.
 - The owner accepted ADR-0041. The installed build implements journaled

@@ -3932,6 +3932,16 @@ code {
   padding: 18px 4px;
   text-align: center;
 }
+.grp-empty--changes {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 4px;
+}
+.grp-empty--changes p {
+  margin: 0;
+}
 .grp-tree,
 .grp-children,
 .grp-files {
@@ -8194,6 +8204,310 @@ code {
   display: grid;
   gap: 6px;
   margin-block: 12px;
+}
+
+/* File changes: a list of changed files beside the selected one's explanation
+   and its single action. It replaced a cloud of "name · 1 files" buttons and
+   unstyled controls the owner found unreadable (2026-11-09). */
+.fc-dialog {
+  width: min(900px, calc(100vw - 32px));
+  height: min(620px, calc(100dvh - 48px));
+  overflow: hidden;
+  gap: 10px;
+}
+.fc-dialog .modal__head.fc-head {
+  position: static;
+  padding-bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fc-head h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-strong);
+}
+.fc-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 9px;
+  padding: 1px 7px;
+}
+.fc-spacer {
+  flex: 1;
+}
+.fc-intro {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+.fc-intro p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.fc-intro .fc-notice {
+  margin-left: auto;
+  color: var(--ok);
+  text-align: right;
+}
+.fc-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.fc-list {
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+  padding: 6px;
+}
+.fc-dialog nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fc-dialog button.fc-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.fc-dialog button.fc-row:hover {
+  background: var(--row-hover);
+}
+.fc-dialog button.fc-row[aria-pressed='true'] {
+  background: var(--accent-soft);
+}
+.fc-row__name {
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.fc-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.fc-row__folder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.fc-badge {
+  flex: none;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10.5px;
+  line-height: 16px;
+  font-weight: 600;
+}
+.fc-badge--verification {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.fc-badge--repair {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.fc-badge--replacement {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+}
+.fc-pager {
+  display: flex;
+  gap: 6px;
+  padding: 6px 3px 0;
+}
+.fc-saved {
+  margin-top: 8px;
+  padding: 6px 3px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.fc-saved summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px 6px;
+}
+.fc-pane {
+  overflow-y: auto;
+  padding: 18px 22px;
+  min-width: 0;
+}
+.fc-pane__empty {
+  margin-top: 40px;
+  text-align: center;
+}
+/* Earlier grouping choices keep their own controls; the pane gives them room */
+.fc-pane > section {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+.fc-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 62ch;
+}
+.fc-detail p {
+  margin: 0;
+}
+.fc-detail__name {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+.fc-detail .fc-detail__path {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  margin-top: -6px;
+}
+.fc-detail .fc-detail__lead {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--text-strong);
+}
+.fc-detail__text {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.fc-choices {
+  margin: 4px 0 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fc-choices legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.fc-dialog label.fc-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.fc-dialog label.fc-choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.fc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.fc-muted {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.fc-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.fc-progress__line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.fc-progress progress {
+  width: 100%;
+  height: 6px;
+  appearance: none;
+  border: 0;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.fc-progress progress::-webkit-progress-bar {
+  background: var(--surface-2);
+}
+.fc-progress progress::-webkit-progress-value {
+  background: var(--accent);
+}
+.fc-progress progress::-moz-progress-bar {
+  background: var(--accent);
+}
+.fc-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--error) 55%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  font-size: 12px;
+  color: var(--text);
+}
+.fc-alert p {
+  margin: 0;
+  flex: 1;
+}
+.fc-detail .fc-done {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ok);
+}
+@media (max-width: 640px) {
+  .fc-dialog {
+    height: calc(100dvh - 32px);
+  }
+  .fc-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(120px, 38%) 1fr;
+  }
+  .fc-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .fc-intro {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .fc-intro .fc-notice {
+    margin-left: 0;
+    text-align: left;
+  }
 }
 
 /* Section titles stay below the dialog title; browser h3 defaults were larger */

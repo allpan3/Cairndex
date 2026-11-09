@@ -114,6 +114,11 @@ function GroupingReviewSession({
     state.after !== null ||
     state.lists.data?.next_cursor != null
   const sideEntry = useFileChangeEntry(library, d)
+  // With nothing to group, the file changes are the work: say so instead of an empty tree
+  const noGrouping = (status && status.files === 0) || (!state.workspace && !state.lists.isPending)
+  const onlyChanges = Boolean(
+    noGrouping && sideEntry && !sideEntry.earlier && sideEntry.label !== 'Saved reviews…',
+  )
   const prepared = Boolean(status?.accepting)
   return (
     <>
@@ -239,10 +244,24 @@ function GroupingReviewSession({
               </button>
             </p>
           )}
-          {!state.workspace && !state.lists.isPending && !message && (
+          {!state.workspace && !state.lists.isPending && !message && !onlyChanges && (
             <p className="grp-empty">Run Update to discover grouping suggestions.</p>
           )}
-          {status && status.revision > 0 && (
+          {onlyChanges && (
+            <div className="grp-empty grp-empty--changes">
+              <p>No new files to group. Some files changed on disk and wait for your review.</p>
+              <button
+                className="btn btn--primary"
+                onClick={() => {
+                  d.setAfter('')
+                  setFileChanges('changes')
+                }}
+              >
+                Review File Changes
+              </button>
+            </div>
+          )}
+          {status && status.revision > 0 && !onlyChanges && (
             <>
               <div className="grp-selectbar">
                 <div className="grp-selectbar__group">
@@ -432,7 +451,7 @@ function GroupingReviewSession({
                 {sideEntry.label}
               </button>
             )}
-            {!prepared && (
+            {!prepared && !onlyChanges && (
               <span className="grp-foot__note">
                 <label>
                   <input
@@ -468,7 +487,7 @@ function GroupingReviewSession({
                   </button>
                 )}
               </>
-            ) : (
+            ) : onlyChanges ? null : (
               <button
                 className="btn btn--primary"
                 disabled={!canPrepare}
@@ -489,11 +508,15 @@ function GroupingReviewSession({
           editor={editor}
           fileChangesOnly
           earlier={fileChanges === 'earlier'}
-          onBack={() => {
-            setFileChanges(null)
-            d.setCandidate(null)
-            d.setReviewId(null)
-          }}
+          onBack={
+            onlyChanges
+              ? undefined
+              : () => {
+                  setFileChanges(null)
+                  d.setCandidate(null)
+                  d.setReviewId(null)
+                }
+          }
         />
       )}
     </>

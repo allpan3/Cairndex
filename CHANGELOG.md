@@ -452,6 +452,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   samples, inode and mtime are unchanged. Copies made before this need one
   verification from Update. A file Cairndex cannot confirm is now described as
   unconfirmed rather than as different content.
+- Make Update's file changes readable and settle each one with one action. The
+  pane was a row of "name · 1 files" buttons over unstyled controls, and a file
+  that needed verification took three separate steps: verify, prepare, accept.
+  It now lists each changed file with its folder and a label (Not confirmed,
+  Possibly moved, Content changed) beside a plain explanation of the selected
+  one, and one button (Check and Restore, Check and Link, Use New Content)
+  reads the whole file when needed, prepares the review and accepts it, with
+  progress, Cancel and the server's reason when a step fails. A grouping review
+  with nothing to group now says so and offers Review File Changes instead of an
+  empty tree.
 - Lay out the Network Share Access dialog like other confirmations: a narrow box
   with one paragraph, and Cancel and Allow Access… together on one row.
 - Ask macOS for a network share's saved login when a file task starts, before its
