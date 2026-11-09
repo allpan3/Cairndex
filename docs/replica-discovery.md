@@ -357,8 +357,10 @@ Automatic sampled repair also requires the earlier local device/inode identity.
 Generation-bound local resume follows a verified repair; a manual sample-only
 identity assignment does not transfer old progress to a different physical file.
 
-**Verify complete content** explicitly queues full SHA-256 reads for an immutable
-candidate. The worker reads 1 MiB blocks, yielding after at most 8 MiB or roughly
+A file change's action in Update's review (**Check and Restore**, **Check and
+Link**, **Use New Content**) explicitly queues full SHA-256 reads for its immutable
+candidate when samples alone cannot prove it, then prepares and accepts the
+reviewed change; the server revalidates the file at each step. The worker reads 1 MiB blocks, yielding after at most 8 MiB or roughly
 50 ms of reads. Byte progress and cancellation remain private. Complete receipts
 survive cancellation; an interrupted file restarts from byte zero. A pinned
 source descriptor and a final path/generation check reject files changed during
