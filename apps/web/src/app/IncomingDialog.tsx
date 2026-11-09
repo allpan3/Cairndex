@@ -340,6 +340,13 @@ export function IncomingDialog({
               onChange={(next, pending) => setChoice({ folder: next, pending })}
             />
           </div>
+          {(picked?.pending.length ?? 0) > 0 && (
+            <p className="modal__note">
+              {choice === null
+                ? 'This path follows the bundle’s collections. Collections don’t create folders, so Cairndex creates the ones marked “new folder” when the copy starts.'
+                : 'Cairndex creates the folders marked “new folder” when the copy starts.'}
+            </p>
+          )}
           {target.kind === 'new-bundle' && choice === null && existing.isPending && (
             <p role="status">Finding a destination folder…</p>
           )}
