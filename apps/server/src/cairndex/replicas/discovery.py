@@ -304,6 +304,9 @@ def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
             if observed:
                 new = json.loads(observed[0])
                 expected = shared or (old["evidence"] if old and old["path"] == path else None)
+                if expected is not None and sources.confirms(old, path, expected, new):
+                    # The recorded samples carry the complete hash across a remount
+                    new = new | {"evidence": expected, "sample": new["evidence"]}
                 if expected is not None and expected != new["evidence"]:
                     db.execute("DELETE FROM local_file_facts WHERE file_id=?", (identity,))
                     needs_verification = (

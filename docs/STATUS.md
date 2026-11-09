@@ -245,16 +245,17 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
-- Open owner decision (2026-11-08): a file copied in by Cairndex records a
-  complete SHA-256. Mounting its share again changes the device number of every
-  file there, and so its generation, while inode, size and mtime stay (measured on
-  the disposable Samba share). Files over 192 KiB are then seen only through
-  samples, which [replica discovery](replica-discovery.md) does not accept as
-  proof of a complete hash, so the inspector reports them unconfirmed and Update
-  raises a verification candidate until a full read. Discovered files, whose
-  evidence is a sample, pass on samples alone. The proposed change records the
-  copy's samples and accepts them at the same path when inode, size and mtime are
-  unchanged; it relaxes the rule that Samba FileId is no cross-remount proof.
+- Owner decision (2026-11-08): a file copied in by Cairndex records a complete
+  SHA-256. Mounting its share again changes the device number of every file there,
+  and so its generation, while inode, size and mtime stay (measured on the
+  disposable Samba share). Files over 192 KiB were then seen only through samples,
+  so playback and the inspector refused them and Update raised verification
+  candidates after every remount. Copies now also record their samples, and a
+  same-path file whose samples, inode and mtime are unchanged keeps its complete
+  hash ([replica discovery](replica-discovery.md#evidence-and-limits)). Copies
+  made before this change need one Verify complete content from Update's review.
+  The refusal still answers as "not found"; a distinct unconfirmed state would
+  change the local-media API and is not built.
 - The owner accepted ADR-0041. The installed build implements journaled
   same-volume original relocation for Rename/Move/Trash, conditional Put Back/Undo
   and confirmed Empty Trash. Copy/Replace and existing journals retain independent

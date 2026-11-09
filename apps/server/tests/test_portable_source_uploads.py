@@ -219,9 +219,80 @@ def test_completed_upload_cannot_adopt_changed_bytes_on_retry(tmp_path):
     assert source_uploads.uploaded_version(store, root, "upload", 3) == expected
 
 
-def test_copied_large_file_reports_unconfirmed_rather_than_different_content(tmp_path):
-    """A remount changes the device number of every file on a share; that alone
-    must not describe a complete-hash copy as different content."""
+def test_copied_large_file_survives_a_remount_through_its_recorded_samples(tmp_path):
+    """A remount renumbers the share's device, which changes every generation;
+    the samples recorded at copy time keep the copy's complete hash valid."""
+    import json
+    import os
+
+    from cairndex.core.errors import NotFoundError
+    from cairndex.replicas import discovery
+    from cairndex.replicas import discovery_state as state
+    from cairndex.replicas.media import ReplicaMedia
+
+    root, store = fixture(tmp_path)
+    data = bytes(range(256)) * 4096
+
+    async def chunks():
+        yield data
+
+    asyncio.run(source_uploads.receive(store, root, "upload", len(data), chunks(), lambda: None))
+    enqueue(
+        store,
+        SourceRequest(operation="copy", action="copy", upload="upload", destination="copy.bin"),
+    )
+    run_one(store, root, lambda: None)
+    accept(store, "copy", job(store, "copy").receipt)
+    run_one(store, root, lambda: None)
+
+    def baseline():
+        with store.connection(readonly=True) as db:
+            identity = db.execute(
+                "SELECT entity FROM catalog_paths WHERE path='copy.bin' AND family='asset_files'"
+            ).fetchone()[0]
+            body = db.execute(
+                "SELECT body FROM discovery_baselines WHERE file_id=?", (identity,)
+            ).fetchone()[0]
+        return identity, json.loads(body)
+
+    identity, recorded = baseline()
+    assert recorded["evidence"]["algorithm"] == "sha256"
+    assert recorded["sample"]["algorithm"] == "sample-sha256-v1"
+    media = ReplicaMedia(store, root, "synthetic")
+    # A different device number and generation, as after mounting the share again
+    with store.connection() as db:
+        db.execute(
+            "UPDATE discovery_baselines SET body=? WHERE file_id=?",
+            (json.dumps(recorded | {"device": recorded["device"] + 1}), identity),
+        )
+    (root / "copy.bin").chmod(0o640)
+    media.check_content(identity, "copy.bin")
+
+    # Update accepts the same evidence and keeps the samples for the next remount
+    operation = "remount-update"
+    state.enqueue(store, operation)
+    for _ in range(1000):
+        discovery.tick(store, root)
+        if state.run(store, operation)["state"] != "running":
+            break
+    assert state.run(store, operation)["state"] == "succeeded"
+    assert not state.candidates(store, file_changes=True)["items"]
+    _, refreshed = baseline()
+    assert refreshed["evidence"] == recorded["evidence"]
+    assert refreshed["sample"] == recorded["sample"]
+
+    # A sampled edit that keeps size and mtime is unconfirmed, not accepted
+    info = os.stat(root / "copy.bin")
+    (root / "copy.bin").write_bytes(b"X" * len(data))
+    os.utime(root / "copy.bin", ns=(info.st_atime_ns, info.st_mtime_ns))
+    with pytest.raises(NotFoundError, match="can't confirm this file is unchanged"):
+        media.check_content(identity, "copy.bin")
+
+
+def test_copy_without_recorded_samples_still_needs_verification(tmp_path):
+    """Copies made before samples were recorded stay unproven after a change."""
+    import json
+
     from cairndex.core.errors import NotFoundError
     from cairndex.replicas.media import ReplicaMedia
 
@@ -239,16 +310,16 @@ def test_copied_large_file_reports_unconfirmed_rather_than_different_content(tmp
     run_one(store, root, lambda: None)
     accept(store, "copy", job(store, "copy").receipt)
     run_one(store, root, lambda: None)
-    with store.connection(readonly=True) as db:
-        identity = db.execute(
-            "SELECT entity FROM catalog_paths WHERE path='copy.bin' AND family='asset_files'"
-        ).fetchone()[0]
-    media = ReplicaMedia(store, root, "synthetic")
-    media.check_content(identity, "copy.bin")
-    (root / "copy.bin").chmod(0o640)  # a metadata-only change, like a remount
+    with store.connection() as db:
+        identity, body = db.execute(
+            "SELECT b.file_id, b.body FROM discovery_baselines b JOIN catalog_paths p "
+            "ON p.entity=b.file_id WHERE p.path='copy.bin' AND p.family='asset_files'"
+        ).fetchone()
+        old = json.loads(body)
+        del old["sample"]
+        db.execute(
+            "UPDATE discovery_baselines SET body=? WHERE file_id=?", (json.dumps(old), identity)
+        )
+    (root / "copy.bin").chmod(0o640)
     with pytest.raises(NotFoundError, match="can't confirm this file is unchanged"):
-        media.check_content(identity, "copy.bin")
-    # Samples cannot tell an edit from a remount either; only Update's full hash can
-    (root / "copy.bin").write_bytes(b"X" * len(data))
-    with pytest.raises(NotFoundError, match="can't confirm"):
-        media.check_content(identity, "copy.bin")
+        ReplicaMedia(store, root, "synthetic").check_content(identity, "copy.bin")

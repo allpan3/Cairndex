@@ -444,12 +444,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
-- Stop calling a large copied file "different local content" when Cairndex only
-  cannot confirm it. Mounting a share again gives every file on it a new device
-  number, so a file over 192 KiB whose complete hash is known is seen again only
-  through samples. The bundle inspector now says the file is unconfirmed and that
-  Update can verify it. A difference between like fingerprints still reads as
-  different content.
+- Keep large files copied in by Cairndex playable after their network share is
+  mounted again. Each mount gives the share a new device number, which changed
+  every file's generation; a copied file over 192 KiB, whose evidence is a complete
+  hash, was then refused as not found until a full re-read. Copies now also keep
+  the samples read after publication, and Cairndex accepts the file while its
+  samples, inode and mtime are unchanged. Copies made before this need one
+  verification from Update. A file Cairndex cannot confirm is now described as
+  unconfirmed rather than as different content.
 - Lay out the Network Share Access dialog like other confirmations: a narrow box
   with one paragraph, and Cancel and Allow Access… together on one row.
 - Ask macOS for a network share's saved login when a file task starts, before its

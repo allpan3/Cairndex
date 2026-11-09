@@ -143,7 +143,7 @@ class ReplicaMedia:
     def check_content(self, identity: str, path: str) -> None:
         if self.store.descriptor.format_version != 3:
             return
-        from cairndex.replicas.discovery_sources import inspect
+        from cairndex.replicas.discovery_sources import confirms, inspect
 
         with self._read() as db:
             value = db.execute(
@@ -161,11 +161,12 @@ class ReplicaMedia:
         )
         if expected is None:
             return
-        observed = inspect(self.root, path, baseline)["evidence"]
-        if observed == expected:
+        seen = inspect(self.root, path, baseline)
+        observed = seen["evidence"]
+        if observed == expected or confirms(baseline, path, expected, seen):
             return
-        # A complete hash seen again only through samples is unproven, not different:
-        # this happens to every large file after its share is mounted again
+        # A complete hash seen again only through samples, without the samples and
+        # physical identity recorded with it, is unproven rather than different
         if expected["algorithm"] == "sha256" and observed["algorithm"] != "sha256":
             raise NotFoundError(
                 "Cairndex can't confirm this file is unchanged since it was last checked; "

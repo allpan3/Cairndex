@@ -302,7 +302,8 @@ not extend sampling's ability to detect edits outside its sampled regions.
 The `smb-update-mac-20261104` receipt retains the harness, observations and raw
 results; its earlier failed metadata-cache prototypes and traversal-only probe
 are separate evidence. Neither native ctime nor Samba FileId/ChangeTime is
-accepted as cross-remount content proof.
+accepted as cross-remount content proof on its own; a copied file's recorded
+samples are (see *Evidence and limits*).
 
 ### Conversion timing
 
@@ -367,7 +368,16 @@ Complete identities derive from library/epoch, path and evidence, so independent
 verified identical large copies can share a file ID after reviewed acceptance.
 Unverified large-file IDs are random and persist in a private path/evidence mapping.
 A full-evidence identity observed through local samples requires verification;
-matching samples alone cannot establish equality. Retained samples find possible
+matching samples alone cannot establish equality. One same-path exception, accepted
+by the owner on 2026-11-08: a file copied in by Cairndex keeps, beside its complete
+hash, the samples read just after publication (and a completed verification keeps
+the samples it compared). When the samples, inode and mtime are unchanged, the
+complete hash still covers the file. The device number is not compared, because
+macOS numbers a network share anew on every mount, which changes every generation.
+This is at least the assurance a sampled file already has; an edit outside the sampled
+regions that keeps size, mtime and inode goes unnoticed until verification.
+Copies made before this change have no recorded samples and need one verification.
+Retained samples find possible
 moves of previously verified files, with complete evidence checked before repair.
 Independent large discoveries and same-path different contents retain explicit causal identity conflicts with a
 valid local display. Group IDs derive from selected file IDs. Initial group/file

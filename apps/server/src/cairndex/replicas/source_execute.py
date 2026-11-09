@@ -37,6 +37,28 @@ def checkpoint(store: CatalogStore, operation: str, result: dict[str, Any]) -> N
         )
 
 
+def output_samples(root: Path, outputs: list[tuple[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Sample each published large file once, before the catalog transaction.
+
+    A complete hash cannot be recomputed cheaply after a share is mounted again,
+    so the baseline also keeps the samples an ordinary scan reads. Unreadable
+    outputs simply get no sample; they then need explicit verification.
+    """
+    from cairndex.replicas.discovery_sources import inspect
+
+    samples = {}
+    for path, evidence in outputs:
+        if evidence["algorithm"] != "sha256":
+            continue
+        try:
+            observed = inspect(root, path)
+        except (OSError, ReplicaError):
+            continue
+        if observed["evidence"]["algorithm"] != "sha256":
+            samples[path] = observed
+    return samples
+
+
 def reviewed_metadata(store: CatalogStore, review: dict[str, Any]) -> None:
     """Check the reviewed causal basis immediately before the first destructive step."""
     if not review["metadata"]:
@@ -148,6 +170,19 @@ def apply(
         store.fault("source_after_publication")
         result[marker] = True
         checkpoint(store, request.operation, result)
+    file_outputs = []
+    for path, version in outputs:
+        if version["evidence"]["algorithm"] == "tree-sha256-v1":
+            from cairndex.replicas.source_catalog import tree_index
+
+            for item in tree_index(
+                root, version["operation"], version["version"], version["evidence"]
+            ):
+                if not item["directory"]:
+                    file_outputs.append((path + "/" + item["path"], item["evidence"]))
+        else:
+            file_outputs.append((path, version["evidence"]))
+    samples = output_samples(root, file_outputs)
     with store.connection() as db:
         event = None
         metadata = review["metadata"]
@@ -189,18 +224,6 @@ def apply(
                     for seen in json.loads(prior[0])["conditions"].values()
                     if seen
                 )
-        file_outputs = []
-        for path, version in outputs:
-            if version["evidence"]["algorithm"] == "tree-sha256-v1":
-                from cairndex.replicas.source_catalog import tree_index
-
-                for item in tree_index(
-                    root, version["operation"], version["version"], version["evidence"]
-                ):
-                    if not item["directory"]:
-                        file_outputs.append((path + "/" + item["path"], item["evidence"]))
-            else:
-                file_outputs.append((path, version["evidence"]))
         for path, evidence in file_outputs:
             identity = path_identity(db, path)
             seen = observation(root, path)
@@ -217,6 +240,9 @@ def apply(
                     "inode": info.st_ino,
                     "mtime": info.st_mtime_ns,
                 }
+                sampled = samples.get(path)
+                if sampled and sampled["generation"] == seen["generation"]:
+                    baseline["sample"] = sampled["evidence"]
                 db.execute(
                     "INSERT OR REPLACE INTO discovery_baselines VALUES (?,?)",
                     (identity, value_text(baseline)),
