@@ -1,7 +1,9 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useModalDialog } from './useModalDialog'
 import { FAMILIES } from '../api/catalog'
+import { prepareSourceAccess, sourceRequest } from '../api/sourceOperations'
 import { formatBytes } from '../lib/format'
 import { leaf, purgeTask, trashRows, trashRowTask, type TrashRow } from './sourceActions'
 import { folderLabel, parentFolder } from './sourceTasks'
@@ -16,6 +18,7 @@ const rowKey = (row: TrashRow) => `${row.kind}:${row.id}:${row.kind === 'replace
  * deleted automatically; both actions are journaled operations of their own.
  */
 export function CatalogTrashBrowser({
+  library,
   trash,
   tasks,
   writable,
@@ -23,6 +26,7 @@ export function CatalogTrashBrowser({
   headerTrailing,
   onReviewEntity,
 }: {
+  library: string
   trash: ReturnType<typeof useTrash>
   tasks: SourceTasks
   writable: boolean
@@ -109,6 +113,7 @@ export function CatalogTrashBrowser({
             </button>
           </p>
         )}
+        <KeptCopies library={library} writable={writable} busy={busy} />
         {receipts.data && rows.length === 0 && (
           <p className="trash-browser__empty">The Trash is empty.</p>
         )}
@@ -179,6 +184,124 @@ export function CatalogTrashBrowser({
         )}
       </div>
     </div>
+  )
+}
+
+type KeptCopySummary = { count: number; size_bytes: number }
+
+/**
+ * Earlier versions kept a second copy of every file copied into the library,
+ * hidden beside it. The copied files stay; only those second copies go.
+ */
+function KeptCopies({
+  library,
+  writable,
+  busy,
+}: {
+  library: string
+  writable: boolean
+  busy: boolean
+}) {
+  const kept = useQuery({
+    queryKey: ['kept-copies', library],
+    queryFn: () => sourceRequest<KeptCopySummary>(library, '/kept-copies'),
+  })
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const summary = kept.data
+  const remove = async () => {
+    setDeleting(true)
+    setError(null)
+    try {
+      await prepareSourceAccess(library)
+      const done = await sourceRequest<KeptCopySummary>(library, '/kept-copies/delete', 'POST')
+      setNotice(`Deleted ${copies(done.count)} (${formatBytes(done.size_bytes)}).`)
+      setConfirming(false)
+    } catch (reason) {
+      setError((reason as Error).message)
+    } finally {
+      setDeleting(false)
+      void kept.refetch()
+    }
+  }
+  if (!summary?.count) return notice ? <p className="modal__note">{notice}</p> : null
+  return (
+    <section className="trash-browser__kept" aria-label="Kept copies">
+      <div className="trash-browser__kept-text">
+        <strong>Kept copies of copied files · {formatBytes(summary.size_bytes)}</strong>
+        <span>
+          Earlier versions of Cairndex kept a second, hidden copy of each file copied into the
+          library. The files in your library are not affected.
+        </span>
+      </div>
+      <button
+        className="btn btn--sm"
+        disabled={!writable || busy}
+        onClick={() => {
+          setError(null)
+          setConfirming(true)
+        }}
+      >
+        Delete Kept Copies…
+      </button>
+      {confirming && (
+        <KeptCopiesDialog
+          summary={summary}
+          deleting={deleting}
+          error={error}
+          onClose={() => setConfirming(false)}
+          onConfirm={() => void remove()}
+        />
+      )}
+    </section>
+  )
+}
+
+const copies = (count: number) => (count === 1 ? '1 kept copy' : `${count} kept copies`)
+
+function KeptCopiesDialog({
+  summary,
+  deleting,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  summary: KeptCopySummary
+  deleting: boolean
+  error: string | null
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const { ref, close } = useModalDialog(onClose)
+  return createPortal(
+    <div className="modal-backdrop" onMouseDown={close}>
+      <div
+        ref={ref}
+        className="modal modal--confirm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="kept-copies-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <h2 id="kept-copies-title">Delete Kept Copies?</h2>
+        <p>
+          Permanently delete {copies(summary.count)} ({formatBytes(summary.size_bytes)})? The copied
+          files in your library stay as they are. This cannot be undone.
+        </p>
+        {error && <p role="alert">{error}</p>}
+        <div className="modal__actions">
+          <button className="btn" onClick={close} disabled={deleting}>
+            Cancel
+          </button>
+          <button className="btn btn--danger" disabled={deleting} onClick={onConfirm}>
+            {deleting ? 'Deleting…' : 'Delete Permanently'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 

@@ -8,7 +8,7 @@ from cairndex.api.deps import RegistryDbSession
 from cairndex.api.v1.catalog_replicas import Catalog
 from cairndex.file_ops.gate import ensure_portable_write_mode
 from cairndex.replicas import source_journal as journal
-from cairndex.replicas.protocol import Token
+from cairndex.replicas.protocol import StrictModel, Token
 from cairndex.replicas.service import wake
 from cairndex.replicas.source_journal import SourceAccept, SourceJob, SourcePage, SourceRequest
 from cairndex.replicas.source_uploads import UploadProgress, progress
@@ -112,6 +112,44 @@ def receipts(
         ],
         "next_cursor": rows[limit - 1]["id"] if len(rows) > limit else None,
     }
+
+
+class KeptCopies(StrictModel):
+    count: int
+    size_bytes: int
+
+
+@router.get("/kept-copies", response_model=KeptCopies)
+def kept_copies(library_id: str, store: Catalog, registry: RegistryDbSession) -> KeptCopies:
+    """Second copies that earlier Copy operations kept beside the published file."""
+    from pathlib import Path
+
+    from cairndex.registry.services import get_library
+    from cairndex.replicas.source_kept import summary
+
+    root = Path(get_library(registry, library_id).root_path)
+    registry.commit()
+    return KeptCopies(**summary(store, root))
+
+
+@router.post("/kept-copies/delete", response_model=KeptCopies)
+def delete_kept_copies(library_id: str, store: Catalog, registry: RegistryDbSession) -> KeptCopies:
+    """Permanently delete those copies; the library's own files are not touched."""
+    from pathlib import Path
+
+    from cairndex.registry.services import get_library
+    from cairndex.replicas.source_kept import delete
+
+    ensure_portable_write_mode(registry, library_id)
+    root = Path(get_library(registry, library_id).root_path)
+    registry.commit()
+
+    def authorize() -> None:
+        registry.commit()
+        registry.expire_all()
+        ensure_portable_write_mode(registry, library_id)
+
+    return KeptCopies(**delete(store, root, authorize))
 
 
 @router.get("/{operation}", response_model=SourceJob)

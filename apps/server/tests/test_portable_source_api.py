@@ -113,8 +113,9 @@ def test_picker_upload_copies_with_exact_retry(isolated_client, registry_session
 
     with store.connection(readonly=True) as db:
         validate_private(db, store)
-    (root / "uploaded.txt").write_bytes(b"Synthetic edited output")
-    assert (root / ".cairndex/source-operations/upload-one/source").read_bytes() == content
+    # The upload itself became the output (ADR-0042); no second copy is kept
+    assert not (root / ".cairndex/source-operations/upload-one/source").exists()
+    assert isolated_client.get(path + "/kept-copies").json() == {"count": 0, "size_bytes": 0}
 
 
 @pytest.mark.parametrize("upload", ["bad.name", "bad space", "x" * 65])

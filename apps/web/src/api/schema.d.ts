@@ -4013,6 +4013,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/source-operations/kept-copies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Kept Copies
+         * @description Second copies that earlier Copy operations kept beside the published file.
+         */
+        get: operations["kept_copies_api_v1_libraries__library_id__source_operations_kept_copies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/source-operations/kept-copies/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Kept Copies
+         * @description Permanently delete those copies; the library's own files are not touched.
+         */
+        post: operations["delete_kept_copies_api_v1_libraries__library_id__source_operations_kept_copies_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/source-operations/receipts": {
         parameters: {
             query?: never;
@@ -6633,6 +6673,13 @@ export interface components {
          * @enum {string}
          */
         JobType: "scan" | "probe" | "thumbnail" | "storyboard";
+        /** KeptCopies */
+        KeptCopies: {
+            /** Count */
+            count: number;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /**
          * LeaseHolderRead
          * @description The server currently recorded in a library's lease.
@@ -16824,6 +16871,76 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    kept_copies_api_v1_libraries__library_id__source_operations_kept_copies_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeptCopies"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_kept_copies_api_v1_libraries__library_id__source_operations_kept_copies_delete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeptCopies"];
+                };
             };
             /** @description Validation Error */
             422: {
