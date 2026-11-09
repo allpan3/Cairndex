@@ -2,8 +2,11 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `26a93cd`, qualified on
-2026-11-09. Update's file changes list each changed file with its folder and
+The local desktop and web test installation is `35310a1`, qualified on
+2026-11-09. A file copy publishes its own upload or snapshot instead of copying
+it a second time and keeps no duplicate (ADR-0042); Trash offers **Delete Kept
+Copies…** for the duplicates earlier builds kept. The copy dialog marks folders
+it will create as “new folder”. Update's file changes list each changed file with its folder and
 kind, and settle each with one action that checks the whole file when needed,
 prepares the review and accepts it. Large files copied in by Cairndex stay
 confirmed after their share is mounted again, through samples recorded at copy
@@ -181,6 +184,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed one-write copies and Delete Kept Copies | macOS full backend 2,221 cases and full frontend gate with 1,490 units; on the disposable Samba share, 12 of 14 upload cases including publication by move, refusal of a changed upload, resume after an interrupted move and kept-copy deletion with Undo (the two remount cases fail identically without this change, because their simulated remount does not apply to a real mount); signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit. The 1 GiB test-share measurement is in ADR-0042. Copy time and kept-copy deletion on the owner's NAS remain owner checks |
 | Installed file-changes pane | macOS full frontend gate with 1,489 units on the packaged commit, including the one-action verify/prepare/accept unit test; discovery browser spec 4 of 4 and grouping browser specs 6 of 6; a synthetic library with two ambiguous moves and three unconfirmed files (one 600 MB) screenshotted at desktop and phone width, with Check and Restore reading, restoring and leaving the list; signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit. Restoring the owner's pre-fix copies on the NAS remains an owner check |
 | Installed copied-file samples across remounts | Disposable Samba share: an 8 MiB copy recorded its samples; after a remount changed `st_dev`, the content check passed and Update raised no file-change candidates. Host: 285 related backend cases (two more need host ffmpeg); macOS: backend lint/format/mypy and 92 focused discovery, verification, upload and SMB cases including both ffmpeg cases; signed app-only package with its full frontend gate, sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
 | Installed compact share-access dialog and unconfirmed-content wording | Disposable Samba share: a 1 MiB copy kept its generation while mounted for 31 s; one remount changed only `st_dev` and raised the old warning. Host: 107 related backend cases (one more needs host ffmpeg and fails identically without the change) with ruff/format/mypy on the changed files; macOS full frontend gate with 1,488 units, source-operation browser spec 5 of 5 and the synthetic dialog screenshot inspected; signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
@@ -250,6 +254,12 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
+- Owner decision (2026-11-09, ADR-0042): file copies publish their own version.
+  Delete Kept Copies covers completed copies only. Copy-based Rename and Trash
+  versions from before ADR-0041 still have no deletion action; Undo of those
+  operations needs them. The two simulated-remount upload tests do not apply
+  to a real SMB mount and need a real-remount variant. Next: running the server
+  in Docker on the NAS, after the macOS checks, then the Eagle-style items.
 - Owner decision (2026-11-08): a file copied in by Cairndex records a complete
   SHA-256. Mounting its share again changes the device number of every file there,
   and so its generation, while inode, size and mtime stay (measured on the
