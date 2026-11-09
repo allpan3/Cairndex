@@ -450,6 +450,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- The copy dialog marks folders it will create as “new folder”, not “new”, and
+  explains that a suggested path follows the bundle’s collections, which never
+  create folders on disk. A collection with a folder’s name made the badge look
+  wrong.
 - Keep large files copied in by Cairndex playable after their network share is
   mounted again. Each mount gives the share a new device number, which changed
   every file's generation; a copied file over 192 KiB, whose evidence is a complete
