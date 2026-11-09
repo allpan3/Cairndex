@@ -86,7 +86,7 @@ export function FolderPicker({
               {part}
             </button>
             <span className="folder-picker__new" aria-hidden="true">
-              new
+              new folder
             </span>
           </span>
         ))}
