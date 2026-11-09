@@ -2,9 +2,12 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `ddda74a`, qualified on
-2026-11-08. Large files copied in by Cairndex stay confirmed after their share
-is mounted again, through samples recorded at copy time. It lays out Network
+The local desktop and web test installation is `26a93cd`, qualified on
+2026-11-09. Update's file changes list each changed file with its folder and
+kind, and settle each with one action that checks the whole file when needed,
+prepares the review and accepts it. Large files copied in by Cairndex stay
+confirmed after their share is mounted again, through samples recorded at copy
+time. It lays out Network
 Share Access as a compact confirmation. It asks for network-share access before a file task's first step,
 stops a task at its first failed step, reports why a refused upload stopped,
 and counts and lays out the activity card as described in the changelog. It is
@@ -178,6 +181,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed file-changes pane | macOS full frontend gate with 1,489 units on the packaged commit, including the one-action verify/prepare/accept unit test; discovery browser spec 4 of 4 and grouping browser specs 6 of 6; a synthetic library with two ambiguous moves and three unconfirmed files (one 600 MB) screenshotted at desktop and phone width, with Check and Restore reading, restoring and leaving the list; signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit. Restoring the owner's pre-fix copies on the NAS remains an owner check |
 | Installed copied-file samples across remounts | Disposable Samba share: an 8 MiB copy recorded its samples; after a remount changed `st_dev`, the content check passed and Update raised no file-change candidates. Host: 285 related backend cases (two more need host ffmpeg); macOS: backend lint/format/mypy and 92 focused discovery, verification, upload and SMB cases including both ffmpeg cases; signed app-only package with its full frontend gate, sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
 | Installed compact share-access dialog and unconfirmed-content wording | Disposable Samba share: a 1 MiB copy kept its generation while mounted for 31 s; one remount changed only `st_dev` and raised the old warning. Host: 107 related backend cases (one more needs host ffmpeg and fails identically without the change) with ruff/format/mypy on the changed files; macOS full frontend gate with 1,488 units, source-operation browser spec 5 of 5 and the synthetic dialog screenshot inspected; signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
 | Installed share-access preflight and stopped-task card | macOS 135 focused source/SMB/write-mode/conversion backend cases with lint/format/mypy; the full host backend run's 59 failures and errors were all missing host ffmpeg/ffprobe or the packaged binary, none in changed files; full frontend gate with 1,488 units; source-operation browser spec 5 of 5 (one test-server startup failure passed on two reruns) with the stopped-card screenshot inspected; signed app-only package with the new login-Keychain signer, sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit. The macOS Keychain request and copy flow on the owner's NAS remain owner checks |
