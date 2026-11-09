@@ -41,6 +41,7 @@ export function CandidateReview({
           ? { all: true, exclude: [], groups: [], collection: '', moves: [] }
           : body.files.flatMap((file) => (file.id ? [file.id] : [])),
       ),
+      // File changes moved to FileChangeReview; these keys stay so saved drafts remain valid
       repair: '',
       replacement: false,
       operation: initialOperation,
@@ -52,7 +53,6 @@ export function CandidateReview({
   const [verification, setVerification] = useState<string | null>(null)
   const [after, setAfter] = useState(-1)
   const [groupAfter, setGroupAfter] = useState('')
-  const [choiceAfter, setChoiceAfter] = useState('')
   const choice = JSON.parse(draft.body.files) as Selection | string[]
   const selection = Array.isArray(choice) ? null : choice
   const selectable = body.kind === 'new' || body.kind === 'collection'
@@ -81,19 +81,6 @@ export function CandidateReview({
         signal,
       ),
     enabled: body.version === 2,
-  })
-  const identities = useQuery({
-    queryKey: ['discovery-choices', library, candidate.id, choiceAfter, draft.body.repair],
-    queryFn: () =>
-      discovery<{
-        items: { file_id: string; path: string }[]
-        next_cursor: string | null
-        selected: { file_id: string; path: string } | null
-      }>(
-        library,
-        `/candidates/${candidate.id}/choices?after=${encodeURIComponent(choiceAfter)}&selected=${encodeURIComponent(draft.body.repair)}`,
-      ),
-    enabled: Boolean(body.choices_total),
   })
   const page = files.data?.items ?? body.files
   const next = files.data?.next_cursor ?? (after === -1 ? body.files_next : null)
@@ -139,8 +126,6 @@ export function CandidateReview({
               }
             : { files: choice }
           : {}),
-        repair_file: draft.body.repair || null,
-        use_replacement: draft.body.replacement,
         ...(verification ? { verification } : {}),
       })
       onPrepared(review.id)
@@ -282,50 +267,6 @@ export function CandidateReview({
           {groupAfter && <button onClick={() => setGroupAfter('')}>First groups</button>}
         </section>
       )}
-      {body.kind === 'repair' && (
-        <label>
-          Missing file to repair
-          <select
-            value={draft.body.repair}
-            onChange={(event) => update({ repair: event.target.value })}
-          >
-            <option value="">Choose a missing file</option>
-            {identities.data?.selected &&
-              !identities.data.items.some((item) => item.file_id === draft.body.repair) && (
-                <option value={draft.body.repair}>{identities.data.selected.path}</option>
-              )}
-            {(identities.data?.items ?? body.choices)?.map((item) => (
-              <option key={item.file_id} value={item.file_id}>
-                {item.path}
-              </option>
-            ))}
-          </select>
-          {identities.data?.next_cursor && (
-            <button onClick={() => setChoiceAfter(identities.data!.next_cursor!)}>
-              Next missing identities
-            </button>
-          )}
-          {choiceAfter && (
-            <button onClick={() => setChoiceAfter('')}>First missing identities</button>
-          )}
-          {identities.error && (
-            <p role="alert">
-              {identities.error.message}
-              <button onClick={() => void identities.refetch()}>Retry missing identities</button>
-            </p>
-          )}
-        </label>
-      )}
-      {body.kind === 'replacement' && (
-        <label>
-          <input
-            type="checkbox"
-            checked={draft.body.replacement}
-            onChange={(event) => update({ replacement: event.target.checked })}
-          />
-          Use these replacement bytes for the existing file identity and its metadata
-        </label>
-      )}
       {files.isFetching && <p>Loading file page…</p>}
       {files.error && (
         <p role="alert">
@@ -402,10 +343,7 @@ export function CandidateReview({
           (selectable &&
             (selection
               ? !selection.all && !selection.exclude.length
-              : !(choice as string[]).length)) ||
-          (body.kind === 'repair' && !draft.body.repair) ||
-          (body.kind === 'verification' && !verification) ||
-          (body.kind === 'replacement' && !draft.body.replacement)
+              : !(choice as string[]).length))
         }
         onClick={() => void prepare()}
       >

@@ -31,7 +31,11 @@ async function reviewOpened(page: Page) {
     if (await earlier.isVisible()) await earlier.click()
     else {
       await beside.click()
-      await page.getByRole('button', { name: 'Earlier grouping choices…' }).click()
+      // Offered only when grouping proposals exist; without them, the file
+      // changes already list every remaining discovery
+      await expect(page.getByRole('dialog', { name: 'Discovery review' })).toBeVisible()
+      const toEarlier = page.getByRole('button', { name: 'Earlier grouping choices…' })
+      if (await toEarlier.isVisible()) await toEarlier.click()
     }
   }
   await expect(page.getByRole('dialog', { name: 'Discovery review' })).toBeVisible()
@@ -436,17 +440,11 @@ test('competing source identities are reviewable on both replicas @fullstack', a
         .getByRole('navigation', { name: 'Discovery suggestions' })
         .getByRole('button')
         .click()
-      await page
-        .getByRole('checkbox', {
-          name: 'Use these replacement bytes for the existing file identity and its metadata',
-        })
-        .check()
-      await page.getByRole('button', { name: 'Prepare grouping review', exact: true }).click()
-      await expect(page.getByText('Ready for your confirmation', { exact: true })).toBeVisible({
+      // One explicit action prepares and accepts the replacement
+      await page.getByRole('button', { name: 'Use New Content', exact: true }).click()
+      await expect(page.getByText(/updated with its new content/).first()).toBeVisible({
         timeout: 20_000,
       })
-      await page.getByRole('button', { name: 'Accept reviewed changes', exact: true }).click()
-      await expect(page.getByText(/Reviewed changes saved here/)).toBeVisible({ timeout: 20_000 })
       await expect
         .poll(
           async () =>
