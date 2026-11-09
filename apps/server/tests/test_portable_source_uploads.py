@@ -239,7 +239,7 @@ def test_copied_large_file_survives_a_remount_through_its_recorded_samples(tmp_p
     asyncio.run(source_uploads.receive(store, root, "upload", len(data), chunks(), lambda: None))
     enqueue(
         store,
-        SourceRequest(operation="copy", action="copy", upload="upload", destination="copy.bin"),
+        SourceRequest(operation="copy", action="copy", upload="upload", destination="copy.mp4"),
     )
     run_one(store, root, lambda: None)
     accept(store, "copy", job(store, "copy").receipt)
@@ -248,7 +248,7 @@ def test_copied_large_file_survives_a_remount_through_its_recorded_samples(tmp_p
     def baseline():
         with store.connection(readonly=True) as db:
             identity = db.execute(
-                "SELECT entity FROM catalog_paths WHERE path='copy.bin' AND family='asset_files'"
+                "SELECT entity FROM catalog_paths WHERE path='copy.mp4' AND family='asset_files'"
             ).fetchone()[0]
             body = db.execute(
                 "SELECT body FROM discovery_baselines WHERE file_id=?", (identity,)
@@ -265,8 +265,8 @@ def test_copied_large_file_survives_a_remount_through_its_recorded_samples(tmp_p
             "UPDATE discovery_baselines SET body=? WHERE file_id=?",
             (json.dumps(recorded | {"device": recorded["device"] + 1}), identity),
         )
-    (root / "copy.bin").chmod(0o640)
-    media.check_content(identity, "copy.bin")
+    (root / "copy.mp4").chmod(0o640)
+    media.check_content(identity, "copy.mp4")
 
     # Update accepts the same evidence and keeps the samples for the next remount
     operation = "remount-update"
@@ -282,19 +282,23 @@ def test_copied_large_file_survives_a_remount_through_its_recorded_samples(tmp_p
     assert refreshed["sample"] == recorded["sample"]
 
     # A sampled edit that keeps size and mtime is unconfirmed, not accepted
-    info = os.stat(root / "copy.bin")
-    (root / "copy.bin").write_bytes(b"X" * len(data))
-    os.utime(root / "copy.bin", ns=(info.st_atime_ns, info.st_mtime_ns))
+    info = os.stat(root / "copy.mp4")
+    (root / "copy.mp4").write_bytes(b"X" * len(data))
+    os.utime(root / "copy.mp4", ns=(info.st_atime_ns, info.st_mtime_ns))
     with pytest.raises(NotFoundError, match="can't confirm this file is unchanged"):
-        media.check_content(identity, "copy.bin")
+        media.check_content(identity, "copy.mp4")
 
 
 def test_copy_without_recorded_samples_still_needs_verification(tmp_path):
-    """Copies made before samples were recorded stay unproven after a change."""
+    """Copies made before samples were recorded stay unproven until verified and accepted."""
     import json
 
     from cairndex.core.errors import NotFoundError
+    from cairndex.replicas import discovery
+    from cairndex.replicas import discovery_state as state
+    from cairndex.replicas import discovery_verification as verification
     from cairndex.replicas.media import ReplicaMedia
+    from tests.test_replica_discovery import confirm
 
     root, store = fixture(tmp_path)
     data = bytes(range(256)) * 4096
@@ -305,7 +309,7 @@ def test_copy_without_recorded_samples_still_needs_verification(tmp_path):
     asyncio.run(source_uploads.receive(store, root, "upload", len(data), chunks(), lambda: None))
     enqueue(
         store,
-        SourceRequest(operation="copy", action="copy", upload="upload", destination="copy.bin"),
+        SourceRequest(operation="copy", action="copy", upload="upload", destination="copy.mp4"),
     )
     run_one(store, root, lambda: None)
     accept(store, "copy", job(store, "copy").receipt)
@@ -313,13 +317,36 @@ def test_copy_without_recorded_samples_still_needs_verification(tmp_path):
     with store.connection() as db:
         identity, body = db.execute(
             "SELECT b.file_id, b.body FROM discovery_baselines b JOIN catalog_paths p "
-            "ON p.entity=b.file_id WHERE p.path='copy.bin' AND p.family='asset_files'"
+            "ON p.entity=b.file_id WHERE p.path='copy.mp4' AND p.family='asset_files'"
         ).fetchone()
         old = json.loads(body)
         del old["sample"]
         db.execute(
             "UPDATE discovery_baselines SET body=? WHERE file_id=?", (json.dumps(old), identity)
         )
-    (root / "copy.bin").chmod(0o640)
+    (root / "copy.mp4").chmod(0o640)
+    media = ReplicaMedia(store, root, "synthetic")
     with pytest.raises(NotFoundError, match="can't confirm this file is unchanged"):
-        ReplicaMedia(store, root, "synthetic").check_content(identity, "copy.bin")
+        media.check_content(identity, "copy.mp4")
+
+    # Update lists it for verification; a complete read and an accepted review restore it
+    state.enqueue(store, "update")
+    for _ in range(1000):
+        discovery.tick(store, root)
+        if state.run(store, "update")["state"] != "running":
+            break
+    (candidate,) = state.candidates(store, file_changes=True)["items"]
+    assert candidate["body"]["kind"] == "verification"
+    verification.enqueue(store, "verify", candidate["id"])
+    for _ in range(50):
+        discovery.tick(store, root)
+        if verification.status(store, "verify")["state"] not in ("queued", "running"):
+            break
+    assert verification.status(store, "verify")["state"] == "succeeded"
+    confirm(store, root, candidate, verification="verify")
+    media.check_content(identity, "copy.mp4")
+    with store.connection(readonly=True) as db:
+        body = db.execute(
+            "SELECT body FROM discovery_baselines WHERE file_id=?", (identity,)
+        ).fetchone()[0]
+    assert json.loads(body)["sample"]["algorithm"] == "sample-sha256-v1"
