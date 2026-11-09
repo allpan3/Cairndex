@@ -170,7 +170,9 @@ def test_permanent_delete_is_explicit_resumable_and_preserves_old_copies(tmp_pat
     (root / "source.txt").write_bytes(b"Synthetic source")
     perform(store, root, "old-copy", "copy", "source.txt", "copied.txt")
     original(store, root, "trash", "retain", "copied.txt")
+    # The version an earlier copier kept beside its output (ADR-0042 no longer keeps it)
     old_bytes = root / ".cairndex/source-operations/old-copy/source"
+    old_bytes.write_bytes(b"Synthetic source")
     enqueue(store, SourceRequest(operation="delete", action="purge", prior="trash"))
     run_one(store, root, lambda: None)
     assert job(store, "delete").state == "prepared", job(store, "delete").error

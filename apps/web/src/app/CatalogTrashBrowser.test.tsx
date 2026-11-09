@@ -35,6 +35,7 @@ function mount(start: ReturnType<typeof vi.fn>) {
     const trash = useTrash('synthetic', true, true)
     return (
       <CatalogTrashBrowser
+        library="synthetic"
         trash={trash}
         tasks={{ tasks: [], start } as unknown as SourceTasks}
         writable
@@ -73,6 +74,29 @@ test('Empty Trash includes older pages and preserves legacy recovery copies', as
       { request: { action: 'purge', prior: 'older-original' } },
     ],
   })
+  client.clear()
+})
+
+test('kept copies are deleted only after confirmation, then disappear', async () => {
+  let kept = { count: 2, size_bytes: 3 * 1024 ** 3 }
+  vi.mocked(sourceRequest).mockImplementation(async (_library, path, method) => {
+    if (path === '/kept-copies/delete' && method === 'POST') {
+      const done = kept
+      kept = { count: 0, size_bytes: 0 }
+      return done
+    }
+    if (path === '/kept-copies') return kept
+    return { items: [], next_cursor: null }
+  })
+  const client = mount(vi.fn())
+  await screen.findByText(/Kept copies of copied files · 3(\.0)? GB/)
+  expect(sourceRequest).not.toHaveBeenCalledWith('synthetic', '/kept-copies/delete', 'POST')
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Kept Copies…' }))
+  expect(screen.getByRole('dialog')).toHaveTextContent('2 kept copies')
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Permanently' }))
+  await screen.findByText(/Deleted 2 kept copies/)
+  expect(sourceRequest).toHaveBeenCalledWith('synthetic', '/kept-copies/delete', 'POST')
+  expect(screen.queryByRole('button', { name: 'Delete Kept Copies…' })).not.toBeInTheDocument()
   client.clear()
 })
 

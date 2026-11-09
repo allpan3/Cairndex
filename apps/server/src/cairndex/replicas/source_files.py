@@ -353,6 +353,101 @@ def stage_output(
             os.close(source)
 
 
+def version_stamp(root: Path, operation: str) -> list[int]:
+    """The physical identity of a completed ``source`` version, recorded at review.
+
+    The remote device can differ after a remount, so it is not part of the stamp.
+    """
+    with operation_directory(root, operation) as handle:
+        info = os.stat("source", dir_fd=handle, follow_symlinks=False)
+    return [info.st_ino, info.st_size, info.st_mtime_ns]
+
+
+def consume_output(
+    root: Path,
+    operation: str,
+    version_operation: str,
+    expected: dict[str, Any],
+    stamp: list[int],
+    progress: Callable[[int], None],
+    limit: int,
+    name: str,
+) -> list[Any]:
+    """Publish a copy's own source version by moving it into the output stage.
+
+    The version already holds the reviewed bytes: an upload hashed as it arrived,
+    or this operation's own snapshot. Copying it again would read and write every
+    byte over the share a second time and keep a duplicate that nothing needs:
+    Undo snapshots the published output, and Restore a Copy of the output refuses
+    once the version is gone. Directory versions and versions that other
+    operations retain still use the independent copy in ``stage_output``.
+
+    The bytes are not read again. Instead the version must still have the
+    physical identity recorded at review (``stamp``), which detects an
+    observable external write, as the old copy's digest check did.
+    """
+    if expected["algorithm"] != "sha256":
+        raise ReplicaError("Only a file version can be published directly")
+    if name not in ("output-stage", "output-stage-0", "output-stage-1"):
+        raise ReplicaError("Unsupported source output")
+    with (
+        operation_directory(root, version_operation) as source_parent,
+        operation_directory(root, operation, create=True) as target_parent,
+    ):
+        try:
+            info: os.stat_result | None = os.stat(
+                "source", dir_fd=source_parent, follow_symlinks=False
+            )
+        except FileNotFoundError:
+            info = None
+        try:
+            os.stat(name, dir_fd=target_parent, follow_symlinks=False)
+            staged = True
+        except FileNotFoundError:
+            staged = False
+        if info is not None and staged:
+            # An earlier copier began an independent output; finish that copy instead
+            return stage_output(
+                root, operation, version_operation, "source", expected, progress, limit, name
+            )
+        if info is not None:
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or info.st_size != expected["size"]
+                or [info.st_ino, info.st_size, info.st_mtime_ns] != stamp
+            ):
+                raise ReplicaError("Retained version changed before publication")
+            relocate(source_parent, "source", target_parent, name)
+        elif not staged:
+            raise ReplicaError("The copy's retained version is unavailable; copy the file again")
+        held = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=target_parent)
+        try:
+            staged_info = os.fstat(held)
+            if (
+                not stat.S_ISREG(staged_info.st_mode)
+                or staged_info.st_nlink != 1
+                or staged_info.st_size != expected["size"]
+            ):
+                raise ReplicaError("Staged output differs from the recorded content version")
+            if info is None:
+                # An interrupted attempt already moved the version; prove its bytes once
+                digest, offset = hashlib.sha256(), 0
+                while offset < staged_info.st_size:
+                    progress(offset)
+                    block = os.pread(held, min(BLOCK, staged_info.st_size - offset), offset)
+                    if not block:
+                        raise ReplicaError("Staged output is incomplete")
+                    digest.update(block)
+                    offset += len(block)
+                progress(offset)
+                if digest.hexdigest() != expected["digest"]:
+                    raise ReplicaError("Staged output differs from the recorded content version")
+        finally:
+            os.close(held)
+        return finish_staging(target_parent, name, staged_info)
+
+
 def publish_output(
     root: Path,
     operation: str,

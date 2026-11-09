@@ -310,7 +310,8 @@ def test_undo_rechecks_completed_inverse_before_first_capture(tmp_path):
     assert "completed Undo" in job(store, "undo-third").error
 
 
-@pytest.mark.parametrize("action,budget", [("copy", 9), ("move", 14), ("rename", 14), ("trash", 9)])
+# A file copy keeps one version, which becomes its output (ADR-0042)
+@pytest.mark.parametrize("action,budget", [("copy", 4), ("move", 14), ("rename", 14), ("trash", 9)])
 def test_retained_storage_budget_precedes_snapshot_and_capture(tmp_path, action, budget):
     root, store = fixture(tmp_path)
     (root / "source.txt").write_bytes(b"12345")
