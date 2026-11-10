@@ -7,6 +7,7 @@ from typing import Any
 
 from cairndex.grouping import suggester as rules
 from cairndex.replicas.catalog.projection import read_row
+from cairndex.replicas.grouping import carry
 from cairndex.replicas.grouping.storage import refresh_counts
 
 BATCH = 32
@@ -173,7 +174,12 @@ def folders(db: sqlite3.Connection, workspace: str, cursor: str) -> None:
             "UPDATE grouping_workspaces SET cursor=? WHERE id=?", (rows[-1]["path"], workspace)
         )
         return
-    db.execute("UPDATE grouping_workspaces SET phase='reasons',cursor='' WHERE id=?", (workspace,))
+    # The owner's choices in an earlier draft are carried before reasons are
+    # written, so every reason describes the tree the owner will review.
+    if not carry.start(db, workspace):
+        db.execute(
+            "UPDATE grouping_workspaces SET phase='reasons',cursor='' WHERE id=?", (workspace,)
+        )
 
 
 def reasons(db: sqlite3.Connection, workspace: str, cursor: str) -> None:
@@ -204,9 +210,13 @@ def step(db: sqlite3.Connection, workspace: str) -> None:
     work = db.execute(
         "SELECT phase,cursor FROM grouping_workspaces WHERE id=?", (workspace,)
     ).fetchone()
-    {"nodes": nodes, "files": files, "folders": folders, "reasons": reasons}[work["phase"]](
-        db, workspace, work["cursor"]
-    )
+    {
+        "nodes": nodes,
+        "files": files,
+        "folders": folders,
+        "carry": carry.step,
+        "reasons": reasons,
+    }[work["phase"]](db, workspace, work["cursor"])
 
 
 def advance(db: sqlite3.Connection, workspace: str) -> None:

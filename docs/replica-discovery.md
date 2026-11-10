@@ -65,7 +65,9 @@ available throughout.
 Update observes existing paths, repairs unambiguous external moves and proposes
 new files using the existing grouping rules. Pending files and grouping suggestions
 remain private until **Accept selected**, which prepares the exact review and
-accepts it once its check passes; a refused check stays on screen with its reason.
+accepts it once its check passes. When the check refuses because files changed
+since the last Update, the dialog runs Update itself and opens the new draft with
+the owner's choices kept; any other refusal stays on screen with its reason.
 Servers without editable grouping retain the earlier candidate review controls.
 Review can change title, destination, selection and order. Additions append to a
 confirmed bundle without regrouping its existing members or replacing its cover.
@@ -177,9 +179,16 @@ entry names the available work: File changes, Saved reviews, or both. Ordinary
 grouping candidates remain reachable through Earlier grouping choices. The file
 change query filters before pagination. Reopening waits for a fresh draft list
 and opens the latest completed Update, even when an earlier draft retains
-selected files or a prepared review. Earlier drafts keep their choices under
-**Other drafts**. They show an earlier-Update notice and **Open latest Update**,
-because their original file observations may no longer match after source
+selected files or a prepared review. A new draft carries the choices from the
+earlier draft the owner edited most recently, unless a prepared review is still
+open on it: titles, selection, file order and moves, merges and splits, placement
+in collections, folder and stem choices. They are copied onto each file that is
+still present, with the file's fresh observation, so acceptance checks current
+generations. New files keep fresh suggestions; a placement in a collection that no
+longer exists moves up to the nearest remaining ancestor, and an addition to a
+bundle that is no longer confirmed keeps the fresh suggestion. Earlier drafts keep
+their choices under **Other drafts**. They show an earlier-Update notice and
+**Open latest Update**, because their original file observations may no longer match after source
 changes or an SMB remount. Switching drafts does not refresh their observations
 or bypass source validation. Longer explanations are available on demand.
 
