@@ -2,8 +2,10 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `35310a1`, qualified on
-2026-11-09. A file copy publishes its own upload or snapshot instead of copying
+The local desktop and web test installation is `2959536`, qualified on
+2026-11-09. File Browser New Folder, Rename, Move and Trash show their result
+at once, and queued file work no longer waits for the background metadata
+pass. A file copy publishes its own upload or snapshot instead of copying
 it a second time and keeps no duplicate (ADR-0042); Trash offers **Delete Kept
 Copies…** for the duplicates earlier builds kept. The copy dialog marks folders
 it will create as “new folder”. Update's file changes list each changed file with its folder and
@@ -184,6 +186,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed File Browser responsiveness | Disposable Samba share at a 0.68 ms round trip: browser probe before and after (5 runs each), New Folder listed 1.75 s → 1.10 s median, Move item hidden 1.13 s → under 10 ms and finished 1.14 s → 0.71 s; server spans with an HTTP harness at 0 and about 3 ms added delay. macOS full frontend gate with 1,492 units, source-operation browser spec 5 of 5 and 67 focused worker/source/mkdir/original backend cases; signed package with the Apple Development signer, sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
 | Installed one-write copies and Delete Kept Copies | macOS full backend 2,221 cases and full frontend gate with 1,490 units; on the disposable Samba share, 12 of 14 upload cases including publication by move, refusal of a changed upload, resume after an interrupted move and kept-copy deletion with Undo (the two remount cases fail identically without this change, because their simulated remount does not apply to a real mount); signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit. The 1 GiB test-share measurement is in ADR-0042. Copy time and kept-copy deletion on the owner's NAS remain owner checks |
 | Installed file-changes pane | macOS full frontend gate with 1,489 units on the packaged commit, including the one-action verify/prepare/accept unit test; discovery browser spec 4 of 4 and grouping browser specs 6 of 6; a synthetic library with two ambiguous moves and three unconfirmed files (one 600 MB) screenshotted at desktop and phone width, with Check and Restore reading, restoring and leaving the list; signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit. Restoring the owner's pre-fix copies on the NAS remains an owner check |
 | Installed copied-file samples across remounts | Disposable Samba share: an 8 MiB copy recorded its samples; after a remount changed `st_dev`, the content check passed and Update raised no file-change candidates. Host: 285 related backend cases (two more need host ffmpeg); macOS: backend lint/format/mypy and 92 focused discovery, verification, upload and SMB cases including both ffmpeg cases; signed app-only package with its full frontend gate, sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
