@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { catalogNavigation } from '../../api/catalogQuery'
@@ -120,6 +120,24 @@ function GroupingReviewSession({
     noGrouping && sideEntry && !sideEntry.earlier && sideEntry.label !== 'Saved reviews…',
   )
   const prepared = Boolean(status?.accepting)
+  // Accept selected prepares the exact review and accepts it as soon as it is
+  // ready; only a refused check stops on the prepared result with its reason.
+  // A draft switched to keeps its own prepared review for an explicit accept.
+  const [acceptFor, setAcceptFor] = useState<string | null>(null)
+  const acceptWhenReady = acceptFor !== null && acceptFor === state.workspace
+  function acceptSelected() {
+    if (!canPrepare) return
+    setAcceptFor(state.workspace)
+    state.edit({ action: 'prepare', verify_content: verify })
+  }
+  const { accept } = state
+  const accepted = useRef<string | null>(null)
+  const readyReview = review?.state === 'ready' && !state.sending ? review.id : null
+  useEffect(() => {
+    if (!acceptWhenReady || !readyReview || accepted.current === readyReview) return
+    accepted.current = readyReview
+    void accept()
+  }, [acceptWhenReady, readyReview, accept])
   return (
     <>
       <div
@@ -137,7 +155,7 @@ function GroupingReviewSession({
           onKeyDown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && canPrepare) {
               event.preventDefault()
-              state.edit({ action: 'prepare', verify_content: verify })
+              acceptSelected()
             }
           }}
         >
@@ -161,8 +179,8 @@ function GroupingReviewSession({
               </summary>
               <ul className="grp-intro-points">
                 <li>
-                  Edits save to a private draft. The catalog changes only when you accept a prepared
-                  review.
+                  Edits save to a private draft. The catalog changes only when you choose Accept
+                  selected, after a check that the files have not changed.
                 </li>
                 <li>
                   The tree shows where each bundle goes. Hover a name to see the folder its files
@@ -366,7 +384,9 @@ function GroupingReviewSession({
                 {!review || review.state === 'queued'
                   ? 'Preparing the review…'
                   : review.state === 'ready'
-                    ? 'Ready for your confirmation'
+                    ? acceptWhenReady
+                      ? 'Rechecking files and saving…'
+                      : 'Ready for your confirmation'
                     : review.state === 'apply_queued'
                       ? 'Rechecking files and saving…'
                       : review.state === 'applied'
@@ -483,7 +503,7 @@ function GroupingReviewSession({
                     disabled={state.sending}
                     onClick={() => void state.accept()}
                   >
-                    Accept reviewed grouping
+                    Accept selected
                   </button>
                 )}
               </>
@@ -491,10 +511,10 @@ function GroupingReviewSession({
               <button
                 className="btn btn--primary"
                 disabled={!canPrepare}
-                title="Prepare a review of the selected grouping to check before accepting (⌘/Ctrl+Enter)"
-                onClick={() => state.edit({ action: 'prepare', verify_content: verify })}
+                title="Check the selected grouping against the files and save it (⌘/Ctrl+Enter)"
+                onClick={acceptSelected}
               >
-                Prepare selected grouping
+                Accept selected
               </button>
             )}
           </div>

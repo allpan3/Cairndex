@@ -1,21 +1,10 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { apiPost, openMetadataReview, proxyApi, startBackend, stopBackend } from './realBackend'
-
-// Prepared means the review's own status names that state and Accept is offered
-async function expectPrepared(dialog: Locator) {
-  const prepared = dialog.getByRole('region', { name: 'Prepared grouping review' })
-  await expect(prepared.getByRole('status')).toHaveText('Ready for your confirmation', {
-    timeout: 30_000,
-  })
-  await expect(
-    dialog.getByRole('button', { name: 'Accept reviewed grouping', exact: true }),
-  ).toBeEnabled()
-}
 
 test('editable grouping retains renamed drafts and accepts exact files after keyboard moves @fullstack', async ({
   browser,
@@ -113,15 +102,13 @@ test('editable grouping retains renamed drafts and accepts exact files after key
     await dialog
       .getByRole('button', { name: 'Move Series/Beta/feature.mp4 up', exact: true })
       .click()
-    await expect(dialog.getByRole('button', { name: 'Prepare selected grouping' })).toBeEnabled()
+    await expect(dialog.getByRole('button', { name: 'Accept selected' })).toBeEnabled()
     await dialog
       .getByRole('button', { name: 'Move Series/Beta/feature.mp4 up', exact: true })
       .click()
-    await expect(dialog.getByRole('button', { name: 'Prepare selected grouping' })).toBeEnabled()
+    await expect(dialog.getByRole('button', { name: 'Accept selected' })).toBeEnabled()
     await dialog.getByRole('checkbox', { name: 'Verify file contents' }).check()
-    await dialog.getByRole('button', { name: 'Prepare selected grouping' }).click()
-    await expectPrepared(dialog)
-    await dialog.getByRole('button', { name: 'Accept reviewed grouping', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Accept selected' }).click()
     await expect(dialog.getByText('0 / 3 files selected · 2 bundles', { exact: true })).toBeVisible(
       { timeout: 30_000 },
     )
@@ -244,22 +231,16 @@ test('large editable grouping keeps later files in view through edits and partia
     await expect(
       dialog.getByText('200 / 201 files selected · 1 bundle', { exact: true }),
     ).toBeVisible()
-    await expect(dialog.getByRole('button', { name: 'Prepare selected grouping' })).toBeEnabled()
+    await expect(dialog.getByRole('button', { name: 'Accept selected' })).toBeEnabled()
     await expect(last).toBeVisible()
     await expect(last).not.toBeChecked()
-    await dialog.getByRole('button', { name: 'Prepare selected grouping' }).click()
-    await expectPrepared(dialog)
-    await dialog.getByText('Review prepared files and metadata', { exact: true }).click()
-    await expect(dialog.getByText('200 selected files · 1 groups', { exact: true })).toBeVisible()
-    await dialog.getByRole('button', { name: 'Accept reviewed grouping', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Accept selected' }).click()
     await expect(dialog.getByText('0 / 1 files selected · 1 bundle', { exact: true })).toBeVisible({
       timeout: 30_000,
     })
     await expect(last).toBeVisible()
     await last.check()
-    await dialog.getByRole('button', { name: 'Prepare selected grouping' }).click()
-    await expectPrepared(dialog)
-    await dialog.getByRole('button', { name: 'Accept reviewed grouping', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Accept selected' }).click()
     await expect(dialog.getByText('0 / 0 files selected · 0 bundles', { exact: true })).toBeVisible(
       { timeout: 30_000 },
     )
