@@ -399,6 +399,29 @@ test('a name edit finishes only after the file views have refreshed', async () =
   expect(hook.result.current.tasks).toHaveLength(0)
 })
 
+test('a Move keeps running until the file views have refreshed', async () => {
+  const { relocationTask } = await import('./sourceActions')
+  server()
+  const { hook, client } = mount()
+  let refresh!: () => void
+  const refreshed = new Promise<void>((resolve) => {
+    refresh = resolve
+  })
+  const invalidate = vi.spyOn(client, 'invalidateQueries').mockReturnValue(refreshed)
+  act(() => {
+    hook.result.current.start(relocationTask('move', ['Trips/old.txt'], 'Archive'))
+  })
+  await waitFor(() => expect(invalidate).toHaveBeenCalledOnce())
+  // The File Browser hides moved items only while their task runs
+  expect(hook.result.current.tasks[0]!.items[0]!.state.kind).toBe('done')
+  expect(hook.result.current.tasks[0]!.running).toBe(true)
+  await act(async () => {
+    refresh()
+    await refreshed
+  })
+  await waitFor(() => expect(hook.result.current.tasks[0]?.running ?? false).toBe(false))
+})
+
 test.each([true, false])(
   'server original capability %s selects the matching recovery contract',
   async (originals) => {

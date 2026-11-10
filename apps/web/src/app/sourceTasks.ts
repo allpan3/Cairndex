@@ -170,3 +170,26 @@ export function taskProgress(task: SourceTask): number {
   }
   return done / task.items.length
 }
+
+const LEAVING = new Set(['move', 'relocate', 'trash', 'retain'])
+
+/**
+ * Library paths that running Move and Trash tasks are taking out of their folder.
+ * A file browser hides them at once rather than after the server confirms. A
+ * failed or waiting-for-a-decision item stays visible, and a stopped task
+ * shows every item it did not move.
+ */
+export function leavingPaths(tasks: SourceTask[]): ReadonlySet<string> {
+  const paths = new Set<string>()
+  for (const task of tasks)
+    if (task.running && !task.inline)
+      for (const item of task.items)
+        if (
+          LEAVING.has(item.request.action) &&
+          item.request.source &&
+          item.state.kind !== 'failed' &&
+          item.state.kind !== 'exists'
+        )
+          paths.add(item.request.source)
+  return paths
+}

@@ -381,29 +381,33 @@ class ReplicaWorker:
                 if self._stop.is_set():
                     return
                 try:
+                    # Hand queued file work to its own lane before the metadata pass,
+                    # which on a network share can take a large part of a second
+                    self._submit_sources(library_id)
                     exchange(library_id)
                     busy = pending(library_id) or busy
-                    with _lock:
-                        handle = _handles.get(library_id)
-                    if (
-                        handle
-                        and isinstance(handle[0], CatalogStore)
-                        and library_id not in self._pending
-                        and len(self._pending) < 2
-                    ):
-                        with handle[0].connection(readonly=True) as db:
-                            waiting = db.execute(
-                                "SELECT 1 FROM source_operations "
-                                "WHERE state IN ('queued','accepted') UNION ALL "
-                                "SELECT 1 FROM catalog_jobs WHERE state='queued' "
-                                "AND json_extract(intent,'$.action')='media_maintenance' LIMIT 1"
-                            ).fetchone()
-                        if waiting:
-                            self._pending[library_id] = self._sources.submit(
-                                self.run_sources, library_id
-                            )
                 except (DomainError, OSError):
                     continue
+
+    def _submit_sources(self, library_id: str) -> None:
+        with _lock:
+            handle = _handles.get(library_id)
+        if (
+            handle is None
+            or not isinstance(handle[0], CatalogStore)
+            or library_id in self._pending
+            or len(self._pending) >= 2
+        ):
+            return
+        with handle[0].connection(readonly=True) as db:
+            waiting = db.execute(
+                "SELECT 1 FROM source_operations "
+                "WHERE state IN ('queued','accepted') UNION ALL "
+                "SELECT 1 FROM catalog_jobs WHERE state='queued' "
+                "AND json_extract(intent,'$.action')='media_maintenance' LIMIT 1"
+            ).fetchone()
+        if waiting:
+            self._pending[library_id] = self._sources.submit(self.run_sources, library_id)
 
     def run_sources(self, library_id: str) -> None:
         """Keep local media work independent of the size of shared history.
