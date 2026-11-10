@@ -254,6 +254,21 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
+- File Browser responsiveness (2026-11-09). On the disposable Samba share at the
+  owner's measured 0.6 ms round trip, a New Folder took 1.1–2.0 s from Enter to
+  the listed folder and a one-file Move 0.8–1.2 s. Server-side spans: about
+  0.17 s per phase waiting behind the background metadata pass (once before
+  prepare and once before apply), 0.2–0.5 s of mkdir work per phase, 0.06–0.35 s
+  per Move phase, up to 0.45 s of polling lag per phase, and under 0.1 s for
+  HTTP and the listing. With an added 3 ms round trip the metadata pass took 2.1–2.7 s and
+  New Folder 9.6 s. Now file work is handed off before that pass, short tasks
+  are polled every 100 ms, submitted names show at once and moved or trashed
+  items leave the listing when their task starts: New Folder lists in 0.9–1.4 s
+  and a Move hides its item in under 10 ms and finishes in 0.6–0.9 s. Not
+  changed: New Folder's retained empty-folder version is the ADR-0036 receipt
+  contract that retry and Undo use, and an idle metadata pass still sends about
+  300 SMB messages (0.16–0.45 s on this share); both are candidates if New Folder
+  or background load still matter on the owner's NAS.
 - Owner decision (2026-11-09, ADR-0042): file copies publish their own version.
   Delete Kept Copies covers completed copies only. Copy-based Rename and Trash
   versions from before ADR-0041 still have no deletion action; Undo of those

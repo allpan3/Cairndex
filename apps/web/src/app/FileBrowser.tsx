@@ -144,6 +144,8 @@ interface FileBrowserProps {
   onNewFolder?: (parent: string, name: string) => void | Promise<void>
   /** Portable Copy to…, Move to… and Move to Trash, in place of the legacy writes. */
   onSourceAction?: (action: 'copy' | 'move' | 'trash', relativePaths: string[]) => void
+  /** Library paths a running Move or Trash is taking out of their folder; hidden at once. */
+  leavingPaths?: ReadonlySet<string>
   // Transient message, with an Undo action when the operation has an inverse.
   onFlash?: (message: string, undo?: () => void) => void
   // App-owned so an upload survives navigation and reports in the sidebar
@@ -393,6 +395,17 @@ function CatalogBrowseScope(props: FileScopeProps) {
       ),
     refetchInterval: 4000,
   })
+  // A Move or Trash takes its items out of view as soon as it starts, as a file
+  // manager does; a failed step shows them again
+  const { leavingPaths } = props
+  const listed = query.data?.entries
+  const entries = useMemo(
+    () =>
+      leavingPaths?.size
+        ? (listed ?? []).filter((entry) => !leavingPaths.has(entry.relative_path))
+        : (listed ?? []),
+    [listed, leavingPaths],
+  )
   return (
     <div className="file-browser">
       <FileList
@@ -408,7 +421,7 @@ function CatalogBrowseScope(props: FileScopeProps) {
             />
           </>
         }
-        entries={query.data?.entries ?? []}
+        entries={entries}
         isLoading={query.isLoading}
         isError={query.isError}
         complete={!!query.data && !query.isFetching && !query.isError}

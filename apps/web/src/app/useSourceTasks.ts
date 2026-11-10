@@ -144,12 +144,14 @@ export function useSourceTasks(
     signal: AbortSignal,
     show: (job: SourceJob) => void,
   ) {
-    // Most steps finish within a fraction of a second: look again soon, then
-    // back off so long copies do not poll faster than they report progress.
+    // Most steps finish within a second: look every 100 ms for the first two
+    // seconds, then back off so long copies do not poll faster than they
+    // report progress.
+    const started = performance.now()
     let delay = 50
     while (waiting.includes(job.state)) {
       await sleep(delay, signal)
-      delay = Math.min(400, delay * 2)
+      delay = performance.now() - started < 2000 ? 100 : Math.min(400, delay * 2)
       job = await sourceRequest<SourceJob>(library, `/${job.id}`)
       show(job)
     }
@@ -313,8 +315,10 @@ export function useSourceTasks(
       }
     } finally {
       controllers.current.delete(id)
-      patch(id, (task) => ({ ...task, running: false, stopping: false }))
+      // Views refresh before the task stops running: a File Browser hides moved
+      // items only while it runs, so they must not reappear in between
       await cache.invalidateQueries()
+      patch(id, (task) => ({ ...task, running: false, stopping: false }))
     }
     if (find(id)?.items.every((item) => item.state.kind === 'done')) await finish(id)
   }

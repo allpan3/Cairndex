@@ -1,5 +1,13 @@
 import { expect, test } from 'vitest'
-import { bundleHome, folderNameFor, suggestBundleTitle } from './sourceTasks'
+import {
+  bundleHome,
+  folderNameFor,
+  leavingPaths,
+  suggestBundleTitle,
+  type SourceTask,
+  type TaskItem,
+  type TaskItemState,
+} from './sourceTasks'
 
 test('a bundle is named after the stem its files share, else its largest file', () => {
   expect(
@@ -52,4 +60,42 @@ test('a bundle name becomes one folder name', () => {
   expect(folderNameFor(' .hidden. ')).toBe('hidden')
   expect(folderNameFor('  ')).toBeNull()
   expect(folderNameFor('/')).toBeNull()
+})
+
+test('a running Move or Trash hides its items until a step fails or the task stops', () => {
+  const item = (
+    action: TaskItem['request']['action'],
+    source: string,
+    state: TaskItemState,
+  ): TaskItem => ({
+    name: source,
+    size: null,
+    request: { operation: source, action, source, destination: `Archive/${source}` },
+    state,
+  })
+  const task = (running: boolean, items: SourceTask['items'], inline = false): SourceTask => ({
+    id: 'task',
+    title: '',
+    summary: '',
+    undoable: true,
+    items,
+    finish: { kind: 'none' },
+    running,
+    stopping: false,
+    inline,
+    error: '',
+  })
+  const paths = leavingPaths([
+    task(true, [
+      item('relocate', 'moving.mp4', { kind: 'applying', percent: null }),
+      item('relocate', 'next.mp4', { kind: 'waiting' }),
+      item('retain', 'refused.mp4', { kind: 'failed', message: 'Synthetic refusal' }),
+      item('relocate', 'occupied.mp4', { kind: 'exists' }),
+      item('copy', 'copied.mp4', { kind: 'applying', percent: null }),
+    ]),
+    task(false, [item('relocate', 'stopped.mp4', { kind: 'waiting' })]),
+    // An inline rename keeps its row: the name editor is in it
+    task(true, [item('relocate', 'renamed.mp4', { kind: 'applying', percent: null })], true),
+  ])
+  expect([...paths].sort()).toEqual(['moving.mp4', 'next.mp4'])
 })

@@ -304,6 +304,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- New Folder, Rename, Move to… and Move to Trash in a portable File Browser
+  respond at once. A submitted name shows as the item's name, and moved or
+  trashed items leave the listing as soon as the task starts; a refused or
+  failed step shows them again with its reason. The server hands a queued file
+  task to its worker before the background metadata pass instead of after it,
+  and the browser checks a short task's state every 100 ms for its first two
+  seconds instead of backing off to 400 ms.
 - Copying a file into the library now writes it once. The copy's own upload, or
   its snapshot of a library file, is moved into place instead of being copied and
   hashed a second time, and no hidden duplicate is kept (ADR-0042). On a test
