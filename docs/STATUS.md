@@ -2,8 +2,11 @@
 
 ## Current checkpoint
 
-The local desktop test installation is `72c42d0`, qualified on 2026-11-10;
-the web test installation was not updated because its folder no longer exists. File Browser New Folder lists the new folder as soon as its name is
+The local desktop test installation is `a724c9d`, qualified on 2026-11-10;
+the web test installation was not updated because its folder no longer exists.
+Grouping review accepts with one **Accept selected** button, a new Update's
+draft keeps the owner's earlier choices on the files still present, and an
+accept refused for changed files runs Update and reopens with those choices. File Browser New Folder lists the new folder as soon as its name is
 entered, Rename, Move and Trash show their result at once, and queued file work
 no longer waits for the background metadata pass. The portable viewer's context
 menu again offers Set Frame as Video Cover and Reset Video Cover to Default. A file copy publishes its own upload or snapshot instead of copying
@@ -187,6 +190,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed one-step grouping accept and carried choices | macOS full frontend gate with 1,497 units; grouping and discovery browser specs 10 of 10, including a changed file refused at accept, the automatic Update and the carried title; 8 carry backend cases (titles, selection, order, moves, merge, collection placement and a missing collection, refused and still-open reviews, bounded pages over 240 files). macOS full backend run 2,228 passed and 1 failed: `test_one_pass_runs_review_edit_steps_for_a_bounded_time` fails 2 of 3 runs in the VM alone and passes 5 of 5 on the host; it expects a 50 ms sleep to fit a 120 ms budget, and neither it nor `advance_grouping` changed. Packaged sidecar smoke test passed on the installed app. |
 | Installed instant New Folder and portable video cover frame | macOS full frontend gate with 1,497 units on the packaged commit, including pending-folder listing, open-once-created, disabled menu and refusal reopen; file-operation browser specs 5 of 5; 3 catalog API backend cases including a `cover_time` set and clear through an ordinary save job, with backend lint and format on the changed test. Not re-measured on the Samba share: the folder row now renders in the same update as Enter. |
 | Installed File Browser responsiveness | Disposable Samba share at a 0.68 ms round trip: browser probe before and after (5 runs each), New Folder listed 1.75 s → 1.10 s median, Move item hidden 1.13 s → under 10 ms and finished 1.14 s → 0.71 s; server spans with an HTTP harness at 0 and about 3 ms added delay. macOS full frontend gate with 1,492 units, source-operation browser spec 5 of 5 and 67 focused worker/source/mkdir/original backend cases; signed package with the Apple Development signer, sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
 | Installed one-write copies and Delete Kept Copies | macOS full backend 2,221 cases and full frontend gate with 1,490 units; on the disposable Samba share, 12 of 14 upload cases including publication by move, refusal of a changed upload, resume after an interrupted move and kept-copy deletion with Undo (the two remount cases fail identically without this change, because their simulated remount does not apply to a real mount); signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit. The 1 GiB test-share measurement is in ADR-0042. Copy time and kept-copy deletion on the owner's NAS remain owner checks |
