@@ -8,17 +8,6 @@ import { apiPost, openMetadataReview, proxyApi, startBackend, stopBackend } from
 
 type Entity = { id: string; fields: Record<string, { value: string } | undefined> }
 
-// Prepared means the review's own status names that state and Accept is offered
-async function expectPrepared(dialog: Locator) {
-  const prepared = dialog.getByRole('region', { name: 'Prepared grouping review' })
-  await expect(prepared.getByRole('status')).toHaveText('Ready for your confirmation', {
-    timeout: 30_000,
-  })
-  await expect(
-    dialog.getByRole('button', { name: 'Accept reviewed grouping', exact: true }),
-  ).toBeEnabled()
-}
-
 // A second Update finds a sidecar for an accepted bundle, two new bundles in its
 // folder and one folder of 100 subjects. The sidecar is listed above the tree and
 // keeps its own selection; converting the 100 subjects is timed both ways.
@@ -78,14 +67,11 @@ test('additions list above the tree, keep their selection and join their bundle 
     const dialog = page.getByRole('dialog', { name: 'Grouping review' })
     const tree = dialog.getByRole('tree', { name: 'Grouping suggestions' })
     const summary = (text: string) => dialog.getByText(text, { exact: true })
-    const ready = dialog.getByRole('button', { name: 'Prepare selected grouping' })
-    const accept = dialog.getByRole('button', { name: 'Accept reviewed grouping', exact: true })
+    const ready = dialog.getByRole('button', { name: 'Accept selected' })
 
     // First Update: accept the suggested collection of two bundles
     await expect(summary('2 / 2 files selected · 2 bundles')).toBeVisible({ timeout: 60_000 })
     await ready.click()
-    await expectPrepared(dialog)
-    await accept.click()
     await expect(summary('0 / 0 files selected · 0 bundles')).toBeVisible({ timeout: 30_000 })
     await dialog.getByRole('button', { name: 'Close', exact: true }).click()
     const bundles = await list('asset_bundles')
@@ -220,8 +206,6 @@ test('additions list above the tree, keep their selection and join their bundle 
     })
     await expect(ready).toBeEnabled({ timeout: 60_000 })
     await ready.click()
-    await expectPrepared(dialog)
-    await accept.click()
     await expect(summary('0 / 202 files selected · 102 bundles')).toBeVisible({
       timeout: 60_000,
     })

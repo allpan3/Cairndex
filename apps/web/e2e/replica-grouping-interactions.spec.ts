@@ -49,7 +49,7 @@ test('grouping summaries, keyboard selection, stem controls, kind, placement and
     await expect(
       dialog.getByText('10 / 10 files selected · 5 bundles', { exact: true }),
     ).toBeVisible()
-    const ready = dialog.getByRole('button', { name: 'Prepare selected grouping' })
+    const ready = dialog.getByRole('button', { name: 'Accept selected' })
     await dialog
       .getByRole('button', { name: 'Narrow the filename match in Renditions', exact: true })
       .click()

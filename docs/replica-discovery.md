@@ -64,7 +64,8 @@ available throughout.
 
 Update observes existing paths, repairs unambiguous external moves and proposes
 new files using the existing grouping rules. Pending files and grouping suggestions
-remain private until **Prepare selected grouping** and **Accept reviewed grouping**.
+remain private until **Accept selected**, which prepares the exact review and
+accepts it once its check passes; a refused check stays on screen with its reason.
 Servers without editable grouping retain the earlier candidate review controls.
 Review can change title, destination, selection and order. Additions append to a
 confirmed bundle without regrouping its existing members or replacing its cover.

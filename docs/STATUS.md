@@ -280,6 +280,16 @@ is not an owner-NAS or full-UI Update benchmark.
   refused before anything is sent. The folder can't be opened until the listing
   contains it. Eagle's folders are library metadata rather than directories on
   the share, so its New Folder has no share round trip to hide.
+- Grouping review work (owner request, 2026-11-10). The owner lost review edits
+  when acceptance reported the selection had changed. Cause: each finished Update
+  builds a fresh draft and its edits are not carried over (the earlier draft stays
+  under Other drafts but cannot be accepted), and one changed file refuses the
+  whole review. Plan, in order: (1) one **Accept selected** button that prepares
+  and accepts; (2) a refused check reports every changed file, unchecks only their
+  groups in the draft with a note, and accepts the rest; (3) when a new Update's
+  draft finishes building, copy the latest edited earlier draft's tree onto the
+  files that still exist, keeping fresh suggestions for new files. Rejected:
+  blocking Update while a review is open.
 - Owner decision (2026-11-09, ADR-0042): file copies publish their own version.
   Delete Kept Copies covers completed copies only. Copy-based Rename and Trash
   versions from before ADR-0041 still have no deletion action; Undo of those

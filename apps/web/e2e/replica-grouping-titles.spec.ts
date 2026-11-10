@@ -44,9 +44,7 @@ test('Widen keeps a subject title below its retained collection @fullstack', asy
     await dialog
       .getByRole('button', { name: 'Convert to collection: Contributor', exact: true })
       .click()
-    await expect(
-      dialog.getByRole('button', { name: 'Prepare selected grouping', exact: true }),
-    ).toBeEnabled()
+    await expect(dialog.getByRole('button', { name: 'Accept selected', exact: true })).toBeEnabled()
     await dialog.getByRole('button', { name: 'Expand suggestion Contributor', exact: true }).click()
     await expect(dialog.getByRole('button', { name: 'SCENE', exact: true })).toBeVisible()
     await dialog.getByRole('button', { name: 'Show files', exact: true }).click()
@@ -64,19 +62,14 @@ test('Widen keeps a subject title below its retained collection @fullstack', asy
         })
         .click()
       await expect(
-        dialog.getByRole('button', { name: 'Prepare selected grouping', exact: true }),
+        dialog.getByRole('button', { name: 'Accept selected', exact: true }),
       ).toBeEnabled()
       await expect(dialog.getByRole('button', { name: 'SCENE', exact: true })).toBeVisible()
       await expect(dialog.getByRole('button', { name: 'Contributor', exact: true })).toHaveCount(1)
       await expect(cover).not.toBeChecked()
     }
     await page.screenshot({ path: test.info().outputPath('synthetic-widen-title.png') })
-    await dialog.getByRole('button', { name: 'Prepare selected grouping', exact: true }).click()
-    const prepared = dialog.getByRole('region', { name: 'Prepared grouping review' })
-    await expect(prepared.getByRole('status')).toHaveText('Ready for your confirmation', {
-      timeout: 30_000,
-    })
-    await dialog.getByRole('button', { name: 'Accept reviewed grouping', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Accept selected', exact: true }).click()
     await expect(dialog.getByText('0 / 1 files selected · 1 bundle', { exact: true })).toBeVisible({
       timeout: 30_000,
     })

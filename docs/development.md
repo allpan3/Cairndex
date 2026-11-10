@@ -774,9 +774,10 @@ unrelated edits and file selection. Media summaries and expandable sibling runs
 keep file lists closed until needed; Show files also applies to later pages.
 File drags and the keyboard Move dialog change logical grouping only.
 
-Prepare selected grouping captures the chosen files, order and collection
-placement. Optional complete-content verification is cancellable. Accept reviewed
-grouping rechecks those bytes and metadata bases before saving. Unselected files
+Accept selected captures the chosen files, order and collection placement in a
+prepared review, then accepts it as soon as it is ready. Optional complete-content
+verification is cancellable. Acceptance rechecks those bytes and metadata bases
+before saving; a refused check stops on the prepared review with its reason. Unselected files
 remain in the private draft. Check reopening from both Bundle Browser and
 Metadata review, and confirm that source bytes remain unchanged.
 

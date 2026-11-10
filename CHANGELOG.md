@@ -308,6 +308,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Grouping review accepts in one step again, as in v0.2.1. **Accept selected**
+  replaces Prepare selected grouping followed by Accept reviewed grouping: it
+  prepares the exact review, checks the files and saves it. Only a refused check
+  stops, on the prepared review with its reason.
 - New Folder, Rename, Move to… and Move to Trash in a portable File Browser
   respond at once. A submitted name shows as the item's name, a new folder is
   listed as soon as its name is entered, and moved or trashed items leave the
