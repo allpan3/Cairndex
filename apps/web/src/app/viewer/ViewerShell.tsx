@@ -110,9 +110,11 @@ export interface ShellCoverActions {
   /** Use the frame at this playhead offset as *this file's* cover thumbnail.
    *  It does not decide which member represents the bundle — that is the file
    *  list's own affordance (owner, 2026-07-30). */
-  onUseFrame: (time: number) => void
+  onUseFrame: (time: number) => void | Promise<string>
   /** Return this file's thumbnail to an automatically extracted frame. */
-  onClear: () => void
+  onClear: () => void | Promise<string>
+  // A surface that returns a promise has its outcome shown in the viewer's own
+  // notice: the message it resolves with, or the reason it failed.
 }
 
 interface ViewerShellProps {
@@ -991,9 +993,13 @@ export function ViewerShell({
   // that can actually own a bundle cover.
   const coverActions = useMemo<CoverFrameActions | null>(() => {
     if (!cover || !current?.canSetCover) return null
+    const report = (outcome: void | Promise<string>) =>
+      outcome?.then(setExportNotice, (reason: Error) =>
+        setExportNotice(`Couldn’t change the video cover: ${reason.message}`),
+      )
     return {
-      onUse: () => cover.onUseFrame(player.currentTime),
-      onClear: cover.onClear,
+      onUse: () => void report(cover.onUseFrame(player.currentTime)),
+      onClear: () => void report(cover.onClear()),
       hasCoverFrame: current.coverTime != null,
     }
   }, [cover, current?.canSetCover, current?.coverTime, player])
