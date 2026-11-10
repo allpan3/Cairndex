@@ -74,12 +74,7 @@ test('a new Update opens current evidence and retains earlier edited drafts @ful
     await expect(
       dialog.getByRole('status').filter({ hasText: 'This draft is from an earlier Update.' }),
     ).toHaveCount(0)
-    await dialog.getByRole('button', { name: 'Prepare selected grouping', exact: true }).click()
-    const prepared = dialog.getByRole('region', { name: 'Prepared grouping review' })
-    await expect(prepared.getByRole('status')).toHaveText('Ready for your confirmation', {
-      timeout: 30_000,
-    })
-    await dialog.getByRole('button', { name: 'Accept reviewed grouping', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Accept selected', exact: true }).click()
     await expect(dialog.getByText('0 / 0 files selected · 0 bundles', { exact: true })).toBeVisible(
       { timeout: 30_000 },
     )
