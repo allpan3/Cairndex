@@ -289,7 +289,15 @@ is not an owner-NAS or full-UI Update benchmark.
   groups in the draft with a note, and accepts the rest; (3) when a new Update's
   draft finishes building, copy the latest edited earlier draft's tree onto the
   files that still exist, keeping fresh suggestions for new files. Rejected:
-  blocking Update while a review is open.
+  blocking Update while a review is open. Done: (1); (3) as `grouping/carry.py`,
+  which copies resulting draft state (not commands) by path, keeping fresh file
+  observations. (2) changed during implementation: the check runs in the review
+  worker against the exact prepared review, and partial acceptance would need
+  source reads in the grouping worker or a narrower prepared review. Instead a
+  refusal for changed files runs Update and opens the carried draft for one more
+  Accept selected; nothing is lost, but unchanged groups are not saved in the same
+  step. Known limit: an edit queued while a new draft builds lands only in the
+  earlier draft.
 - Owner decision (2026-11-09, ADR-0042): file copies publish their own version.
   Delete Kept Copies covers completed copies only. Copy-based Rename and Trash
   versions from before ADR-0041 still have no deletion action; Undo of those

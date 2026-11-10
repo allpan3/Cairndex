@@ -18,6 +18,7 @@ def validate(db: sqlite3.Connection) -> None:
                 "nodes",
                 "files",
                 "folders",
+                "carry",
                 "reasons",
                 "ready",
                 "roles",

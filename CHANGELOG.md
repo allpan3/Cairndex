@@ -312,6 +312,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   replaces Prepare selected grouping followed by Accept reviewed grouping: it
   prepares the exact review, checks the files and saves it. Only a refused check
   stops, on the prepared review with its reason.
+- A new Update's grouping draft keeps the choices made in the earlier draft:
+  titles, selection, file order and moves, merges and splits, collection
+  placement, folder and stem choices, for the files that are still there. New
+  files keep fresh suggestions. When Accept selected is refused because files
+  changed since the last Update, the review runs Update itself and opens the new
+  draft with those choices kept, so the work is not lost.
 - New Folder, Rename, Move to… and Move to Trash in a portable File Browser
   respond at once. A submitted name shows as the item's name, a new folder is
   listed as soon as its name is entered, and moved or trashed items leave the

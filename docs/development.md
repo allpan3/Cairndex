@@ -777,7 +777,9 @@ File drags and the keyboard Move dialog change logical grouping only.
 Accept selected captures the chosen files, order and collection placement in a
 prepared review, then accepts it as soon as it is ready. Optional complete-content
 verification is cancellable. Acceptance rechecks those bytes and metadata bases
-before saving; a refused check stops on the prepared review with its reason. Unselected files
+before saving. A check refused because files changed runs Update and opens the new
+draft, which carries the choices (`grouping/carry.py`); other refusals stop on the
+prepared review with their reason. Unselected files
 remain in the private draft. Check reopening from both Bundle Browser and
 Metadata review, and confirm that source bytes remain unchanged.
 
