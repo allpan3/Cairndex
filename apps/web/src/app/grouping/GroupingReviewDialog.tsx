@@ -128,6 +128,7 @@ function GroupingReviewSession({
   function acceptSelected() {
     if (!canPrepare) return
     setAcceptFor(state.workspace)
+    setCarried(null)
     state.edit({ action: 'prepare', verify_content: verify })
   }
   const { accept } = state
@@ -138,6 +139,41 @@ function GroupingReviewSession({
     accepted.current = readyReview
     void accept()
   }, [acceptWhenReady, readyReview, accept])
+  // A refusal because files changed since the last Update is recovered here
+  // rather than handed back: Update runs, its new draft keeps these choices on
+  // the files still present (the server carries them), and the dialog opens it
+  // for the owner to check the changes and choose Accept selected again.
+  const refused =
+    acceptWhenReady && review?.state === 'failed' && /run Update/.test(review.error ?? '')
+      ? review.id
+      : null
+  // The review being recovered, and the latest Update when it was refused
+  const [recovery, setRecovery] = useState<{ review: string; before: string | null } | null>(null)
+  const [carried, setCarried] = useState<string | null>(null)
+  const recovered = useRef<string | null>(null)
+  const { start, running } = d
+  const before = latest ?? null
+  useEffect(() => {
+    if (!refused || recovered.current === refused) return
+    recovered.current = refused
+    // An Update already running is waited for instead of started again
+    void (running ? Promise.resolve() : start({ openReview: false })).then(() =>
+      setRecovery({ review: refused, before }),
+    )
+  }, [refused, running, start, before])
+  const { choose } = state
+  const from = state.workspace
+  const arrived =
+    recovery && latest && latest !== recovery.before && latest !== from ? latest : null
+  const switched = useRef<string | null>(null)
+  useEffect(() => {
+    if (!arrived || !from || switched.current === arrived) return
+    switched.current = arrived
+    void choose(arrived).then(() => {
+      setRecovery(null)
+      setCarried(from)
+    })
+  }, [arrived, from, choose])
   return (
     <>
       <div
@@ -190,7 +226,10 @@ function GroupingReviewSession({
                   Drag files between bundles. Double-click a name to rename it, or right-click a row
                   (Shift+F10) for more actions.
                 </li>
-                <li>Reflects the last Update. Run Update again if files changed since.</li>
+                <li>
+                  Reflects the last Update. A new Update keeps your choices for the files that are
+                  still there.
+                </li>
               </ul>
             </details>
             {/* One reserved line, so a notice never pushes the list under the pointer */}
@@ -236,6 +275,12 @@ function GroupingReviewSession({
               )}
             </div>
           </div>
+          {carried && carried !== state.workspace && (
+            <p className="grp-hint" role="status">
+              Some files changed since the last Update, so Update ran again. Your choices are kept
+              on the files that are still there. Check them, then choose Accept selected.
+            </p>
+          )}
           {state.workspace && latest && state.workspace !== latest && (
             <p className="grp-hint" role="status">
               This draft is from an earlier Update.{' '}
@@ -391,7 +436,9 @@ function GroupingReviewSession({
                       ? 'Rechecking files and saving…'
                       : review.state === 'applied'
                         ? 'Grouping saved.'
-                        : 'This review can no longer be accepted. Return to editing to prepare it again.'}
+                        : refused
+                          ? 'Some files changed since the last Update. Running Update; your choices are kept…'
+                          : 'This review can no longer be accepted. Return to editing to prepare it again.'}
               </p>
               {/* Its own line, so the status above names only the review's state */}
               {review?.progress && (
@@ -399,7 +446,7 @@ function GroupingReviewSession({
                   {review.progress.progress} / {review.progress.total} files
                 </p>
               )}
-              {review?.error && (
+              {review?.error && !refused && (
                 <p className="grp-error" role="alert">
                   {review.error}
                 </p>

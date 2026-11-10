@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { apiPost, openMetadataReview, proxyApi, startBackend, stopBackend } from './realBackend'
 
-test('a new Update opens current evidence and retains earlier edited drafts @fullstack', async ({
+test('a new Update keeps earlier choices, and a refused accept recovers them @fullstack', async ({
   browser,
 }) => {
   test.setTimeout(120_000)
@@ -49,15 +49,18 @@ test('a new Update opens current evidence and retains earlier edited drafts @ful
     await dialog.getByRole('button', { name: 'Close', exact: true }).click()
 
     // Change only the synthetic file's generation. The saved draft is now
-    // stale, while a new Update obtains current evidence for the same bytes.
-    const before = await stat(file)
-    await utimes(file, before.atime, new Date(before.mtimeMs + 10_000))
+    // stale; a new Update obtains current evidence and keeps the owner's title.
+    const touch = async () => {
+      const before = await stat(file)
+      await utimes(file, before.atime, new Date(before.mtimeMs + 10_000))
+    }
+    await touch()
     await page.getByRole('button', { name: 'Update', exact: true }).click()
     await expect(dialog).toBeVisible({ timeout: 30_000 })
-    await expect(dialog.getByRole('button', { name: 'scene', exact: true })).toBeVisible()
     await expect(
       dialog.getByRole('button', { name: 'Saved earlier choice', exact: true }),
-    ).toHaveCount(0)
+    ).toBeVisible({ timeout: 30_000 })
+    await expect(dialog.getByRole('button', { name: 'scene', exact: true })).toHaveCount(0)
 
     // The earlier draft and its title are still reachable, with its age clear.
     await dialog.getByText('Other drafts', { exact: true }).click()
@@ -70,10 +73,23 @@ test('a new Update opens current evidence and retains earlier edited drafts @ful
     ).toBeVisible()
     await page.screenshot({ path: test.info().outputPath('synthetic-earlier-draft.png') })
     await dialog.getByRole('button', { name: 'Open latest Update', exact: true }).click()
-    await expect(dialog.getByRole('button', { name: 'scene', exact: true })).toBeVisible()
     await expect(
       dialog.getByRole('status').filter({ hasText: 'This draft is from an earlier Update.' }),
     ).toHaveCount(0)
+
+    // The file changes again before Accept selected. The check refuses, Update
+    // runs by itself, and the new draft still has the owner's title.
+    await touch()
+    await dialog.getByRole('button', { name: 'Accept selected', exact: true }).click()
+    await expect(
+      dialog
+        .getByRole('status')
+        .filter({ hasText: 'Some files changed since the last Update, so Update ran again.' }),
+    ).toBeVisible({ timeout: 30_000 })
+    await expect(
+      dialog.getByRole('button', { name: 'Saved earlier choice', exact: true }),
+    ).toBeVisible({ timeout: 30_000 })
+    await page.screenshot({ path: test.info().outputPath('synthetic-recovered-accept.png') })
     await dialog.getByRole('button', { name: 'Accept selected', exact: true }).click()
     await expect(dialog.getByText('0 / 0 files selected · 0 bundles', { exact: true })).toBeVisible(
       { timeout: 30_000 },
@@ -84,7 +100,8 @@ test('a new Update opens current evidence and retains earlier edited drafts @ful
     expect(response.ok).toBe(true)
     expect(
       (await response.json()).items.some(
-        (item: { fields: { title?: { value: string } } }) => item.fields.title?.value === '"scene"',
+        (item: { fields: { title?: { value: string } } }) =>
+          item.fields.title?.value === '"Saved earlier choice"',
       ),
     ).toBe(true)
     expect(await readFile(file)).toEqual(bytes)
