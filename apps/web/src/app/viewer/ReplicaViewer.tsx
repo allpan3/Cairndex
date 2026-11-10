@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { replicaRequest } from '../../api/replicas'
 import { useReplicaStatus } from '../../api/useReplicaStatus'
 import { resolveAssetUrl, type FileBrowserEntry } from '../../api/client'
@@ -8,7 +8,8 @@ import type { components } from '../../api/schema'
 import { usePersistentState } from '../../state/usePersistentState'
 import { DEFAULT_PLAYER_PREFS, type PlayerPrefs } from '../types'
 import { playlistFor } from '../bundleRows'
-import { ViewerShell } from './ViewerShell'
+import { ViewerShell, type ShellCoverActions } from './ViewerShell'
+import { saveCoverTime } from './replicaCover'
 import { viewerItemFromFile, viewerItemFromEntry, pathPlayable } from './viewerItem'
 import { useLibraryHostFiles, type LibraryHostFiles } from '../../desktop/useLibraryHostFiles'
 import { Moments } from '../Moments'
@@ -243,7 +244,6 @@ export function ReplicaViewer({
             ...item,
             key: `${id ?? `path:${baseItem.key}`}:${token ?? 'unobserved'}`,
             sourceGeneration: token,
-            canSetCover: false,
             contentUrl: token
               ? `${item.contentUrl}${item.contentUrl.includes('?') ? '&' : '?'}source_generation=${token}`
               : item.contentUrl,
@@ -258,6 +258,31 @@ export function ReplicaViewer({
       ),
     [playlist, observation, pathObservation, folder],
   )
+  const queryClient = useQueryClient()
+  const coverFile = observation?.file.id
+  const coverDuration = items[index]?.duration ?? null
+  const refetchPlaylist = pages.refetch
+  const refetchFile = local.refetch
+  // The cover offset is the file's own metadata; the bundle card, inspector
+  // and this viewer's "Reset" entry all read it back once the save lands.
+  const cover = useMemo<ShellCoverActions | null>(() => {
+    if (!coverFile) return null
+    const write = async (time: number | null, done: string) => {
+      await saveCoverTime(library, coverFile, time, coverDuration)
+      await Promise.all([
+        refetchFile(),
+        folder ? null : refetchPlaylist(),
+        ...['catalog-browse', 'catalog-detail', 'catalog-inspector-files'].map((key) =>
+          queryClient.invalidateQueries({ queryKey: [key, library] }),
+        ),
+      ])
+      return done
+    }
+    return {
+      onUseFrame: (time) => write(time, 'Video cover set'),
+      onClear: () => write(null, 'Video cover reset'),
+    }
+  }, [coverFile, coverDuration, folder, library, queryClient, refetchFile, refetchPlaylist])
   const playable = useMemo(() => {
     if (pathObservation?.entry.media_kind === 'video') {
       const value = pathPlayable(viewerItemFromEntry(pathObservation.entry))
@@ -339,6 +364,7 @@ export function ReplicaViewer({
           ? 'This bundle has no previewable media outside its folder members. Open a cataloged file to view that folder.'
           : null
       }
+      cover={cover}
       savedMoments={momentsEnabled ? undefined : first?.moments}
       inspectorTarget={inspectorTarget}
       onRetryMedia={retry}

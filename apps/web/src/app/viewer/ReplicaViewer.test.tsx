@@ -5,6 +5,7 @@ import { expect, test, vi } from 'vitest'
 import { setActiveLibraryId } from '../../api/client'
 import { replicaRequest } from '../../api/replicas'
 import { ReplicaViewer } from './ReplicaViewer'
+import { coverOffset } from './replicaCover'
 import { useMomentSource } from '../momentSource'
 
 vi.mock('../../api/replicas', () => ({ replicaRequest: vi.fn() }))
@@ -16,7 +17,13 @@ vi.mock('./ViewerShell', () => ({
     playable,
     inspectorTarget,
     savedMoments,
+    cover,
+    items,
+    index,
   }: {
+    cover?: { onUseFrame: (time: number) => unknown; onClear: () => unknown } | null
+    items?: { canSetCover: boolean }[]
+    index?: number
     loading: boolean
     error: Error | null
     serverExports: boolean
@@ -35,6 +42,11 @@ vi.mock('./ViewerShell', () => ({
         {playable && <p>Storyboard {playable.storyboard_url ?? 'none'}</p>}
         <p>Rail {inspectorTarget?.kind ?? 'none'}</p>
         {inspectorTarget?.kind === 'catalog' && inspectorTarget.inspector}
+        {cover && items?.[index ?? -1]?.canSetCover && (
+          <button type="button" onClick={() => void cover.onUseFrame(12.34567)}>
+            Set Frame as Video Cover
+          </button>
+        )}
         <p>
           {source
             ? `Catalog moments ${source.moments.length}${source.previews ? ' with previews' : ''}`
@@ -304,4 +316,73 @@ test('a workspace inspector fills the rail with the moments inside it', async ()
   view.unmount()
   client.clear()
   setActiveLibraryId(null)
+})
+
+// v0.2.1 let a video's current frame become its thumbnail; the portable viewer
+// saves that offset as the file's catalog metadata
+test('the current frame is saved as the video cover through a catalog save', async () => {
+  setActiveLibraryId('synthetic')
+  const file = {
+    id: 'clip',
+    bundle_id: 'bundle',
+    relative_path: 'clip.mp4',
+    original_filename: 'clip.mp4',
+    display_title: 'clip',
+    availability: 'available',
+    media_kind: 'video',
+    supported: true,
+    cover_time: null,
+  }
+  const saves: unknown[] = []
+  vi.mocked(replicaRequest).mockImplementation(async (_library, path, method, body) => {
+    if (path === '/status') return {}
+    if (path.includes('offset=0'))
+      return { files: [file], cursor: 'clip', directories: [], moments: [], next_offset: null }
+    if (path === '/media/files/clip') return { file, state: 'available', generation: 'g1' }
+    if (path === '/catalog/entities/asset_files/clip')
+      return {
+        family: 'asset_files',
+        id: 'clip',
+        parents: ['head'],
+        observed: {},
+        has_conflicts: false,
+        fields: {
+          cover_time: { unit: 'asset_files/clip/cover_time', basis: ['r1'], held: null },
+          $alive: { unit: 'asset_files/clip/$alive', basis: ['r0'], held: null },
+        },
+      }
+    if (path === '/catalog/jobs' && method === 'POST') {
+      saves.push(body)
+      return { state: 'succeeded', result: { event: 'e1' } }
+    }
+    return {}
+  })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ReplicaViewer library="synthetic" target={{ bundleId: 'bundle' }} onClose={() => {}} />
+    </QueryClientProvider>,
+  )
+  ;(await screen.findByRole('button', { name: 'Set Frame as Video Cover' })).click()
+  await waitFor(() => expect(saves).toHaveLength(1))
+  expect(saves[0]).toMatchObject({
+    action: 'save',
+    body: {
+      changes: [
+        { unit: 'asset_files/clip/cover_time', value: '12.346', basis: ['r1'] },
+        { unit: 'asset_files/clip/$alive', value: 'true', basis: ['r0'] },
+      ],
+      parents: ['head'],
+    },
+  })
+  view.unmount()
+  client.clear()
+  setActiveLibraryId(null)
+})
+
+test('a cover offset stays inside the video', () => {
+  expect(coverOffset(30, 10)).toBe(9.9)
+  expect(coverOffset(-1, 10)).toBe(0)
+  expect(coverOffset(4, null)).toBe(4)
+  expect(coverOffset(null, 10)).toBeNull()
 })

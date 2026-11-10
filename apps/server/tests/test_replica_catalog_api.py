@@ -144,3 +144,26 @@ def test_catalog_http_job_receipts_drafts_and_missing_basis(api):
     assert client.post(path + "/jobs", json=commit).status_code == 202
     assert finished_job(client, path, "commit")["state"] == "succeeded"
     assert store.entity("moments", "moment-one")["fields"]["$alive"]["value"] == "false"
+
+
+# The viewer's cover frame is the file's authored offset, saved like any other edit
+def test_cover_frame_is_an_ordinary_catalog_save(api):
+    client, base, store = api
+    path = base + "/replica/catalog"
+    for operation, value in (("cover-set", "12.346"), ("cover-clear", "null")):
+        entity = client.get(path + "/entities/asset_files/file-video").json()
+        fields = entity["fields"]
+        intent = {
+            "changes": [
+                {"unit": fields[name]["unit"], "value": raw, "basis": fields[name]["basis"]}
+                for name, raw in (("cover_time", value), ("$alive", "true"))
+            ],
+            "parents": entity["parents"],
+            "resolve": False,
+            "recover": False,
+        }
+        job = {"operation": operation, "action": "save", "body": intent}
+        assert client.post(path + "/jobs", json=job).status_code == 202
+        assert finished_job(client, path, operation)["state"] == "succeeded"
+        saved = store.entity("asset_files", "file-video")["fields"]["cover_time"]["value"]
+        assert saved == value

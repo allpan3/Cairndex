@@ -50,6 +50,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   rail's `+` mark a frame or a span; the docked Moments rail lists the bundle's
   moments, edits their comments, plays and loops them, and deletes them. Every
   write is a catalog job. Servers advertise the capability as `moments_version`.
+- Restore Set Frame as Video Cover and Reset Video Cover to Default in the
+  portable viewer's context menu, as in v0.2.1. The frame becomes the video's
+  thumbnail, and the bundle's when that video is its cover. The offset is saved
+  as the file's `cover_time` through an ordinary catalog save job.
 - Restore moment tags in the portable viewer. Each rail row shows its tags and
   a chooser that searches the library's tags. A tag added to a moment is also
   added to its bundle (ADR-0025); removing it from the moment leaves the bundle
