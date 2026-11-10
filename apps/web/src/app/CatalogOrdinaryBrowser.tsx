@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { leavingPaths } from './sourceTasks'
+import { arrivingFolders, leavingPaths } from './sourceTasks'
 import { CatalogQueryContext } from '../api/catalogQuery'
 import { AllTagsPage } from './AllTagsPage'
 import type { FileBrowserEntry, FileSelection, LibraryRead } from '../api/client'
@@ -355,6 +355,7 @@ export function CatalogOrdinaryBrowser(props: {
   const libraryName = props.libraries.find((item) => item.id === props.library)?.name ?? 'Library'
   const tasks = useSourceTasks(props.library, setNotice, status?.source_original === true)
   const leaving = useMemo(() => leavingPaths(tasks.tasks), [tasks.tasks])
+  const arriving = useMemo(() => arrivingFolders(tasks.tasks), [tasks.tasks])
   // Write mode in Libraries is the one switch; each action below is its own operation
   const writeMode = useWriteMode(props.library, sourceEnabled)
   const writable = sourceEnabled && writeMode.data?.effective === true
@@ -671,6 +672,7 @@ export function CatalogOrdinaryBrowser(props: {
                 onRename={rename}
                 onSourceAction={sourceAction}
                 leavingPaths={leaving}
+                arrivingFolders={arriving}
                 onNewFolder={
                   writable && status?.source_mkdir
                     ? (parent, name) => tasks.name(newFolderTask(parent, name))

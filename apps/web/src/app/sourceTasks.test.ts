@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import {
+  arrivingFolders,
   bundleHome,
   folderNameFor,
   leavingPaths,
@@ -98,4 +99,32 @@ test('a running Move or Trash hides its items until a step fails or the task sto
     task(true, [item('relocate', 'renamed.mp4', { kind: 'applying', percent: null })], true),
   ])
   expect([...paths].sort()).toEqual(['moving.mp4', 'next.mp4'])
+})
+
+test('a running New Folder lists its folder until the server refuses it or the task stops', () => {
+  const folder = (destination: string, state: TaskItemState): TaskItem => ({
+    name: destination,
+    size: null,
+    request: { operation: destination, action: 'mkdir', destination },
+    state,
+  })
+  const task = (running: boolean, items: SourceTask['items']): SourceTask => ({
+    id: 'task',
+    title: '',
+    summary: '',
+    undoable: true,
+    items,
+    finish: { kind: 'none' },
+    running,
+    stopping: false,
+    inline: true,
+    error: '',
+  })
+  const paths = arrivingFolders([
+    task(true, [folder('Show/Creating', { kind: 'applying', percent: null })]),
+    task(true, [folder('Show/Taken', { kind: 'exists' })]),
+    task(true, [folder('Show/Refused', { kind: 'failed', message: 'Synthetic refusal' })]),
+    task(false, [folder('Show/Stopped', { kind: 'waiting' })]),
+  ])
+  expect([...paths]).toEqual(['Show/Creating'])
 })

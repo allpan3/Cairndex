@@ -271,7 +271,13 @@ is not an owner-NAS or full-UI Update benchmark.
   changed: New Folder's retained empty-folder version is the ADR-0036 receipt
   contract that retry and Undo use, and an idle metadata pass still sends about
   300 SMB messages (0.16–0.45 s on this share); both are candidates if New Folder
-  or background load still matter on the owner's NAS.
+  or background load still matter on the owner's NAS. Follow-up (2026-11-10): the
+  owner still saw New Folder's wait, so a new folder is now listed as soon as its
+  name is entered, like Eagle, and the journaled creation finishes behind it. A
+  refused name reopens the field with the reason; an occupied listed name is
+  refused before anything is sent. The folder can't be opened until the listing
+  contains it. Eagle's folders are library metadata rather than directories on
+  the share, so its New Folder has no share round trip to hide.
 - Owner decision (2026-11-09, ADR-0042): file copies publish their own version.
   Delete Kept Copies covers completed copies only. Copy-based Rename and Trash
   versions from before ADR-0041 still have no deletion action; Undo of those

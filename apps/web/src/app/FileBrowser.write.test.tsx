@@ -56,10 +56,12 @@ const FILE: FileBrowserEntry = {
 // True while the rows on screen are the previous folder's, held so the listing
 // does not blank on every step into a folder.
 let listingIsStale = false
+// Folders the server has created since the listing above was written
+let createdEntries: FileBrowserEntry[] = []
 
 vi.mock('../api/hooks', () => ({
   useFileBrowser: () => ({
-    data: { entries: [FOLDER, FILE], missing_files_updated: 0, path: 'Show' },
+    data: { entries: [FOLDER, FILE, ...createdEntries], missing_files_updated: 0, path: 'Show' },
     dataUpdatedAt: 1,
     error: null,
     isError: false,
@@ -143,6 +145,7 @@ beforeEach(() => {
   setActiveLibraryId(`file-write-${++libraryIndex}`)
   vi.clearAllMocks()
   listingIsStale = false
+  createdEntries = []
 })
 
 // New Folder left the toolbar for the File menu and the context menus, so the
@@ -634,4 +637,81 @@ test('a file is not offered the folder action', () => {
   fireEvent.contextMenu(row('ep1.mkv'))
 
   expect(screen.queryByText('New Collection from Folder…')).toBeNull()
+})
+
+// A portable File Browser whose New Folder tasks stay running until refused
+function portableFolders() {
+  let refuse!: (reason: Error) => void
+  const onNewFolder = vi.fn(
+    () =>
+      new Promise<void>((_resolve, reject) => {
+        refuse = reject
+      }),
+  )
+  const client = new QueryClient()
+  const navigate = vi.fn()
+  // The portable parent lists a running New Folder task's folder as arriving
+  const browser = (arriving: string[]) => (
+    <QueryClientProvider client={client}>
+      <FileBrowser
+        libraryName="Media"
+        scope="browse"
+        path="Show"
+        selectedPath={null}
+        onNavigate={navigate}
+        onSelectEntry={() => undefined}
+        playerPrefs={DEFAULT_PLAYER_PREFS}
+        onPlayerPrefs={() => undefined}
+        onAddToBundle={() => undefined}
+        onCreateBundle={() => undefined}
+        hostLabels={hostLabelsFor('macos')}
+        onNewFolder={onNewFolder}
+        arrivingFolders={new Set(arriving)}
+      />
+    </QueryClientProvider>
+  )
+  return { onNewFolder, navigate, browser, refuse: (reason: Error) => refuse(reason) }
+}
+
+test('a portable New Folder is listed at once and opened once it exists', () => {
+  const { onNewFolder, navigate, browser } = portableFolders()
+  const view = render(browser([]))
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  const name = () => screen.getByLabelText('New folder name')
+  // An occupied name is refused before anything is sent
+  fireEvent.change(name(), { target: { value: 'season 1' } })
+  expect(screen.getByRole('alert')).toHaveTextContent('This name is already in use.')
+  fireEvent.change(name(), { target: { value: 'Extras' } })
+  fireEvent.keyDown(name(), { key: 'Enter' })
+  expect(onNewFolder).toHaveBeenCalledWith('Show', 'Extras')
+  // Nothing waits for the server: the field closes and the folder is listed
+  view.rerender(browser(['Show/Extras']))
+  expect(screen.queryByLabelText('New folder name')).not.toBeInTheDocument()
+  expect(row('Extras')).toHaveAttribute('aria-busy', 'true')
+  fireEvent.contextMenu(row('Extras'))
+  expect(screen.getByRole('menuitem', { name: 'New Folder' })).toBeDisabled()
+  expect(screen.getByRole('menuitem', { name: 'Copy Path' })).toBeEnabled()
+  // Opening it waits for the folder to exist, then goes in
+  fireEvent.doubleClick(row('Extras'))
+  expect(navigate).not.toHaveBeenCalled()
+  createdEntries = [{ ...FOLDER, name: 'Extras', relative_path: 'Show/Extras' }]
+  view.rerender(browser([]))
+  expect(navigate).toHaveBeenCalledWith('Show/Extras')
+  expect(row('Extras')).not.toHaveAttribute('aria-busy')
+})
+
+test('a refused portable New Folder leaves the listing and reopens its name field', async () => {
+  const { browser, refuse } = portableFolders()
+  const view = render(browser([]))
+  const name = () => screen.getByLabelText('New folder name')
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  fireEvent.change(name(), { target: { value: 'Bonus' } })
+  fireEvent.keyDown(name(), { key: 'Enter' })
+  view.rerender(browser(['Show/Bonus']))
+  expect(row('Bonus')).toHaveAttribute('aria-busy', 'true')
+  view.rerender(browser([]))
+  refuse(new Error('Synthetic refusal'))
+  expect(await screen.findByLabelText('New folder name')).toHaveValue('Bonus')
+  expect(screen.getByRole('alert')).toHaveTextContent('Synthetic refusal')
+  expect(screen.queryByText('Bonus', { selector: '.file-row__text' })).not.toBeInTheDocument()
 })

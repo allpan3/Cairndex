@@ -309,9 +309,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 ### Changed
 
 - New Folder, Rename, Move to… and Move to Trash in a portable File Browser
-  respond at once. A submitted name shows as the item's name, and moved or
-  trashed items leave the listing as soon as the task starts; a refused or
-  failed step shows them again with its reason. The server hands a queued file
+  respond at once. A submitted name shows as the item's name, a new folder is
+  listed as soon as its name is entered, and moved or trashed items leave the
+  listing as soon as the task starts; a refused or failed step shows them again
+  with its reason, and a refused new folder reopens its name field. A folder
+  still being created can't be opened yet. The server hands a queued file
   task to its worker before the background metadata pass instead of after it,
   and the browser checks a short task's state every 100 ms for its first two
   seconds instead of backing off to 400 ms.

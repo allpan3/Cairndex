@@ -6556,6 +6556,12 @@ code {
   color: var(--text);
   cursor: progress;
 }
+/* A folder New Folder is still creating looks like any other; only the pointer
+   says it cannot be opened yet. */
+.file-row[aria-busy='true'],
+.card[aria-busy='true'] {
+  cursor: progress;
+}
 /* The unnamed new folder sits above the listing: it has no position in the
    current sort until it has a name, and inventing one would move it on commit. */
 .file-newfolder {

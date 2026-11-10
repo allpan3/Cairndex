@@ -568,17 +568,20 @@ export function NameEditor({
   onCancel,
   label,
   validate,
+  initialError = '',
   className = 'edit file-row__rename',
 }: {
   className?: string
   initial: string
+  /** A reason from an earlier attempt at this name, shown until it is edited. */
+  initialError?: string
   onSubmit: (name: string) => void | Promise<void>
   onCancel: () => void
   label: string
   validate?: (name: string) => string | null
 }) {
   const [value, setValue] = useState(initial)
-  const [remoteError, setRemoteError] = useState('')
+  const [remoteError, setRemoteError] = useState(initialError)
   const [busy, setBusy] = useState(false)
   const error = validate?.(value.trim()) || remoteError
   const errorId = useId()
