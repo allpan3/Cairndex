@@ -354,7 +354,12 @@ test('New Folder creates in the current folder and Undo preserves later files @f
     await expect(activity).toHaveCount(0)
     await name.fill('Vacant')
     await name.press('Enter')
+    // Listed at once; it can be renamed once the server has created it
     await expect(files.getByRole('row').filter({ hasText: 'Vacant' })).toBeVisible()
+    await expect(files.getByRole('row').filter({ hasText: 'Vacant' })).not.toHaveAttribute(
+      'aria-busy',
+      'true',
+    )
     // Rename rejects the same occupied destination, without moving the browser.
     const toolbar = page.getByRole('button', { name: 'New Folder', exact: true })
     const toolbarBefore = await toolbar.boundingBox()

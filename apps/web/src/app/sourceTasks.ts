@@ -171,6 +171,26 @@ export function taskProgress(task: SourceTask): number {
   return done / task.items.length
 }
 
+/**
+ * Folders that running New Folder tasks are creating. A file browser lists them
+ * at once, as a file manager does, while the journaled creation finishes in the
+ * background; a refused name takes the row away again.
+ */
+export function arrivingFolders(tasks: SourceTask[]): ReadonlySet<string> {
+  const paths = new Set<string>()
+  for (const task of tasks)
+    if (task.running)
+      for (const item of task.items)
+        if (
+          item.request.action === 'mkdir' &&
+          item.request.destination &&
+          item.state.kind !== 'failed' &&
+          item.state.kind !== 'exists'
+        )
+          paths.add(item.request.destination)
+  return paths
+}
+
 const LEAVING = new Set(['move', 'relocate', 'trash', 'retain'])
 
 /**
