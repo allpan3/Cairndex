@@ -2,8 +2,10 @@
 
 ## Current checkpoint
 
-The local desktop and web test installation is `35310a1`, qualified on
-2026-11-09. A file copy publishes its own upload or snapshot instead of copying
+The local desktop and web test installation is `2959536`, qualified on
+2026-11-09. File Browser New Folder, Rename, Move and Trash show their result
+at once, and queued file work no longer waits for the background metadata
+pass. A file copy publishes its own upload or snapshot instead of copying
 it a second time and keeps no duplicate (ADR-0042); Trash offers **Delete Kept
 Copies…** for the duplicates earlier builds kept. The copy dialog marks folders
 it will create as “new folder”. Update's file changes list each changed file with its folder and
@@ -184,6 +186,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed File Browser responsiveness | Disposable Samba share at a 0.68 ms round trip: browser probe before and after (5 runs each), New Folder listed 1.75 s → 1.10 s median, Move item hidden 1.13 s → under 10 ms and finished 1.14 s → 0.71 s; server spans with an HTTP harness at 0 and about 3 ms added delay. macOS full frontend gate with 1,492 units, source-operation browser spec 5 of 5 and 67 focused worker/source/mkdir/original backend cases; signed package with the Apple Development signer, sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
 | Installed one-write copies and Delete Kept Copies | macOS full backend 2,221 cases and full frontend gate with 1,490 units; on the disposable Samba share, 12 of 14 upload cases including publication by move, refusal of a changed upload, resume after an interrupted move and kept-copy deletion with Undo (the two remount cases fail identically without this change, because their simulated remount does not apply to a real mount); signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit. The 1 GiB test-share measurement is in ADR-0042. Copy time and kept-copy deletion on the owner's NAS remain owner checks |
 | Installed file-changes pane | macOS full frontend gate with 1,489 units on the packaged commit, including the one-action verify/prepare/accept unit test; discovery browser spec 4 of 4 and grouping browser specs 6 of 6; a synthetic library with two ambiguous moves and three unconfirmed files (one 600 MB) screenshotted at desktop and phone width, with Check and Restore reading, restoring and leaving the list; signed app-only package with sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit. Restoring the owner's pre-fix copies on the NAS remains an owner check |
 | Installed copied-file samples across remounts | Disposable Samba share: an 8 MiB copy recorded its samples; after a remount changed `st_dev`, the content check passed and Update raised no file-change candidates. Host: 285 related backend cases (two more need host ffmpeg); macOS: backend lint/format/mypy and 92 focused discovery, verification, upload and SMB cases including both ffmpeg cases; signed app-only package with its full frontend gate, sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
@@ -254,6 +257,21 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
+- File Browser responsiveness (2026-11-09). On the disposable Samba share at the
+  owner's measured 0.6 ms round trip, a New Folder took 1.1–2.0 s from Enter to
+  the listed folder and a one-file Move 0.8–1.2 s. Server-side spans: about
+  0.17 s per phase waiting behind the background metadata pass (once before
+  prepare and once before apply), 0.2–0.5 s of mkdir work per phase, 0.06–0.35 s
+  per Move phase, up to 0.45 s of polling lag per phase, and under 0.1 s for
+  HTTP and the listing. With an added 3 ms round trip the metadata pass took 2.1–2.7 s and
+  New Folder 9.6 s. Now file work is handed off before that pass, short tasks
+  are polled every 100 ms, submitted names show at once and moved or trashed
+  items leave the listing when their task starts: New Folder lists in 0.9–1.4 s
+  and a Move hides its item in under 10 ms and finishes in 0.6–0.9 s. Not
+  changed: New Folder's retained empty-folder version is the ADR-0036 receipt
+  contract that retry and Undo use, and an idle metadata pass still sends about
+  300 SMB messages (0.16–0.45 s on this share); both are candidates if New Folder
+  or background load still matter on the owner's NAS.
 - Owner decision (2026-11-09, ADR-0042): file copies publish their own version.
   Delete Kept Copies covers completed copies only. Copy-based Rename and Trash
   versions from before ADR-0041 still have no deletion action; Undo of those

@@ -6547,6 +6547,15 @@ code {
 .card__meta .file-row__rename {
   width: 100%;
 }
+/* A submitted name reads as the item's name at once while the server finishes;
+   a refusal makes it an editable field again */
+.file-row__rename[aria-busy='true'],
+.file-row__rename[aria-busy='true']:focus {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+  cursor: progress;
+}
 /* The unnamed new folder sits above the listing: it has no position in the
    current sort until it has a name, and inventing one would move it on commit. */
 .file-newfolder {

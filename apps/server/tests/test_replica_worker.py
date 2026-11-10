@@ -47,6 +47,22 @@ def test_worker_waits_briefly_only_while_work_is_queued(monkeypatch):
     assert waits.requested == [idle, busy, busy, idle, busy, idle]
 
 
+def test_file_work_is_handed_off_before_the_metadata_pass(monkeypatch):
+    # On a network share one metadata pass can take most of a second; a queued
+    # New Folder or Move must not wait for it
+    order: list[str] = []
+    monkeypatch.setattr(service, "_handles", {"library": None})
+    monkeypatch.setattr(service, "exchange", lambda library_id, **_: order.append("exchange"))
+    monkeypatch.setattr(service, "pending", lambda library_id: False)
+    worker = service.ReplicaWorker()
+    monkeypatch.setattr(worker, "_submit_sources", lambda library_id: order.append("submit"))
+    waits = Waits(passes=1)
+    worker._stop = worker._wake = waits  # type: ignore[assignment]
+    worker.run()
+    worker._sources.shutdown(wait=False)
+    assert order == ["submit", "exchange"]
+
+
 def test_queued_work_starts_a_pass_without_the_idle_wait(monkeypatch):
     passes = threading.Event()
     monkeypatch.setattr(service, "IDLE_WAIT", 60.0)
