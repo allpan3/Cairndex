@@ -146,6 +146,8 @@ interface FileBrowserProps {
   onSourceAction?: (action: 'copy' | 'move' | 'trash', relativePaths: string[]) => void
   /** Library paths a running Move or Trash is taking out of their folder; hidden at once. */
   leavingPaths?: ReadonlySet<string>
+  /** Folders a running New Folder is creating; listed at once and inert until created. */
+  arrivingFolders?: ReadonlySet<string>
   // Transient message, with an Undo action when the operation has an inverse.
   onFlash?: (message: string, undo?: () => void) => void
   // App-owned so an upload survives navigation and reports in the sidebar
@@ -304,6 +306,47 @@ function EntryThumb({
 
 // Inline SVG icons (no font dependency, monochrome via currentColor) chosen by
 // directory/media kind.
+/**
+ * The listing plus the folders New Folder is creating directly inside `folder`,
+ * until the listing itself contains them.
+ */
+function withArrivingFolders(
+  entries: FileBrowserEntry[],
+  arriving: ReadonlySet<string> | undefined,
+  folder: string,
+): FileBrowserEntry[] {
+  if (!arriving?.size) return entries
+  const listed = new Set(entries.map((entry) => entry.relative_path))
+  const added: FileBrowserEntry[] = []
+  for (const path of arriving) {
+    const cut = path.lastIndexOf('/')
+    if ((cut < 0 ? '' : path.slice(0, cut)) !== folder || listed.has(path)) continue
+    added.push({
+      name: path.slice(cut + 1),
+      relative_path: path,
+      kind: 'directory',
+      linked: false,
+      unbundled: false,
+      supported: false,
+      bundle_id: null,
+      file_id: null,
+      media_kind: null,
+      mime_type: null,
+      extension: null,
+      container: null,
+      size_bytes: null,
+      duration: null,
+      audio_codec: null,
+      video_codec: null,
+      video_codec_tag: null,
+      created_at: null,
+      modified_at: null,
+      resume_position: null,
+    })
+  }
+  return added.length ? [...entries, ...added] : entries
+}
+
 function entryIcon(entry: FileBrowserEntry) {
   if (entry.kind === 'directory') return <IconFolder />
   switch (entry.media_kind) {
@@ -645,7 +688,8 @@ function FileList({
   setSearch,
   header,
   headerTrailing,
-  entries,
+  entries: listedEntries,
+  arrivingFolders,
   stale = false,
   isLoading,
   isError,
@@ -680,6 +724,24 @@ function FileList({
   playerPrefs,
   onPlayerPrefs,
 }: FileListProps) {
+  const entries = useMemo(
+    () => withArrivingFolders(listedEntries, arrivingFolders, currentPath),
+    [listedEntries, arrivingFolders, currentPath],
+  )
+  // A folder still being created has no directory to open, rename or move yet
+  const arriving = (entry: FileBrowserEntry) =>
+    Boolean(arrivingFolders?.has(entry.relative_path)) &&
+    !listedEntries.some((listed) => listed.relative_path === entry.relative_path)
+  // Opening a folder still being created goes in once the listing has it
+  const openWhenCreated = useRef<string | null>(null)
+  useEffect(() => {
+    const path = openWhenCreated.current
+    if (!path) return
+    if (listedEntries.some((listed) => listed.relative_path === path)) {
+      openWhenCreated.current = null
+      onNavigate(path)
+    } else if (!arrivingFolders?.has(path)) openWhenCreated.current = null
+  }, [listedEntries, arrivingFolders, onNavigate])
   const menu = useContextMenu()
   // The file whose contact-sheet options are open, if any.
   const [sheetTarget, setSheetTarget] = useState<ContactSheetTarget | null>(null)
@@ -698,12 +760,32 @@ function FileList({
   const startNewFolder = () => {
     if (canCreateFolder) write.startNewFolder()
   }
-  const submitNewFolder = async (name: string) => {
+  // A refused portable New Folder reopens its name field with the reason
+  const [refusedFolder, setRefusedFolder] = useState<{ name: string; error: string } | null>(null)
+  const submitNewFolder = (name: string) => {
+    const trimmed = name.trim()
     if (onNewFolder) {
-      await onNewFolder(currentPath, name.trim())
+      // The folder is listed as soon as its task starts, as a file manager
+      // does; the journaled creation finishes in the background.
+      const created = onNewFolder(currentPath, trimmed)
+      setRefusedFolder(null)
       write.cancelNewFolder()
+      void Promise.resolve(created).catch((reason: Error) => {
+        setRefusedFolder({ name: trimmed, error: reason.message })
+        write.startNewFolder()
+      })
     } else if (writeMode) write.submitNewFolder(name)
   }
+  const cancelNewFolder = () => {
+    setRefusedFolder(null)
+    write.cancelNewFolder()
+  }
+  // An occupied name is caught here at once; the server still refuses a race
+  const validateNewFolder = (name: string) =>
+    newFolderError(name) ??
+    (entries.some((entry) => entry.name.toLowerCase() === name.toLowerCase())
+      ? 'This name is already in use.'
+      : null)
   const canRename = Boolean(onRename) || writeMode
   if (!canRename && write.renamingPath) write.cancelRename()
   const submitRename = async (path: string, name: string) => {
@@ -807,6 +889,7 @@ function FileList({
   // selects the inclusive range from the anchor. Both directories and files take
   // part (bundling later filters to files). Navigation/opening is double-click.
   const clickEntry = (entry: FileBrowserEntry, e: SelectionModifiers) => {
+    if (arriving(entry)) return
     // Belt and braces with the `listing--inert` style: CSS alone would leave the
     // guard dependent on a stylesheet having loaded, and what it is guarding is
     // Rename/Move to…/Move to Trash resolving against the previous folder.
@@ -845,6 +928,10 @@ function FileList({
 
   const openEntry = (entry: FileBrowserEntry) => {
     if (stale) return
+    if (arriving(entry)) {
+      openWhenCreated.current = entry.relative_path
+      return
+    }
     if (entry.kind === 'directory') {
       onNavigate(entry.relative_path)
       return
@@ -856,9 +943,11 @@ function FileList({
 
   // Rename is the one action a directory has, so a directory's context menu now
   // exists at all — it used to return early because bundling acts on files only.
-  const contextDirectory = (entry: FileBrowserEntry, e: React.MouseEvent) => {
-    setSelected(new Set([entry.relative_path]))
-    onSelectEntry(entry)
+  const contextDirectory = (entry: FileBrowserEntry, e: React.MouseEvent, pending = false) => {
+    if (!pending) {
+      setSelected(new Set([entry.relative_path]))
+      onSelectEntry(entry)
+    }
     const items: MenuEntry[] = [
       { label: 'Copy Path', onClick: () => copyPath(entry.relative_path) },
     ]
@@ -890,7 +979,13 @@ function FileList({
       )
     }
     if (canCreateFolder) items.push({ label: 'New Folder', onClick: startNewFolder })
-    menu.open(e, items)
+    // A folder still being created offers its menu, but only its path works yet
+    menu.open(
+      e,
+      pending
+        ? items.map((item) => item && { ...item, disabled: item.label !== 'Copy Path' })
+        : items,
+    )
   }
 
   const contextRow = (entry: FileBrowserEntry, e: React.MouseEvent) => {
@@ -899,7 +994,7 @@ function FileList({
       // Not write-mode-gated any more: a folder's menu now carries Copy Path and
       // New Collection from Folder…, both metadata-only. The entries that do
       // touch the filesystem are gated inside.
-      contextDirectory(entry, e)
+      contextDirectory(entry, e, arriving(entry))
       return // bundling acts on files only
     }
     const inSelection = selected.has(entry.relative_path)
@@ -1468,11 +1563,12 @@ function FileList({
                 <IconFolder />
               </span>
               <NameEditor
-                initial="Untitled"
+                initial={refusedFolder?.name ?? 'Untitled'}
+                initialError={refusedFolder?.error}
                 label="New folder name"
-                validate={newFolderError}
+                validate={validateNewFolder}
                 onSubmit={submitNewFolder}
-                onCancel={write.cancelNewFolder}
+                onCancel={cancelNewFolder}
               />
             </div>
           </div>
@@ -1552,6 +1648,7 @@ function FileList({
                     <FileRow
                       key={entry.relative_path}
                       entry={entry}
+                      pending={arriving(entry)}
                       label={labelFor(entry)}
                       selected={selected.has(entry.relative_path)}
                       onClick={(e) => clickEntry(entry, e)}
@@ -1570,6 +1667,7 @@ function FileList({
                     <FileCard
                       key={entry.relative_path}
                       entry={entry}
+                      pending={arriving(entry)}
                       label={labelFor(entry)}
                       selected={selected.has(entry.relative_path)}
                       onClick={(e) => clickEntry(entry, e)}
@@ -1679,7 +1777,10 @@ function FileRow({
   onRename,
   onCancelRename,
   label,
+  pending = false,
 }: {
+  /** A folder still being created: shown, but not yet openable. */
+  pending?: boolean
   entry: FileBrowserEntry
   /** The name as displayed — may have its extension hidden (a display pref). */
   label: string
@@ -1696,6 +1797,7 @@ function FileRow({
   return (
     <div
       className={`file-row${selected ? ' file-row--selected' : ''}`}
+      aria-busy={pending || undefined}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
@@ -1769,7 +1871,10 @@ function FileCard({
   onRename,
   onCancelRename,
   label,
+  pending = false,
 }: {
+  /** A folder still being created: shown, but not yet openable. */
+  pending?: boolean
   entry: FileBrowserEntry
   /** The name as displayed — may have its extension hidden (a display pref). */
   label: string
@@ -1821,6 +1926,7 @@ function FileCard({
   return (
     <div
       className={`card${selected ? ' card--selected' : ''}`}
+      aria-busy={pending || undefined}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
