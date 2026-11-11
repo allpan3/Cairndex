@@ -84,8 +84,8 @@ cover belongs to the collection or a descendant. Removing its last membership
 previews the corresponding cover clear. Source bytes never move with membership.
 
 Deletion previews include the complete metadata cascade and retain deleted values.
-A `dissolve` preview deletes up to 100 bundles the way the legacy Delete Bundle
-did: each file of a bundle moves into its own staged one-file bundle (provisional,
+A `dissolve` preview deletes up to 100 bundles, and a larger selection runs as a
+bulk operation (below), the way the legacy Delete Bundle did: each file of a bundle moves into its own staged one-file bundle (provisional,
 `scan_suggestion`, titled by the file's stem), keeping its identity, and the
 emptied bundle is deleted. Moments follow their file; a subtitle pairing of two
 files cannot follow both and is deleted. A bundle that is already an Unbundled
@@ -240,7 +240,7 @@ An already observed conflict requires explicit metadata review.
 | Open | Existing `/libraries/register`; capability read at `/replica/status`; normal portable Create and reviewed legacy conversion | Provider delivery and owner acceptance retain the limits in STATUS |
 | Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails; with `browse_version: 4`, card badges and the hover preview from this device's last observations | A file this device has not opened has no duration or preview |
 | Bundle albums | Shared album tiles/rows and virtualized layout; bounded `/replica/media/bundles/{id}/album` pages; mapped regular-file drag-out | Source operations use File Browser; file note/source controls remain deferred |
-| Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews | At most 100 explicit bundle IDs per review; notes stay per bundle |
+| Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews; larger selections run as batched bulk operations | Notes stay per bundle; Select All takes only the loaded pages |
 | System views | All, Recent (including local Date Opened order), Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Cross-device resume remains separate; Trash uses the source-operation journal |
 | Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
 | Sort and filters | Title, rating and Date Added; with `browse_version: 3`, Manual and File Count; with `browse_version: 11`, local Size, Date Modified and Date Opened; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Unknown size/opening values sort last; unsupported request fields/sorts return 422 |
@@ -276,7 +276,9 @@ change rewrites the current `collections/_/$forest` value through one committed
 `arrange` preview, so a held or changed arrangement is refused for review.
 With `selection_version: 2`, cards dropped on a collection join it through the
 bulk membership command, and a move out of the open collection removes them
-from it in a second command.
+from it in a second command. Above 100 cards each command is a bulk operation;
+if the first leaves bundles unchanged, the removal does not run, so no bundle
+ends up in neither collection.
 Tag selection uses the shared Any/All/Equal rules, exclusions and descendant
 toggle. Queries, facet
 counts and previews apply to the complete eligible population before pagination.
@@ -371,12 +373,15 @@ ask for only the destinations at least one selected bundle has (`assigned: true`
 With `selection_version: 4`, it can ask for only the destinations every selected
 bundle has (`common: true`), which the bulk inspector shows as chips, as v0.2.1
 did. Against version 3 the inspector filters the `assigned` page the same way.
+With `selection_version: 5`, a selection larger than one request changes as a
+bulk operation, described below.
 Cmd/Ctrl+A selects
 only the loaded bundle pages; Escape clears selection. Search, filter, sort,
 collection and system-view changes clear the active selection. Appending a page
 does not select its new rows automatically.
 
-The bulk inspector has v0.2.1's layout and accepts 1–100 explicit bundle IDs.
+The bulk inspector has v0.2.1's layout. One request names at most 100 bundles;
+a larger selection reads in chunks of 100 and changes as a bulk operation.
 Size sums current selected-card observations only when every total is known;
 otherwise it states that the value is unknown on this device. A title (saved on
 Enter or leaving the field) or a rating replaces one field on all
@@ -393,6 +398,35 @@ keeps them for Retry, even when the browser selection changes or the page
 reloads; it cannot be discarded until its receipt is known. Bulk fields remain
 disabled while such a save is pending. Scalar inspector drafts stay separate.
 Malformed retained bytes remain available for recovery.
+
+**Bulk operations** (`selection_version: 5`) change a selection above 100
+bundles: a title or rating, a tag or collection membership (including a drop on
+a sidebar collection and Paste Tags) or Delete Bundles. The browser stages each
+bundle with the bases it read in pages of at most 500
+(`POST /bundles/selection/bulk/{operation}`). For a title or rating these are the
+bases the inspector displayed. A membership change reads the destination for
+every bundle when it is chosen, as a tree pick and a drop do. A delete stages no
+bases, as the 100-bundle delete does. A `bulk_selection` job then names the
+change and the staged total; the job is refused unless the whole selection is
+staged, and staging stops once it exists. The server worker applies one batch of
+100 bundles per pass, when no ordinary job is waiting, so an edit made meanwhile
+does not wait for the whole selection. Each batch is one event with its own retry
+identity (`{operation}-{batch}`), and it commits with each bundle's outcome and
+the job's progress (`total`, `applied`, `skipped`) in one transaction. A restart
+therefore resumes at the next batch, and Cancel, which applies only to a queued
+job, stops the operation after the current batch.
+
+A bundle whose staged bases no longer match, or that is held for conflict review
+or gone, is left as it was and counted as skipped. A change to the shared tag or
+collection itself (its lifetime basis is not the reviewed one or the operation's
+own last batch) stops the whole operation, since every remaining batch would act
+on a target the owner did not see. When an operation skips bundles, is cancelled
+or stops, `GET /bundles/selection/bulk/{operation}/unchanged` pages the bundles it
+left as they were, and the browser offers **Select Unchanged** to review them
+again. That list stays readable until the next bulk operation starts. A progress
+line shows "N of M" with Cancel while the operation runs, also after a reload.
+A large selection's inspector reads are not polled every two seconds; they are
+read again after each change, and the skip rule covers what changed meanwhile.
 
 The browser and viewer share Add Files and mapped cover drag-out inside the
 bundle inspector. Add Files requires a confirmed bundle and a supported server;

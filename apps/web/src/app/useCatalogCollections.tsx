@@ -11,7 +11,9 @@ import {
   remove,
   sortCollectionsByName,
 } from '../api/catalogOrganize'
+import { CatalogBulkIncomplete } from '../api/catalogBulk'
 import { captureRequestScope } from '../api/requestScope'
+import { failureNotice } from './catalogBulkNotice'
 import type { CatalogNotice } from './CatalogToast'
 import { CleanupOrderDialog } from './CleanupOrderDialog'
 import { getActiveDrag, type DragItem } from './dnd'
@@ -92,7 +94,9 @@ export function useCatalogCollections(
         } catch {
           return
         }
-        onNotice({ text: reason.message, alert: true })
+        // A bulk change that stopped part way saved its finished batches
+        if (reason instanceof CatalogBulkIncomplete) void refresh()
+        onNotice(failureNotice(reason))
         failed?.()
       })
   }

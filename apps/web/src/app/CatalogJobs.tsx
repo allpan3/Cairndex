@@ -9,6 +9,7 @@ const actions: Record<Job['action'], string> = {
   recover: 'Prepare recovery',
   commit_preview: 'Apply reviewed operation',
   media_maintenance: 'Prepare local media',
+  bulk_selection: 'Change selected bundles',
 }
 
 // Only explicitly opened jobs fetch large review payloads; the list stays paginated

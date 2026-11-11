@@ -1,4 +1,5 @@
 import { catalog } from './catalog'
+import { SELECTION_REQUEST } from './catalogBulk'
 import { setBulkMembership } from './catalogOrganize'
 import { captureRequestScope, getConnectionScopeKey, requestScopeVersion } from './requestScope'
 import type { components } from './schema'
@@ -35,12 +36,17 @@ export async function copyCatalogTags(library: string, bundle: string): Promise<
 
 /** Union tags through existing guarded saves; an interrupted paste only adds memberships. */
 export async function pasteCatalogTags(library: string, ids: string[]): Promise<number> {
-  if (!ids.length || ids.length > 100) throw new Error('Choose between one and 100 bundles.')
+  if (!ids.length) throw new Error('Choose at least one bundle.')
   const tags = copiedCatalogTags(library)
   if (!tags.length) return 0
   const current = captureRequestScope()
   for (const target of tags) {
     current()
+    // A larger selection adds each tag as a bulk operation, one after another
+    if (ids.length > SELECTION_REQUEST) {
+      await setBulkMembership(library, ids, 'tags', { id: target, observed: {} }, true)
+      continue
+    }
     const page = await catalog<BulkPage>(library, '/bundles/selection/memberships', 'POST', {
       ids,
       family: 'tags',

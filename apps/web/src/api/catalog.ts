@@ -31,7 +31,7 @@ export type Control = {
 export type Change = { unit: string; value: string; basis: string[] }
 export type Save = { changes: Change[]; parents: string[]; resolve: boolean; recover: boolean }
 export type Job = {
-  action: 'save' | 'preview' | 'commit_preview' | 'recover' | 'media_maintenance'
+  action: 'save' | 'preview' | 'commit_preview' | 'recover' | 'media_maintenance' | 'bulk_selection'
   id: string
   state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
   result: (Save & { event?: string }) | null

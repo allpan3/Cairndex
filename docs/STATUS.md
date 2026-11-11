@@ -263,6 +263,17 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
+- Portable migration gaps (owner request, 2026-11-11), local branch
+  `fix/portable-migration-gaps`, not pushed or installed. Restored: Size, Has
+  missing file and Has cover filters from this device's observations; File
+  Browser card hover previews for unchanged observed videos; Unbundled sorts over
+  the whole queue (`browse_version: 17`); and selections above 100 bundles as
+  batched server bulk operations (`selection_version: 5`, owner-chosen design:
+  skip changed bundles and continue, stop on a change to the shared target).
+  Limits: Unbundled still pages 100 files behind **Load more**; Size is not in
+  the ordinary condition editor; Select All takes only loaded pages; a large
+  selection's inspector is read again only after a change, not every two
+  seconds; Size-based Clean Up Order is out of scope.
 - File Browser responsiveness (2026-11-09). On the disposable Samba share at the
   owner's measured 0.6 ms round trip, a New Folder took 1.1–2.0 s from Enter to
   the listed folder and a one-file Move 0.8–1.2 s. Server-side spans: about

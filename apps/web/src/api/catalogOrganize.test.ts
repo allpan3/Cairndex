@@ -12,6 +12,7 @@ vi.mock('./catalog', () => ({
   catalog: vi.fn(),
   runJob: vi.fn(),
   operationId: () => 'synthetic-operation',
+  CatalogJobError: class extends Error {},
 }))
 
 const names = { a: 'Alpha', b: 'Beta', c: 'Gamma', d: 'Delta', e: 'Echo' }
@@ -105,14 +106,80 @@ test('a copy or an already complete side commits nothing for that side', async (
   expect(bulk()).toEqual([])
 })
 
-test('a held choice or an oversized selection is refused before any write', async () => {
+test('a held choice is refused before any write', async () => {
   choices({ target: 0 }, true)
   await expect(moveBundlesToCollection('library', ['one'], 'target', null)).rejects.toThrow(
     'metadata review',
   )
+  expect(runJob).not.toHaveBeenCalled()
+})
+
+test('a drop of more than 100 bundles stages every bundle with its own bases', async () => {
   const many = Array.from({ length: 101 }, (_, index) => `bundle-${index}`)
-  await expect(moveBundlesToCollection('library', many, 'target', null)).rejects.toThrow(
-    'at most 100',
-  )
+  const calls: [string, unknown][] = []
+  vi.mocked(catalog).mockImplementation(async (_library, path, _method, body) => {
+    calls.push([path, body])
+    if (path === '/bundles/selection/memberships') {
+      const { ids } = body as { ids: string[] }
+      return {
+        items: [
+          {
+            id: 'target',
+            name: 'Target',
+            assigned_count: 0,
+            held: false,
+            observed: {
+              'collections/target/$alive': ['shared'],
+              ...Object.fromEntries(
+                ids.flatMap((id) => [
+                  [`asset_bundles/${id}/$alive`, [`alive-${id}`]],
+                  [`asset_bundle_collections/${id}~target/$alive`, []],
+                ]),
+              ),
+            },
+          },
+        ],
+        next_cursor: null,
+      } as never
+    }
+    if (path === '/jobs')
+      return {
+        id: 'synthetic-operation',
+        state: 'succeeded',
+        result: { total: 101, applied: 101, skipped: 0 },
+      } as never
+    return { staged: 101 } as never
+  })
+  await moveBundlesToCollection('library', many, 'target', null)
+  // Two chunked reads, one staged page, then one bulk job
+  expect(calls.map(([path]) => path)).toEqual([
+    '/bundles/selection/memberships',
+    '/bundles/selection/memberships',
+    '/bundles/selection/bulk/synthetic-operation',
+    '/jobs',
+  ])
+  const staged = calls[2]![1] as { start: number; items: { id: string; observed: object }[] }
+  expect(staged.items).toHaveLength(101)
+  expect(staged.items[100]).toEqual({
+    id: 'bundle-100',
+    observed: {
+      'asset_bundles/bundle-100/$alive': ['alive-bundle-100'],
+      'asset_bundle_collections/bundle-100~target/$alive': [],
+    },
+  })
+  expect(calls[3]![1]).toEqual({
+    action: 'bulk_selection',
+    operation: 'synthetic-operation',
+    body: {
+      total: 101,
+      change: {
+        action: 'bulk',
+        field: 'collections',
+        target: 'target',
+        assigned: true,
+        observed: { 'collections/target/$alive': ['shared'] },
+      },
+    },
+  })
   expect(runJob).not.toHaveBeenCalled()
 })
