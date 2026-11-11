@@ -47,6 +47,10 @@ class FileBrowserEntryRead(BaseModel):
     # playback decision, which refuses >8-bit sources the browser cannot decode.
     bit_depth: int | None = None
     resume_position: float | None
+    # A portable file's observed generation, when the listing's stat still matches
+    # this device's last inspection; it names the hover storyboard to request.
+    generation: str | None = None
+    storyboard_version: str | None = None
     # True when linked into a scan-staged provisional bundle (not yet confirmed).
     unbundled: bool
 

@@ -1891,7 +1891,9 @@ function FileCard({
   const isDir = entry.kind === 'directory'
   const previewSource = useMemo<HoverPreviewSource | null>(
     () =>
-      entry.local_state != null
+      // A portable entry previews only what this device last inspected and
+      // still finds unchanged; the server omits the details otherwise.
+      entry.local_state === 'unavailable'
         ? null
         : entry.media_kind === 'video' && entry.file_id && entry.duration
           ? {
@@ -1906,10 +1908,14 @@ function FileCard({
               audioCodec: entry.audio_codec,
               duration: entry.duration,
               startTime: entry.resume_position,
+              storyboardVersion: entry.storyboard_version,
+              generation: entry.generation,
             }
           : null,
     [
       entry.local_state,
+      entry.generation,
+      entry.storyboard_version,
       entry.audio_codec,
       entry.bit_depth,
       entry.container,

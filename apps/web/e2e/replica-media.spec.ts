@@ -450,7 +450,9 @@ test('browser inspector plays a moment and hands its drafts to the viewer @fulls
 })
 
 // Card badges and the hover preview use what this device last observed, never another device's bytes
-test('portable cards preview a video this device has observed @fullstack', async ({ page }) => {
+test('portable bundle and File Browser cards preview a video this device has observed @fullstack', async ({
+  page,
+}) => {
   test.setTimeout(120_000)
   const scratch = await mkdtemp(join(tmpdir(), 'cairndex-replica-card-preview-'))
   const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
@@ -498,6 +500,22 @@ test('portable cards preview a video this device has observed @fullstack', async
     await expect(preview).toBeAttached()
     await expect
       .poll(() => preview.evaluate((video: HTMLVideoElement) => video.currentTime))
+      .toBeGreaterThan(0)
+
+    // The same observation previews the file's File Browser card, as in v0.2.1
+    await page.mouse.move(0, 0)
+    await page.getByRole('tab', { name: 'Files', exact: true }).click()
+    await page.getByRole('button', { name: 'Card', exact: true }).click()
+    await page.locator('[data-relpath="Playback"]').dblclick()
+    const fileThumb = page.locator('[data-relpath="Playback/movie.mp4"] .card__thumb')
+    await expect(fileThumb).toHaveAttribute('data-hover-preview-mode', 'direct')
+    // Hover where the card is now: the grid settles as its thumbnails load
+    await fileThumb.hover()
+    await fileThumb.hover({ position: { x: 12, y: 12 } })
+    const filePreview = fileThumb.getByTestId('hover-preview-video')
+    await expect(filePreview).toBeAttached()
+    await expect
+      .poll(() => filePreview.evaluate((video: HTMLVideoElement) => video.currentTime))
       .toBeGreaterThan(0)
     expect(await readdir(join(root, '.cairndex'))).not.toContain('cache')
   } finally {

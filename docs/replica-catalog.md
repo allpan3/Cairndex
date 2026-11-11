@@ -246,7 +246,7 @@ An already observed conflict requires explicit metadata review.
 | Sort and filters | Title, rating and Date Added; with `browse_version: 3`, Manual and File Count; with `browse_version: 11`, local Size, Date Modified and Date Opened; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Unknown size/opening values sort last; unsupported request fields/sorts return 422 |
 | Inspector | Shared browser/viewer title, notes, rating, cover, memberships, moments and file controls; guarded ordering, removal and folder rows; local summaries | Complete conflicts/history use Metadata Review; file note/source controls remain deferred |
 | Conflict/history | Existing complete choice, history and recovery controls under Metadata review | Common inspector conflict indicators do not replace complete structural review |
-| File Browser | Shared File Browser through `/replica/media/directory`, paginated indexed `/replica/catalog/files`, and scoped unindexed media opening | Provider hydration and physical-directory pagination remain separate |
+| File Browser | Shared File Browser through `/replica/media/directory`, paginated indexed `/replica/catalog/files`, and scoped unindexed media opening; card hover preview for indexed videos this device inspected and the listing's stat finds unchanged | Provider hydration and physical-directory pagination remain separate |
 | Update/media | Phase-aware discovery, editable grouping, initial indexing, explicit bounded media passes and the shared viewer | Source operations use File Browser; provider hydration and cross-device resume remain unavailable |
 
 Search has the same token-prefix AND contract as legacy bundle search. It includes

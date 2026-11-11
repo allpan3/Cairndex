@@ -4,6 +4,7 @@ import errno
 import json
 import mimetypes
 import os
+import sqlite3
 import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -14,7 +15,8 @@ from cairndex.api.schemas.file_browser import FileBrowserEntryRead, FileBrowserL
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path, resolve_within_root
 from cairndex.media.image_support import is_openable_media
-from cairndex.replicas.media import ReplicaMedia
+from cairndex.media.storyboards import storyboard_cache_key
+from cairndex.replicas.media import ReplicaMedia, generation
 from cairndex.scanning.media_types import classify, is_hidden_relative_path
 
 
@@ -47,6 +49,7 @@ def list_directory(media: ReplicaMedia, path: str) -> FileBrowserListingRead:
     if not visible(relative):
         raise ValidationError("Hidden directories are unavailable")
     entries: dict[str, FileBrowserEntryRead] = {}
+    observations: dict[str, sqlite3.Row] = {}
     with media.store.connection(readonly=True) as db:
         rows = db.execute(
             "SELECT p.path,p.entity,c.body,"
@@ -64,6 +67,18 @@ def list_directory(media: ReplicaMedia, path: str) -> FileBrowserListingRead:
                 body = json.loads(row["body"])
                 entries[row["path"]] = entry(row["path"], "file", row["entity"], body["bundle_id"])
                 entries[row["path"]].unbundled = bool(row["unbundled"])
+        # This device's cached media details, read once for the whole directory
+        observations = {
+            row["path"]: row
+            for row in db.execute(
+                "SELECT p.path,m.generation,m.metadata,g.position,g.completed "
+                "FROM catalog_paths p JOIN local_media m ON m.file_id=p.entity "
+                "LEFT JOIN local_progress g ON g.file_id=p.entity AND g.generation=m.generation "
+                "WHERE p.parent=? AND p.family='asset_files' AND m.state='available' "
+                "AND m.generation IS NOT NULL",
+                (relative,),
+            )
+        }
         for row in db.execute(
             "SELECT path FROM catalog_directories WHERE parent=? ORDER BY path", (relative,)
         ):
@@ -92,6 +107,8 @@ def list_directory(media: ReplicaMedia, path: str) -> FileBrowserListingRead:
                 value.created_at = datetime.fromtimestamp(
                     getattr(info, "st_birthtime", info.st_ctime), UTC
                 )
+                if value.file_id and child_path in observations:
+                    observed(value, observations[child_path], generation(child_path, info))
     except OSError as error:
         if error.errno in (errno.ELOOP, errno.ENOTDIR):
             raise ValidationError(
@@ -116,6 +133,30 @@ def list_directory(media: ReplicaMedia, path: str) -> FileBrowserListingRead:
         missing_files_updated=0,
         local_state="observed",
     )
+
+
+def observed(value: FileBrowserEntryRead, row: sqlite3.Row, current: str) -> None:
+    """Media details for a card's hover preview, from this device's last inspection.
+
+    They apply only while the file is unchanged since then: the listing's own
+    stat must give the same generation. Nothing is probed here, and the media
+    routes validate the generation again before serving bytes.
+    """
+    if row["generation"] != current:
+        return
+    meta = json.loads(row["metadata"]) if row["metadata"] else {}
+    value.container = meta.get("container")
+    value.video_codec = meta.get("video_codec")
+    value.video_codec_tag = meta.get("video_codec_tag")
+    value.audio_codec = meta.get("audio_codec")
+    value.duration = meta.get("duration")
+    value.width = meta.get("width")
+    value.height = meta.get("height")
+    value.fps = meta.get("fps")
+    value.bit_depth = meta.get("bit_depth")
+    value.resume_position = None if row["completed"] or not row["position"] else row["position"]
+    value.generation = current
+    value.storyboard_version = storyboard_cache_key(current)
 
 
 def entry(

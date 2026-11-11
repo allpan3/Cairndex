@@ -6030,6 +6030,8 @@ export interface components {
             file_id: string | null;
             /** Fps */
             fps?: number | null;
+            /** Generation */
+            generation?: string | null;
             /** Height */
             height?: number | null;
             /** Kind */
@@ -6052,6 +6054,8 @@ export interface components {
             resume_position: number | null;
             /** Size Bytes */
             size_bytes: number | null;
+            /** Storyboard Version */
+            storyboard_version?: string | null;
             /** Supported */
             supported: boolean;
             /** Unbundled */
