@@ -205,3 +205,44 @@ def test_local_directory_retains_catalog_and_rejects_unsafe_sources(tmp_path):
     for path in ("../outside", "/tmp", "C:\\outside", ".cairndex", "Synthetic/escape"):
         with pytest.raises(ValidationError):
             list_directory(media, path)
+
+
+def test_local_directory_offers_hover_details_only_for_an_unchanged_observation(tmp_path):
+    import os
+
+    from cairndex.media.storyboards import storyboard_cache_key
+    from cairndex.replicas.media import generation
+
+    converted = prepare_disposable(create_disposable(parent=tmp_path, bundles=3))
+    media = ReplicaMedia(converted.store, converted.package, "synthetic")
+    source = converted.package / "Synthetic" / "雪.mp4"
+    source.parent.mkdir(exist_ok=True)
+    source.write_bytes(b"synthetic video")
+
+    def video():
+        return next(
+            item for item in list_directory(media, "Synthetic").entries if item.name == "雪.mp4"
+        )
+
+    # Never inspected on this device: no media details, so no preview
+    assert (video().duration, video().generation) == (None, None)
+    token = generation("Synthetic/雪.mp4", os.lstat(source))
+    meta = {"duration": 60.0, "container": "mp4", "video_codec": "h264", "bit_depth": 8}
+    with converted.store.connection() as db:
+        db.execute(
+            "INSERT INTO local_media VALUES ('file-video',?,'available',?,NULL)",
+            (token, json.dumps(meta)),
+        )
+        db.execute("INSERT INTO local_progress VALUES ('file-video',?,12.5,60,0)", (token,))
+    entry = video()
+    assert (entry.duration, entry.container, entry.video_codec, entry.bit_depth) == (
+        60.0,
+        "mp4",
+        "h264",
+        8,
+    )
+    assert (entry.resume_position, entry.generation) == (12.5, token)
+    assert entry.storyboard_version == storyboard_cache_key(token)
+    # A change since that inspection withholds the details until it is inspected again
+    source.write_bytes(b"synthetic video, edited")
+    assert (video().duration, video().generation) == (None, None)

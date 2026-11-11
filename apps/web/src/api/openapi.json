@@ -5116,6 +5116,17 @@
             ],
             "title": "Fps"
           },
+          "generation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation"
+          },
           "height": {
             "anyOf": [
               {
@@ -5214,6 +5225,17 @@
               }
             ],
             "title": "Size Bytes"
+          },
+          "storyboard_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storyboard Version"
           },
           "supported": {
             "title": "Supported",
