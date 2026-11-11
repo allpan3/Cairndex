@@ -458,6 +458,16 @@ def validate_private(db: sqlite3.Connection, store: Replica) -> None:
 
         validate_private(db, store)
 
+    if "catalog_bulk_items" in media_tables:
+        from cairndex.replicas.catalog.bulk import CatalogBulkItem
+
+        for row in db.execute("SELECT * FROM catalog_bulk_items"):
+            CatalogBulkItem.model_validate(
+                {"id": row["bundle"], "observed": json.loads(row["observed"])}
+            )
+            if row["outcome"] not in (None, "applied", "skipped") or row["position"] < 0:
+                raise ReplicaError("Private bulk selection is invalid")
+
     for row in db.execute("SELECT * FROM catalog_jobs"):
         intent = json.loads(row["intent"])
         CatalogJobRequest.model_validate({"operation": row["id"], **intent})
@@ -467,6 +477,12 @@ def validate_private(db: sqlite3.Connection, store: Replica) -> None:
             MaintenanceIntent.model_validate(intent["body"])
             if row["result"]:
                 MaintenanceProgress.model_validate_json(row["result"])
+        if intent["action"] == "bulk_selection":
+            from cairndex.replicas.catalog.bulk import BulkIntent, BulkProgress
+
+            BulkIntent.model_validate(intent["body"])
+            if row["result"]:
+                BulkProgress.model_validate_json(row["result"])
         if row["result"]:
             result = json.loads(row["result"])
             if "sources" in result:

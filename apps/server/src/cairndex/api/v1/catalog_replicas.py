@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Response
 
 from cairndex.api.media_deps import MediaAccessDep
 from cairndex.api.v1.replicas import CommonReplicaStore
-from cairndex.replicas.catalog import jobs
+from cairndex.replicas.catalog import bulk, jobs
 from cairndex.replicas.catalog.browse import (
     CatalogBrowsePage,
     CatalogBrowseRequest,
@@ -19,6 +19,7 @@ from cairndex.replicas.catalog.browse import (
     directory_bundles,
     unbundled,
 )
+from cairndex.replicas.catalog.bulk import CatalogBulkStage, CatalogBulkStaged, CatalogBulkUnchanged
 from cairndex.replicas.catalog.inspector import (
     CatalogMembershipPage,
     MembershipFamily,
@@ -252,6 +253,24 @@ def selected_memberships(
     payload: CatalogBulkMembershipRequest, store: Catalog
 ) -> CatalogBulkMembershipPage:
     return choices(store, payload)
+
+
+# A selection above one request stages its reviewed bases in pages (selection_version 5);
+# a `bulk_selection` job then applies it in batches.
+@router.post("/bundles/selection/bulk/{operation}", response_model=CatalogBulkStaged)
+def stage_bulk(operation: Token, payload: CatalogBulkStage, store: Catalog) -> CatalogBulkStaged:
+    return bulk.stage(store, operation, payload)
+
+
+# What a finished, failed or cancelled bulk change left unchanged, for review again
+@router.get("/bundles/selection/bulk/{operation}/unchanged", response_model=CatalogBulkUnchanged)
+def bulk_unchanged(
+    operation: Token,
+    store: Catalog,
+    start: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=bulk.PAGE)] = bulk.PAGE,
+) -> CatalogBulkUnchanged:
+    return bulk.unchanged(store, operation, start, limit)
 
 
 @router.post("/files/unbundled", response_model=CatalogUnbundledPage)

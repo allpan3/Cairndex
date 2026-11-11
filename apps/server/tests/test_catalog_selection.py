@@ -157,7 +157,7 @@ def test_bulk_api_bounds_and_membership_pages(api):  # noqa: F811
     assert any(item["assigned_count"] == 0 for item in every)
     assert mine == [item for item in every if item["assigned_count"]]
     status = client.get(base.removesuffix("/catalog") + "/status").json()
-    assert status["selection_version"] == 4
+    assert status["selection_version"] == 5
 
 
 def test_common_memberships_list_only_what_every_selected_bundle_has(store):

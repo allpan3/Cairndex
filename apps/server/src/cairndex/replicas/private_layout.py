@@ -269,6 +269,15 @@ CREATE TABLE IF NOT EXISTS local_bundle_history (
 LOCAL_FACTS_TABLES = {"local_file_facts"}
 LOCAL_HISTORY_TABLES = {"local_bundle_history"}
 
+# A large selection's reviewed bases and each bundle's outcome (catalog/bulk.py)
+BULK_SCHEMA = """
+CREATE TABLE IF NOT EXISTS catalog_bulk_items (
+    operation TEXT NOT NULL, position INTEGER NOT NULL, bundle TEXT NOT NULL,
+    observed TEXT NOT NULL, outcome TEXT,
+    PRIMARY KEY(operation,position), UNIQUE(operation,bundle));
+"""
+BULK_TABLES = {"catalog_bulk_items"}
+
 GROUPING_SCHEMA = """
 CREATE TABLE IF NOT EXISTS grouping_workspaces (
     id TEXT PRIMARY KEY REFERENCES discovery_runs(id), state TEXT NOT NULL,

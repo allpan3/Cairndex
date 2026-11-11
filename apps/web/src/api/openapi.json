@@ -1566,6 +1566,34 @@
         "title": "CatalogBrowseRequest",
         "type": "object"
       },
+      "CatalogBulkItem": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "observed": {
+            "additionalProperties": {
+              "items": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "maxProperties": 2,
+            "title": "Observed",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "observed"
+        ],
+        "title": "CatalogBulkItem",
+        "type": "object"
+      },
       "CatalogBulkMembershipChoice": {
         "additionalProperties": false,
         "properties": {
@@ -1703,6 +1731,74 @@
           "family"
         ],
         "title": "CatalogBulkMembershipRequest",
+        "type": "object"
+      },
+      "CatalogBulkStage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogBulkItem"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "start": {
+            "minimum": 0.0,
+            "title": "Start",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "items"
+        ],
+        "title": "CatalogBulkStage",
+        "type": "object"
+      },
+      "CatalogBulkStaged": {
+        "additionalProperties": false,
+        "properties": {
+          "staged": {
+            "title": "Staged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "staged"
+        ],
+        "title": "CatalogBulkStaged",
+        "type": "object"
+      },
+      "CatalogBulkUnchanged": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Start"
+          }
+        },
+        "required": [
+          "items",
+          "next_start"
+        ],
+        "title": "CatalogBulkUnchanged",
         "type": "object"
       },
       "CatalogBundleSummary": {
@@ -2339,7 +2435,8 @@
               "preview",
               "commit_preview",
               "recover",
-              "media_maintenance"
+              "media_maintenance",
+              "bulk_selection"
             ],
             "title": "Action",
             "type": "string"
@@ -2445,7 +2542,8 @@
               "preview",
               "commit_preview",
               "recover",
-              "media_maintenance"
+              "media_maintenance",
+              "bulk_selection"
             ],
             "title": "Action",
             "type": "string"
@@ -24290,6 +24388,207 @@
           }
         },
         "summary": "Selected Bundles",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/selection/bulk/{operation}": {
+      "post": {
+        "operationId": "stage_bulk_api_v1_libraries__library_id__replica_catalog_bundles_selection_bulk__operation__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Operation",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogBulkStage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogBulkStaged"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stage Bulk",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/selection/bulk/{operation}/unchanged": {
+      "get": {
+        "operationId": "bulk_unchanged_api_v1_libraries__library_id__replica_catalog_bundles_selection_bulk__operation__unchanged_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Operation",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Start",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogBulkUnchanged"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk Unchanged",
         "tags": [
           "replica-catalog"
         ]
