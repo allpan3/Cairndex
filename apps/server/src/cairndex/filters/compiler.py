@@ -14,7 +14,19 @@ from datetime import datetime
 from math import isfinite
 from typing import Any
 
-from sqlalchemy import and_, case, exists, func, not_, null, or_, select, true
+from sqlalchemy import (
+    and_,
+    case,
+    column,
+    exists,
+    func,
+    literal_column,
+    not_,
+    or_,
+    select,
+    table,
+    true,
+)
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ValidationError
@@ -231,6 +243,77 @@ def _has_cover_expr() -> Bool:
     )
 
 
+# Portable bundles answer these from authored rows and this serving instance's
+# private observations, in the same SQLite connection as the catalog projection.
+# Each is correlated to the query-local ``asset_bundles`` relation and never reads
+# source files. A member this instance has not observed keeps the answer unknown
+# (SQL NULL), which also stays unknown under NOT. Constants are rendered inline
+# so SQLite can match the catalog's JSON expression index.
+_ROWS = table("catalog_rows", column("family"), column("entity"), column("body")).alias("f")
+_FACTS = table("local_file_facts", column("file_id"), column("path"), column("size")).alias("s")
+_MEDIA = table("local_media", column("file_id"), column("state")).alias("m")
+
+
+def _json(path: str) -> Any:
+    return func.json_extract(_ROWS.c.body, literal_column(f"'$.{path}'"))
+
+
+def _catalog_members() -> Bool:
+    return and_(
+        _ROWS.c.family == literal_column("'asset_files'"), _json("bundle_id") == AssetBundle.id
+    )
+
+
+def _catalog_size() -> Any:
+    """ADR-0040's Size: the sum only when every member has a matching path observation."""
+    observed = _ROWS.outerjoin(
+        _FACTS,
+        and_(_FACTS.c.file_id == _ROWS.c.entity, _FACTS.c.path == _json("relative_path")),
+    )
+    return (
+        select(
+            case(
+                (
+                    func.count() == func.count(_FACTS.c.file_id),
+                    func.coalesce(func.sum(_FACTS.c.size), 0),
+                )
+            )
+        )
+        .select_from(observed)
+        .where(_catalog_members())
+        .scalar_subquery()
+    )
+
+
+def _catalog_missing() -> Bool:
+    """True by the Missing Files rule; false only when every member was last seen available."""
+    unavailable = func.coalesce(func.sum(_MEDIA.c.state == literal_column("'unavailable'")), 0)
+    available = func.coalesce(func.sum(_MEDIA.c.state == literal_column("'available'")), 0)
+    state = (
+        select(case((unavailable > 0, 1), (func.count() == available, 0)))
+        .select_from(_ROWS.outerjoin(_MEDIA, _MEDIA.c.file_id == _ROWS.c.entity))
+        .where(_catalog_members())
+        .scalar_subquery()
+    )
+    return state == 1
+
+
+def _catalog_cover() -> Bool:
+    """The portable card's artwork rule (inspector.cover), from authored rows only."""
+    roles = ", ".join(f"'{role}'" for role in ("IMAGE", "VIDEO_PART", "PRIMARY_VIDEO"))
+    return exists(
+        select(literal_column("1"))
+        .select_from(_ROWS)
+        .where(
+            _catalog_members(),
+            or_(
+                _ROWS.c.entity == AssetBundle.cover_file_id,
+                literal_column(f"json_extract(f.body,'$.role') IN ({roles})"),
+            ),
+        )
+    )
+
+
 def _as_bool(value: Any) -> bool:
     if not isinstance(value, bool):
         raise ValidationError("boolean filter value must be true or false")
@@ -260,13 +343,7 @@ def _compile_predicate(session: FilterContext, node: PredicateNode) -> Bool:
     if field == "file_count":
         return _numeric(_file_count_col(), o, v)
     if field == "size_bytes":
-        # Source size is unknown until separately observed. SQL NULL also stays
-        # unknown under NOT; it must never become a fabricated zero-byte match.
-        size = (
-            case((_file_count_col() == 0, 0), else_=null())
-            if isinstance(session, CatalogFilterContext)
-            else _size_col()
-        )
+        size = _catalog_size() if isinstance(session, CatalogFilterContext) else _size_col()
         return _numeric(size, o, v)
     if field == "date_added":
         return _date(AssetBundle.created_at, o, v)
@@ -291,20 +368,16 @@ def _compile_predicate(session: FilterContext, node: PredicateNode) -> Bool:
     if field == "has_cover":
         if o != "equals":
             raise ValidationError("has_cover only supports 'equals'")
-        cover = _has_cover_expr()
-        if isinstance(session, CatalogFilterContext):
-            cover = case(
-                (AssetBundle.cover_file_id.isnot(None), True),
-                (_file_count_col() == 0, False),
-                else_=null(),
-            )
+        cover = _catalog_cover() if isinstance(session, CatalogFilterContext) else _has_cover_expr()
         return cover if _as_bool(v) else not_(cover)
     if field == "has_missing":
         if o != "equals":
             raise ValidationError("has_missing only supports 'equals'")
-        miss = _file_exists(AssetFile.availability == FileAvailability.MISSING)
-        if isinstance(session, CatalogFilterContext):
-            miss = case((_file_count_col() == 0, False), else_=null())
+        miss = (
+            _catalog_missing()
+            if isinstance(session, CatalogFilterContext)
+            else _file_exists(AssetFile.availability == FileAvailability.MISSING)
+        )
         return miss if _as_bool(v) else not_(miss)
     raise ValidationError(f"unknown filter field {field!r}")
 
