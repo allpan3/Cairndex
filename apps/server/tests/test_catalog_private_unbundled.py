@@ -122,3 +122,47 @@ def test_running_or_failed_discovery_keeps_last_complete_queue_and_index_upgrade
     scan(reopened, root)
     with reopened.connection(readonly=True) as db:
         assert unbundled(db, CatalogUnbundledRequest(q="Fresh/")).total == 0
+
+
+def test_sorts_order_the_whole_queue_before_each_page(replicas):
+    import os
+
+    store, root, _ = replicas[0]
+    sources = {
+        # path: (bytes, seconds since the epoch)
+        "Sorted/B/alpha.mp4": (30, 1_000_000_300),
+        "Sorted/A/zeta.srt": (10, 1_000_000_100),
+        "Sorted/C/mid.JPG": (20, 1_000_000_200),
+        "Sorted/A/beta.mkv": (40, 1_000_000_400),
+    }
+    for path, (size, seconds) in sources.items():
+        source = root / path
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(b"s" * size)
+        os.utime(source, (seconds, seconds))
+    scan(store, root)
+
+    def order(sort=None, direction="asc"):
+        # One row per page: the order must hold across pages, not within a page
+        with store.connection(readonly=True) as db:
+            return [
+                unbundled(
+                    db,
+                    CatalogUnbundledRequest(
+                        q="Sorted/", sort=sort, order=direction, limit=1, offset=offset
+                    ),
+                )
+                .items[0]
+                .relative_path.rpartition("/")[2]
+                for offset in range(len(sources))
+            ]
+
+    assert order() == ["beta.mkv", "zeta.srt", "alpha.mp4", "mid.JPG"]
+    assert order("name") == ["alpha.mp4", "beta.mkv", "mid.JPG", "zeta.srt"]
+    assert order("name", "desc") == ["zeta.srt", "mid.JPG", "beta.mkv", "alpha.mp4"]
+    assert order("type") == ["mid.JPG", "beta.mkv", "alpha.mp4", "zeta.srt"]
+    assert order("size") == ["zeta.srt", "mid.JPG", "alpha.mp4", "beta.mkv"]
+    assert order("size", "desc") == ["beta.mkv", "alpha.mp4", "mid.JPG", "zeta.srt"]
+    assert order("modified", "desc") == ["beta.mkv", "alpha.mp4", "mid.JPG", "zeta.srt"]
+    # Fresh discoveries have no catalog addition time, which sorts last both ways
+    assert order("added") == order("added", "desc") == order("name")

@@ -4,7 +4,7 @@ import hashlib
 import json
 import mimetypes
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import Field
@@ -439,6 +439,10 @@ class CatalogUnbundledRequest(StrictModel):
     q: str = Field(default="", max_length=1000)
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=50, ge=1, le=100)
+    # Browse version 17: the File Browser's sorts over the whole matching queue.
+    # Without one the queue keeps its path order.
+    sort: Literal["name", "type", "size", "added", "modified"] | None = None
+    order: Literal["asc", "desc"] = "asc"
 
 
 class CatalogUnbundledFile(StrictModel):
@@ -450,6 +454,8 @@ class CatalogUnbundledFile(StrictModel):
     local_state: Literal["observed", "unavailable", "unknown"] = "unknown"
     size_bytes: int | None = None
     modified_at: UtcDatetime | None = None
+    # Browse version 17: when a staged file was added to the catalog
+    created_at: UtcDatetime | None = None
 
 
 class CatalogUnbundledPage(StrictModel):
@@ -461,7 +467,7 @@ class CatalogUnbundledPage(StrictModel):
 
 def unbundled(db: sqlite3.Connection, request: CatalogUnbundledRequest) -> CatalogUnbundledPage:
     """Page staged and privately discovered files without observing source bytes."""
-    from cairndex.replicas.catalog.unbundled_sources import QUEUE
+    from cairndex.replicas.catalog.unbundled_sources import QUEUE, order_by
 
     where = (
         "relative_path NOT LIKE '.%' AND relative_path NOT LIKE '%/.%' "
@@ -473,15 +479,19 @@ def unbundled(db: sqlite3.Connection, request: CatalogUnbundledRequest) -> Catal
     total = db.execute(QUEUE + "SELECT count(*) " + source, (request.q,)).fetchone()[0]
     rows = db.execute(
         QUEUE
-        + "SELECT id,bundle_id,relative_path "
+        + "SELECT id,bundle_id,relative_path,added "
         + source
-        + " ORDER BY lower(relative_path),relative_path,id LIMIT ? OFFSET ?",
+        + f" ORDER BY {order_by(request.sort, request.order)} LIMIT ? OFFSET ?",
         (request.q, request.limit, request.offset),
     )
     return CatalogUnbundledPage(
         items=[
             CatalogUnbundledFile(
-                id=row[0], bundle_id=row[1], relative_path=row[2], media_kind=_media_kind(row[2])
+                id=row[0],
+                bundle_id=row[1],
+                relative_path=row[2],
+                media_kind=_media_kind(row[2]),
+                created_at=None if row[3] is None else datetime.fromtimestamp(row[3], UTC),
             )
             for row in rows
         ],

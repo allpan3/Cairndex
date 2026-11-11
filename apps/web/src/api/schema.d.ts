@@ -5224,6 +5224,8 @@ export interface components {
         CatalogUnbundledFile: {
             /** Bundle Id */
             bundle_id: string | null;
+            /** Created At */
+            created_at?: string | null;
             /** Id */
             id: string | null;
             /**
@@ -5265,10 +5267,18 @@ export interface components {
              */
             offset: number;
             /**
+             * Order
+             * @default asc
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /**
              * Q
              * @default
              */
             q: string;
+            /** Sort */
+            sort?: ("name" | "type" | "size" | "added" | "modified") | null;
         };
         /** CatalogViewCounts */
         CatalogViewCounts: {

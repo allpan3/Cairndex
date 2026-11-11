@@ -491,15 +491,18 @@ const PLAYABLE = new Set(['video', 'image', 'audio'])
 /** Retained staging and fresh private discoveries share the ordinary file queue. */
 function CatalogUnbundledScope(props: FileScopeProps) {
   const q = props.search.trim()
+  // The server orders the whole matching queue before each page (browse 17)
+  const sortable = (useReplicaStatus(props.catalogLibrary).data?.browse_version ?? 0) >= 17
+  const order = sortable ? { sort: props.prefs.sort, order: props.prefs.order } : {}
   const query = useInfiniteQuery({
-    queryKey: ['catalog-unbundled', props.catalogLibrary, q],
+    queryKey: ['catalog-unbundled', props.catalogLibrary, q, order],
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       catalog<components['schemas']['CatalogUnbundledPage']>(
         props.catalogLibrary!,
         '/files/unbundled',
         'POST',
-        { q, offset: pageParam, limit: 100 },
+        { q, offset: pageParam, limit: 100, ...order },
       ),
     getNextPageParam: (page) =>
       page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
@@ -525,7 +528,7 @@ function CatalogUnbundledScope(props: FileScopeProps) {
             supported: PLAYABLE.has(item.media_kind ?? ''),
             extension: dot > 0 ? name.slice(dot + 1).toLowerCase() : null,
             size_bytes: item.size_bytes ?? null,
-            created_at: null,
+            created_at: item.created_at ?? null,
             modified_at: item.modified_at ?? null,
             duration: null,
             mime_type: null,
@@ -746,7 +749,8 @@ function FileList({
   // The file whose contact-sheet options are open, if any.
   const [sheetTarget, setSheetTarget] = useState<ContactSheetTarget | null>(null)
   // A portable entry is observed on this device before its sheet dialog opens
-  const catalogExports = useReplicaStatus(catalogLibrary).data?.export_version === 1
+  const replicaStatus = useReplicaStatus(catalogLibrary).data
+  const catalogExports = replicaStatus?.export_version === 1
   const localSheet = useLocalContactSheet(catalogLibrary, (message) => onFlash?.(message))
   const write = useFileWriteActions({
     currentPath,
@@ -805,8 +809,9 @@ function FileList({
    * always uses the global sort and is not offered the choice.
    */
   const folderKey = scope === 'browse' ? currentPath : null
-  // The portable queue pages in path order and has no other order to offer
-  const fixedOrder = Boolean(catalogLibrary) && scope === 'unbundled'
+  // An older portable server pages its queue in path order only
+  const fixedOrder =
+    Boolean(catalogLibrary) && scope === 'unbundled' && (replicaStatus?.browse_version ?? 0) < 17
   const folderScoped = prefs.sortScope === 'folder' && folderKey !== null
   const activeSort: SortPref<FileSort> = folderScoped
     ? (prefs.folderSorts?.[folderKey] ?? { sort: prefs.sort, order: prefs.order })
