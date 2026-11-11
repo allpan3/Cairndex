@@ -82,6 +82,26 @@ for folder in ('Atlas','Aardvark') for p in (root/folder).iterdir()},sort_keys=T
     expect((await queue()).total).toBe(122)
     expect(await read('/catalog/entities/asset_files/file-video')).toEqual(before)
     await page.getByRole('button', { name: /^Unbundled( \d+)?$/ }).click()
+    // The sort orders the whole queue before its first page of 100: the Atlas
+    // files come after 120 noise files by name, so they lead only when sorted
+    // descending over every file, not just the loaded ones.
+    const rows = page.locator('[data-relpath]')
+    await expect(rows.first()).toHaveAttribute('data-relpath', 'Aardvark/noise-000.mp4')
+    await expect(page.getByRole('button', { name: 'Load more', exact: true })).toBeVisible()
+    const sort = async (...labels: string[]) => {
+      await page.getByRole('button', { name: 'Sort', exact: true }).click()
+      const panel = page.locator('.sortctl__panel')
+      for (const label of labels) await panel.getByRole('button', { name: label }).click()
+      await page.keyboard.press('Escape')
+    }
+    const leading = () =>
+      rows.evaluateAll((all) => all.slice(0, 3).map((row) => row.getAttribute('data-relpath')))
+    await sort('Name', 'Descending')
+    await expect
+      .poll(leading)
+      .toEqual(['Atlas/scene.mp4', 'Atlas/scene.en.srt', 'Aardvark/noise-119.mp4'])
+    await sort('Ascending')
+    await expect(rows.first()).toHaveAttribute('data-relpath', 'Aardvark/noise-000.mp4')
     await page.getByRole('searchbox', { name: 'Search files', exact: true }).fill('Atlas/scene.mp4')
     await page.getByRole('row', { name: /scene\.mp4/ }).click({ button: 'right' })
     await page.getByRole('menuitem', { name: 'Create Bundle…', exact: true }).click()

@@ -683,7 +683,15 @@ Servers with `browse_version: 15` include fresh private discoveries in ordinary
 Unbundled reads and manual file suggestions. The latest successful discovery
 supplies paths that have no current catalog claim. Failed, cancelled and running
 passes do not replace it. Retained provisional files keep their real IDs;
-unindexed observations return null file and bundle IDs. Reading choices never
+unindexed observations return null file and bundle IDs. With `browse_version: 17`
+Unbundled accepts the File Browser's `sort` (name, type, size, added, modified)
+and `order`, applied to the whole matching queue before the page; without a sort
+it keeps path order. Size and Date Modified come from stored observations (a
+staged file's path-matched local fact, or a fresh file's discovery observation),
+not the page's live stat, so a file changed since sorts by its last observation.
+Unknown values sort last in either direction, with name and path ties. Date Added
+is the catalog addition time of a staged file; fresh discoveries have none. The
+view still pages 100 files at a time behind **Load more**. Reading choices never
 publishes a provisional bundle. Manual confirmation prepares/revalidates sources
 through the existing private job before authoring the chosen confirmed bundle.
 

@@ -2766,6 +2766,18 @@
             ],
             "title": "Bundle Id"
           },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "id": {
             "anyOf": [
               {
@@ -2882,11 +2894,38 @@
             "title": "Offset",
             "type": "integer"
           },
+          "order": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
           "q": {
             "default": "",
             "maxLength": 1000,
             "title": "Q",
             "type": "string"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "name",
+                  "type",
+                  "size",
+                  "added",
+                  "modified"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
           }
         },
         "title": "CatalogUnbundledRequest",

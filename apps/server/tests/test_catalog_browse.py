@@ -479,3 +479,36 @@ def test_browse_and_counts_never_scan_inside_correlated_subqueries(tmp_path):
         scans = set().union(*(correlated_scans(db, statement) for statement in reads))
     assert len(reads) > 20
     assert scans == set()
+
+
+def test_unbundled_size_sort_uses_path_matched_local_facts(tmp_path):
+    import sqlite3
+
+    from cairndex.replicas.catalog.browse import CatalogUnbundledRequest, unbundled
+
+    fixture = create_disposable(parent=tmp_path, bundles=4)
+    with sqlite3.connect(fixture.source / ".cairndex/library.db") as db:
+        db.execute(
+            "UPDATE asset_bundles SET grouping_state='PROVISIONAL', "
+            "grouping_source='SCAN_SUGGESTION' WHERE id='bundle-000000'"
+        )
+    store = prepare_disposable(fixture).store
+
+    def sizes(direction):
+        with store.connection(readonly=True) as db:
+            request = CatalogUnbundledRequest(sort="size", order=direction)
+            return [item.id for item in unbundled(db, request).items]
+
+    with store.connection() as db:
+        db.execute(
+            "INSERT INTO local_file_facts VALUES "
+            "('file-subtitle','Synthetic/雪.srt',5,'2026-01-01T00:00:00+00:00')"
+        )
+    # The video has no observation on this device, so it sorts last either way
+    assert sizes("asc")[:2] == sizes("desc")[:2] == ["file-subtitle", "file-video"]
+    with store.connection() as db:
+        db.execute(
+            "INSERT INTO local_file_facts VALUES "
+            "('file-video','Synthetic/雪.mp4',50,'2026-01-01T00:00:00+00:00')"
+        )
+    assert sizes("desc")[:2] == ["file-video", "file-subtitle"]
