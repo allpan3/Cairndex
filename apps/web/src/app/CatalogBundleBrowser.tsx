@@ -57,6 +57,8 @@ import type { DragItem } from './dnd'
 import type { CatalogCollection, CatalogCollections } from './useCatalogCollections'
 import { useCatalogTagClipboard } from './useCatalogTagClipboard'
 import { copiedCatalogTags } from '../api/catalogTagClipboard'
+import { changeableTogether } from '../api/catalogBulk'
+import { SELECT_BUNDLES_EVENT } from './catalogBulkNotice'
 import { navTargetsFrom, rowStep } from './spatialNav'
 
 type Page = components['schemas']['CatalogBrowsePage']
@@ -397,6 +399,16 @@ export function CatalogBundleBrowser({
     setAlbumFile(null)
   }
   const folderIds = pickedFolders.scope === scope ? pickedFolders.ids : NO_IDS
+  // A bulk change that left bundles unchanged offers to select them for review again
+  useEffect(() => {
+    const pick = (event: Event) => {
+      const ids = (event as CustomEvent<string[]>).detail
+      if (!ids.length) return
+      setPicked({ scope, ids: new Set(ids), active: ids[0]!, anchor: ids[0]! })
+    }
+    window.addEventListener(SELECT_BUNDLES_EVENT, pick)
+    return () => window.removeEventListener(SELECT_BUNDLES_EVENT, pick)
+  }, [scope])
   const clearFolders = () => setPickedFolders({ scope, ids: NO_IDS, anchor: null, active: null })
   useEffect(() => {
     if (selected !== outgoing.current || locateRequest !== lastLocate.current) {
@@ -621,6 +633,8 @@ export function CatalogBundleBrowser({
       })
   }
   // A menu change saves at once and refreshes every count it can move
+  // Above one request, a selection changes together only as a bulk operation
+  const together = (count: number) => changeableTogether(count, status?.selection_version ?? 0)
   const organize = (action: () => Promise<void>, done: string) =>
     collections.run(action, () => done && onNotice({ text: done }))
   // The legacy card menu: a card inside a multi-selection acts for the selection
@@ -673,7 +687,7 @@ export function CatalogBundleBrowser({
           label: one
             ? 'Remove from This Collection'
             : `Remove ${targets.length} from This Collection`,
-          disabled: blocked || targets.length > 100,
+          disabled: blocked || !together(targets.length),
           onClick: () =>
             organize(
               () => setCollectionMembership(library, targets, collection, false),
@@ -688,7 +702,7 @@ export function CatalogBundleBrowser({
       items.push(null, {
         label: one ? 'Delete Bundle' : `Delete ${targets.length} Bundles`,
         danger: true,
-        disabled: blocked || targets.length > 100,
+        disabled: blocked || !together(targets.length),
         onClick: () => setDeleting(targets),
       })
     menu.open(event, items)

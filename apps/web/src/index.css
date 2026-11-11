@@ -9233,3 +9233,8 @@ button.pick-row:disabled {
   color: var(--text-strong);
   font: inherit;
 }
+
+/* A running bulk change sits above the browser's one transient message */
+.mb-toast.catalog-bulk-status {
+  bottom: 72px;
+}

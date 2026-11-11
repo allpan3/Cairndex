@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog } from '../api/catalog'
+import { changeableTogether, readSelectionMemberships, SELECTION_REQUEST } from '../api/catalogBulk'
 import { rename, setBulkMembership, setMembership } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
 import type { components } from '../api/schema'
@@ -48,7 +49,7 @@ export function CatalogBundleMemberships({
   onFilterTag,
 }: {
   library: string
-  /** One bundle, or a selection of up to 100. */
+  /** One bundle, or a selection; above 100 it changes as a bulk operation. */
   ids: string[]
   family: 'tags' | 'collections'
   blocked: boolean
@@ -72,6 +73,9 @@ export function CatalogBundleMemberships({
   // v0.2.1's trees list every destination, so a pick reads its one target's bases (version 2)
   const tree = selectionVersion >= 2
   const single = ids.length === 1 ? ids[0]! : null
+  // A larger selection reads chunk by chunk, so it is read again only after a change
+  const large = ids.length > SELECTION_REQUEST
+  const together = changeableTogether(ids.length, selectionVersion)
   const read = (q: string, after: string, assigned: boolean) =>
     single
       ? catalog<Page>(
@@ -127,8 +131,14 @@ export function CatalogBundleMemberships({
     : ['catalog-bulk-memberships', library, ids]
   const assigned = useQuery({
     queryKey: [...key, family, 'assigned', common],
+    enabled: !large,
     queryFn: () => read('', '', true),
     refetchInterval: 2000,
+  })
+  const shared = useQuery({
+    queryKey: [...key, family, 'shared'],
+    enabled: large && together,
+    queryFn: () => readSelectionMemberships(library, ids, family),
   })
   const found = useInfiniteQuery({
     queryKey: [...key, family, 'search', search],
@@ -140,7 +150,7 @@ export function CatalogBundleMemberships({
   // The tree marks a destination only some selected bundles have; every page, as it shows all
   const partial = useQuery({
     queryKey: [...key, family, 'partial'],
-    enabled: picking && tree && !single,
+    enabled: picking && tree && !single && !large,
     queryFn: async () => {
       const some = new Set<string>()
       let after = ''
@@ -159,7 +169,15 @@ export function CatalogBundleMemberships({
     },
   })
   const choices = found.data?.pages.flatMap((page) => page.items) ?? []
-  const chips = assigned.data?.items ?? []
+  const chips: (ChipChoice & { observed: Observed })[] = large
+    ? (shared.data?.common ?? []).map((item) => ({
+        ...item,
+        path: [item.name],
+        state: 'on',
+        // The bulk change reads every bundle's bases when it is chosen
+        observed: {},
+      }))
+    : (assigned.data?.items ?? [])
   function toggle(choice: ChipChoice, assign: boolean) {
     const read = [...chips, ...choices].find((item) => item.id === choice.id)
     if (read) change(() => save(read, assign))
@@ -172,6 +190,10 @@ export function CatalogBundleMemberships({
   // sidebar collection does
   function pickTree(id: string, assign: boolean) {
     change(async () => {
+      if (large) {
+        await save({ id, name: '', path: [], state: 'off', held: false, observed: {} }, assign)
+        return
+      }
       const page = await catalog<BulkPage>(library, '/bundles/selection/memberships', 'POST', {
         ids,
         family,
@@ -237,11 +259,7 @@ export function CatalogBundleMemberships({
       {
         label: 'Paste Tags',
         disabled:
-          !canPaste ||
-          blocked ||
-          clipboard.busy ||
-          !copiedCatalogTags(library).length ||
-          ids.length > 100,
+          !canPaste || blocked || clipboard.busy || !copiedCatalogTags(library).length || !together,
         onClick: () => void clipboard.paste(ids),
       },
       null,
@@ -254,8 +272,8 @@ export function CatalogBundleMemberships({
   }
   const treeProps = {
     assigned: new Set(chips.map((chip) => chip.id)),
-    partial: partial.data,
-    disabled: blocked || busy || clipboard.busy || ids.length > 100,
+    partial: large ? shared.data?.some : partial.data,
+    disabled: blocked || busy || clipboard.busy || !together,
     onToggle: pickTree,
     onCreated: (created: { id: string }) => pickTree(created.id, true),
   }
@@ -270,7 +288,7 @@ export function CatalogBundleMemberships({
         onOpenChange={setPicking}
         onMore={found.hasNextPage ? () => void found.fetchNextPage() : undefined}
         loading={found.isPending}
-        disabled={blocked || busy || clipboard.busy || ids.length > 100}
+        disabled={blocked || busy || clipboard.busy || !together}
         onToggle={toggle}
         onReview={onReview}
         onOpenChip={family === 'collections' ? onOpenCollection : undefined}
@@ -340,7 +358,7 @@ export function CatalogBundleMemberships({
       )}
       {clipboard.message && <p role="status">{clipboard.message}</p>}
       {assigned.data?.next && <p className="catalog-chips-more">More {family} than shown.</p>}
-      {(error || assigned.error) && (
+      {(error || assigned.error || shared.error) && (
         <p role="alert">{error || `${TITLE[family]} are unavailable.`}</p>
       )}
     </InspectorSection>

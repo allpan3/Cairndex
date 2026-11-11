@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog, CatalogJobError, operationId } from '../api/catalog'
+import {
+  CatalogBulkIncomplete,
+  changeableTogether,
+  readSelection,
+  runBulk,
+  SELECTION_REQUEST,
+} from '../api/catalogBulk'
 import { commit } from '../api/catalogOrganize'
+import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { components } from '../api/schema'
 import { formatBytes } from '../lib/format'
 import { CatalogBundleMemberships } from './CatalogBundleMemberships'
@@ -9,6 +17,7 @@ import { StarRating } from './Stars'
 import { useCatalogDraft } from './useCatalogDraft'
 import { validCatalogBulkDraft } from './catalogBulkDraft'
 import { CatalogConflictDialog } from './CatalogConflictDialog'
+import { SELECT_BUNDLES_EVENT } from './catalogBulkNotice'
 
 type Snapshot = components['schemas']['CatalogSelectionRead']
 const empty = {
@@ -69,12 +78,20 @@ export function CatalogMultiBundleInspector({
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [reviewing, setReviewing] = useState(false)
-  const supported = ids.length > 0 && ids.length <= 100
+  // Bundles a bulk change left as they were, which the owner can select again
+  const [unchanged, setUnchanged] = useState<string[]>([])
+  const selectionVersion = useReplicaStatus(library).data?.selection_version ?? 0
+  const supported = ids.length > 0 && changeableTogether(ids.length, selectionVersion)
+  // A larger selection reads chunk by chunk, so it is read again only after a change
+  const large = ids.length > SELECTION_REQUEST
   const snapshot = useQuery({
     queryKey: ['catalog-selection', library, ids],
     enabled: supported,
-    queryFn: () => catalog<Snapshot>(library, '/bundles/selection', 'POST', { ids }),
-    refetchInterval: 2000,
+    queryFn: () =>
+      large
+        ? readSelection(library, ids)
+        : catalog<Snapshot>(library, '/bundles/selection', 'POST', { ids }),
+    refetchInterval: large ? false : 2000,
   })
   const items = snapshot.data?.items ?? []
   const held = items.some((item) => item.held)
@@ -108,15 +125,46 @@ export function CatalogMultiBundleInspector({
       setBusy(false)
     }
   }
+  // The bases each bundle was shown with, which its change must still match
+  const reviewed = (observed: Record<string, string[]>, field: string) =>
+    Object.entries(observed).filter(
+      ([unit]) => unit.endsWith(`/${field}`) || unit.endsWith('/$alive'),
+    )
+  // Above one request the server applies the change in batches; a bundle changed since
+  // it was read is left as it was and listed
+  async function runLarge(field: 'title' | 'rating', value: string | number | null) {
+    if (running.current) return
+    running.current = true
+    setBusy(true)
+    setError('')
+    setMessage('')
+    setUnchanged([])
+    try {
+      await runBulk(
+        library,
+        items.map((item) => ({
+          id: item.id,
+          observed: Object.fromEntries(reviewed(item.observed, field)),
+        })),
+        { action: 'bulk', field, value },
+      )
+      setMessage('Saved here')
+    } catch (reason) {
+      if (reason instanceof CatalogBulkIncomplete) setUnchanged(reason.unchanged)
+      setError((reason as Error).message)
+    } finally {
+      for (const key of AFFECTED) await client.invalidateQueries({ queryKey: [key, library] })
+      running.current = false
+      setBusy(false)
+    }
+  }
   function save(field: 'title' | 'rating', value: string | number | null, label: string) {
     if (locked) return
-    const observed = Object.fromEntries(
-      items.flatMap((item) =>
-        Object.entries(item.observed).filter(
-          ([unit]) => unit.endsWith(`/${field}`) || unit.endsWith('/$alive'),
-        ),
-      ),
-    )
+    if (large) {
+      void runLarge(field, value)
+      return
+    }
+    const observed = Object.fromEntries(items.flatMap((item) => reviewed(item.observed, field)))
     const command = { action: 'bulk', ids: items.map((item) => item.id), field, value, observed }
     const intent = {
       snapshot: JSON.stringify(snapshot.data),
@@ -158,7 +206,9 @@ export function CatalogMultiBundleInspector({
           </button>
         </p>
       )}
-      {ids.length > 100 && <p>Select up to 100 bundles to change them together.</p>}
+      {!supported && ids.length > SELECTION_REQUEST && (
+        <p>Select up to 100 bundles to change them together.</p>
+      )}
       {snapshot.error && (
         <p role="alert">
           The selected bundles are unavailable.{' '}
@@ -244,7 +294,24 @@ export function CatalogMultiBundleInspector({
             ))}
         </>
       )}
-      {(error || draft.error) && <p role="alert">{error || draft.error}</p>}
+      {(error || draft.error) && (
+        <p role="alert">
+          {error || draft.error}
+          {unchanged.length > 0 && (
+            <>
+              {' '}
+              <button
+                className="btn btn--sm"
+                onClick={() =>
+                  window.dispatchEvent(new CustomEvent(SELECT_BUNDLES_EVENT, { detail: unchanged }))
+                }
+              >
+                Select Unchanged
+              </button>
+            </>
+          )}
+        </p>
+      )}
       {message && <p role="status">{message}</p>}
     </aside>
   )

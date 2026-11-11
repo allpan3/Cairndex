@@ -2,6 +2,7 @@
 // Each write reads the catalog's current bases first, so a change made on another
 // device since is refused for review instead of overwritten.
 import { catalog, operationId, runJob, type Entity } from './catalog'
+import { readTargetChoice, runBulk, SELECTION_REQUEST } from './catalogBulk'
 import { catalogNavigation } from './catalogQuery'
 import type { CollectionRead, TagGroupRead, TagRead } from './client'
 import type { components } from './schema'
@@ -67,7 +68,11 @@ export function setMembership(
   })
 }
 
-/** Add every selected bundle to a tag or collection, or remove them all. */
+/**
+ * Add every selected bundle to a tag or collection, or remove them all. A selection
+ * above one request reads the destination's current bases when chosen, as a tree
+ * pick and a drag do, and runs as a bulk operation (`selection_version: 5`).
+ */
 export function setBulkMembership(
   library: string,
   ids: string[],
@@ -75,6 +80,8 @@ export function setBulkMembership(
   choice: MembershipChoice,
   assigned: boolean,
 ): Promise<void> {
+  if (ids.length > SELECTION_REQUEST)
+    return bulkMembership(library, ids, family, choice.id, assigned)
   return commit(library, {
     action: 'bulk',
     ids,
@@ -92,7 +99,8 @@ export async function setCollectionMembership(
   collection: string,
   assigned: boolean,
 ): Promise<void> {
-  if (ids.length > 100) throw new Error('Choose at most 100 bundles at a time.')
+  if (ids.length > SELECTION_REQUEST)
+    return bulkMembership(library, ids, 'collections', collection, assigned)
   const page = await catalog<Choices>(library, '/bundles/selection/memberships', 'POST', {
     ids,
     family: 'collections',
@@ -102,6 +110,29 @@ export async function setCollectionMembership(
   if (!choice || choice.held) throw new Error(REVIEW)
   if (choice.assigned_count === (assigned ? ids.length : 0)) return
   await setBulkMembership(library, ids, 'collections', choice, assigned)
+}
+
+// Every bundle's bases are read now, chunk by chunk; ones changed before their batch
+// runs are left as they were and reported.
+async function bulkMembership(
+  library: string,
+  ids: string[],
+  family: 'tags' | 'collections',
+  target: string,
+  assigned: boolean,
+): Promise<void> {
+  const choice = await readTargetChoice(library, ids, family, target)
+  const noun = family === 'tags' ? 'tag' : 'collection'
+  if (!choice) throw new Error(`This ${noun} is no longer in the library.`)
+  if (choice.held) throw new Error(`This ${noun} needs metadata review first.`)
+  if (choice.assigned_count === (assigned ? ids.length : 0)) return
+  await runBulk(library, choice.items, {
+    action: 'bulk',
+    field: family,
+    target,
+    assigned,
+    observed: choice.observed,
+  })
 }
 
 /**
@@ -121,9 +152,15 @@ export async function moveBundlesToCollection(
 /**
  * Delete bundles in one commit; needs `browse_version: 5`. Each file of a bundle
  * returns to Unbundled with its identity and moments, and no source file changes.
+ * A larger selection deletes 100 bundles per batch (`selection_version: 5`).
  */
 export function deleteBundles(library: string, ids: string[]): Promise<void> {
-  if (ids.length > 100) throw new Error('Choose at most 100 bundles at a time.')
+  if (ids.length > SELECTION_REQUEST)
+    return runBulk(
+      library,
+      ids.map((id) => ({ id, observed: {} })),
+      { action: 'dissolve' },
+    )
   return commit(library, { action: 'dissolve', ids })
 }
 

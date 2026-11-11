@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { copyCatalogTags, pasteCatalogTags } from '../api/catalogTagClipboard'
 import { captureRequestScope } from '../api/requestScope'
+import { failureNotice } from './catalogBulkNotice'
 import type { CatalogNotice } from './CatalogToast'
 
 export function useCatalogTagClipboard(
@@ -31,7 +32,7 @@ export function useCatalogTagClipboard(
       }
       const text = (reason as Error).message
       setMessage(text)
-      onNotice?.({ text, alert: true })
+      onNotice?.(failureNotice(reason as Error))
     } finally {
       let active = true
       try {

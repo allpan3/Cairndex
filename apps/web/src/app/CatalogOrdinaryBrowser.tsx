@@ -21,6 +21,7 @@ import { incomingFilesError, useIncomingFileDrop } from '../desktop/useIncomingF
 import type { PendingDeepLink } from './deepLinkUri'
 import { installDragCopyTracking, setActiveDrag, type DragItem } from './dnd'
 import { usePersistentState } from '../state/usePersistentState'
+import { CatalogBulkStatus } from './CatalogBulkStatus'
 import { CatalogToast, type CatalogNotice } from './CatalogToast'
 import { useCatalogCollections } from './useCatalogCollections'
 import { useNavigationHistory } from './useNavigationHistory'
@@ -755,6 +756,7 @@ export function CatalogOrdinaryBrowser(props: {
           onApplied={bundled}
         />
       )}
+      <CatalogBulkStatus library={props.library} onNotice={setNotice} />
       <CatalogToast
         notice={notice ?? (hostFiles.error ? { text: hostFiles.error, alert: true } : null)}
         onDismiss={notice ? dismissNotice : hostFiles.dismissError}
