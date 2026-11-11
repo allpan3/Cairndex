@@ -563,6 +563,7 @@ def test_known_older_private_schema_and_protocol_one(replica, tmp_path):
             "discovery_progress",
             "local_file_facts",
             "local_bundle_history",
+            "catalog_bulk_items",
             "recovery_receipts",
         ):
             db.execute(f"DROP TABLE {table}")

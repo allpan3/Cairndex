@@ -20,7 +20,15 @@ def enqueue(
 ) -> dict[str, Any]:
     intent = value_text({"action": action, "body": body})
     if (
-        action not in ("save", "preview", "commit_preview", "recover", "media_maintenance")
+        action
+        not in (
+            "save",
+            "preview",
+            "commit_preview",
+            "recover",
+            "media_maintenance",
+            "bulk_selection",
+        )
         or len(intent.encode()) > 1024 * 1024
     ):
         raise ReplicaError("Unsupported or oversized catalog job")
@@ -44,6 +52,13 @@ def enqueue(
             ).fetchone()
         ):
             raise ReplicaError("A local media pass is already queued; finish or cancel it first")
+        if action == "bulk_selection" and not prior:
+            from cairndex.replicas.catalog.bulk import admit
+
+            try:
+                admit(db, operation, body)
+            except ValidationError as error:
+                raise ReplicaError("Complete bulk change intent is required") from error
         db.execute(
             "INSERT OR IGNORE INTO catalog_jobs VALUES (?, ?, 'queued', NULL, NULL, "
             "(SELECT COALESCE(MAX(sequence),0)+1 FROM catalog_jobs))",
@@ -89,17 +104,22 @@ def listing(store: CatalogStore, after: int = 0, limit: int = 30) -> dict[str, A
         }
 
 
-# Only the server worker executes a job; queued work remains retryable after abrupt exits
+# Only the server worker executes a job; queued work remains retryable after abrupt exits.
+# A bulk operation advances one batch at a time when nothing else waits, so an ordinary
+# edit queued meanwhile does not wait for the whole selection.
 def run_one(store: CatalogStore, root: Path | None = None) -> None:
     with store.connection() as db:
         row = db.execute(
             "SELECT id,intent FROM catalog_jobs WHERE state='queued' "
-            "AND json_extract(intent,'$.action') != 'media_maintenance' "
+            "AND json_extract(intent,'$.action') NOT IN ('media_maintenance','bulk_selection') "
             "ORDER BY sequence LIMIT 1"
         ).fetchone()
         if row is not None:
             db.execute("UPDATE catalog_jobs SET state='running' WHERE id=?", (row["id"],))
     if row is None:
+        from cairndex.replicas.catalog.bulk import step
+
+        step(store)
         return
     operation, intent = row["id"], json.loads(row["intent"])
     action, body = intent["action"], intent["body"]
@@ -161,7 +181,8 @@ def run_one(store: CatalogStore, root: Path | None = None) -> None:
         )
 
 
-# Cancel only queued work; saved events and completed previews remain durably discoverable
+# Cancel only queued work; saved events and completed previews remain durably discoverable.
+# A bulk operation stays queued between batches, so Cancel stops it after the current one.
 def cancel(store: CatalogStore, operation: str) -> None:
     with store.connection() as db:
         db.execute(

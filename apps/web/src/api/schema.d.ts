@@ -2848,6 +2848,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/selection/bulk/{operation}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stage Bulk */
+        post: operations["stage_bulk_api_v1_libraries__library_id__replica_catalog_bundles_selection_bulk__operation__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/selection/bulk/{operation}/unchanged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bulk Unchanged */
+        get: operations["bulk_unchanged_api_v1_libraries__library_id__replica_catalog_bundles_selection_bulk__operation__unchanged_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/catalog/bundles/selection/memberships": {
         parameters: {
             query?: never;
@@ -4839,6 +4873,15 @@ export interface components {
              */
             view: "all" | "uncategorized" | "untagged" | "recent" | "random" | "missing";
         };
+        /** CatalogBulkItem */
+        CatalogBulkItem: {
+            /** Id */
+            id: string;
+            /** Observed */
+            observed: {
+                [key: string]: string[];
+            };
+        };
         /** CatalogBulkMembershipChoice */
         CatalogBulkMembershipChoice: {
             /** Assigned Count */
@@ -4897,6 +4940,25 @@ export interface components {
             q: string;
             /** Target */
             target?: string | null;
+        };
+        /** CatalogBulkStage */
+        CatalogBulkStage: {
+            /** Items */
+            items: components["schemas"]["CatalogBulkItem"][];
+            /** Start */
+            start: number;
+        };
+        /** CatalogBulkStaged */
+        CatalogBulkStaged: {
+            /** Staged */
+            staged: number;
+        };
+        /** CatalogBulkUnchanged */
+        CatalogBulkUnchanged: {
+            /** Items */
+            items: string[];
+            /** Next Start */
+            next_start: number | null;
         };
         /** CatalogBundleSummary */
         CatalogBundleSummary: {
@@ -5102,7 +5164,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "save" | "preview" | "commit_preview" | "recover" | "media_maintenance";
+            action: "save" | "preview" | "commit_preview" | "recover" | "media_maintenance" | "bulk_selection";
             /** Error */
             error: string | null;
             /** Id */
@@ -5132,7 +5194,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "save" | "preview" | "commit_preview" | "recover" | "media_maintenance";
+            action: "save" | "preview" | "commit_preview" | "recover" | "media_maintenance" | "bulk_selection";
             /** Body */
             body: {
                 [key: string]: unknown;
@@ -13914,6 +13976,85 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogSelectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stage_bulk_api_v1_libraries__library_id__replica_catalog_bundles_selection_bulk__operation__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogBulkStage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogBulkStaged"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_unchanged_api_v1_libraries__library_id__replica_catalog_bundles_selection_bulk__operation__unchanged_get: {
+        parameters: {
+            query?: {
+                start?: number;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogBulkUnchanged"];
                 };
             };
             /** @description Validation Error */
