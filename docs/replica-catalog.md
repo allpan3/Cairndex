@@ -349,12 +349,18 @@ Source operations use the reviewed File Browser workflow. Save Contact Sheet…
 is offered for a cataloged video. A retained bundle draft survives Files/Tags navigation, and closing
 the viewer retains file selection.
 
-Bundle query size and missing-state predicates use SQL unknown for nonempty
-bundles because these requests do not inspect local bytes. Negation preserves
-unknown. Empty bundles have zero bytes and no missing member. Has-cover is true
-for an authored cover, false for an empty bundle without one, and otherwise unknown.
-This boundary prevents a local absence or unmeasured size from becoming a shared
-fact. Title, notes, source, filename, extension, rating, file count, dates and
+Bundle query size and missing-state predicates answer from the serving
+instance's private observations, as its Size sort and Missing Files view do;
+these requests never inspect source bytes. Size is the bundle's total when every
+member has a path-matched local file fact (ADR-0040), and otherwise SQL unknown.
+Has-missing is true when the last local check found a member unavailable (the
+Missing Files rule), false when every member was last seen available, and
+otherwise unknown. Negation preserves unknown, and empty bundles have zero bytes
+and no missing member. The answers stay on this instance: a saved Smart
+Collection shares only its filter, and another device evaluates it from its own
+observations. Has-cover follows the portable card's artwork rule from authored
+rows, so it is always known: a member chosen as cover, or an image or video
+member. Title, notes, source, filename, extension, rating, file count, dates and
 membership use the established authored semantics.
 
 Servers with `selection_version: 1` support pointer toggles, Shift ranges, marquee
@@ -403,7 +409,8 @@ Unbundled. Random uses a seed and stable bundle IDs before pagination; Reshuffle
 chooses a new seed. Missing Files lists eligible bundles with recorded unavailable
 local media observations. These are last recorded checks, which can be stale;
 unobserved files do not count as missing. Opening file details checks local bytes
-again. Structured missing-state filters retain their separate unknown semantics.
+again. A structured missing-state filter is true for the same bundles; it is
+false only for bundles whose members were all last seen available.
 Unbundled is a paginated file list over authored provisional scan suggestions,
 with full-population path search and hidden-path exclusion. New replica Update
 suggestions remain private grouping candidates until accepted; they are not

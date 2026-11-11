@@ -90,6 +90,11 @@ exactly this set.
 | `tags`, `collections` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) | list of ids |
 | `has_cover`, `has_missing` | `equals` | boolean |
 
+A portable library answers `size_bytes` and `has_missing` from the serving
+instance's private observations and leaves them unknown (no match, also under
+`not`) for bundles with members it has not observed. `has_cover` there follows
+the card's authored artwork rule. See [`replica-catalog.md`](replica-catalog.md).
+
 ### Rating values are stars, in half-star steps
 
 A `rating` value is a **number of stars** on a 0–5 scale with 0.5 granularity:

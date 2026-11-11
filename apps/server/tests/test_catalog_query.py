@@ -117,6 +117,57 @@ def test_unknown_source_observations_do_not_become_matches(tmp_path, node):
     }
 
 
+def test_size_missing_and_cover_use_this_instances_observations(tmp_path):
+    store = prepare_disposable(create_disposable(parent=tmp_path, bundles=3)).store
+
+    def matches(node):
+        return {row.id for row in page(store, filter={"root": node}).items}
+
+    def facts(rows):
+        with store.connection() as db:
+            db.executemany(
+                "INSERT OR REPLACE INTO local_file_facts "
+                "VALUES (?,?,?,'2026-01-01T00:00:00+00:00')",
+                rows,
+            )
+
+    def media(file_id, state):
+        with store.connection() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO local_media VALUES (?,'g1',?,NULL,NULL)", (file_id, state)
+            )
+
+    empty = {"bundle-000001", "bundle-000002"}
+    # The authored cover and media roles are shared facts, as on the card
+    assert matches(pred("has_cover", "equals", True)) == {"bundle-000000"}
+    assert matches(pred("has_cover", "equals", False)) == empty
+    # Unobserved members leave size and missing state unknown
+    assert matches(pred("size_bytes", "gt", 0)) == set()
+    assert matches(pred("has_missing", "equals", True)) == set()
+    # One member observed is not enough for a size; a stale path is no observation
+    facts([("file-video", "Synthetic/雪.mp4", 10), ("file-subtitle", "Earlier/雪.srt", 20)])
+    assert matches(pred("size_bytes", "gt", 0)) == set()
+    facts([("file-subtitle", "Synthetic/雪.srt", 20)])
+    assert matches(pred("size_bytes", "gt", 0)) == {"bundle-000000"}
+    assert matches(pred("size_bytes", "eq", 30)) == {"bundle-000000"}
+    assert matches({"op": "not", "child": pred("size_bytes", "gt", 0)}) == empty
+    # Missing follows the Missing Files view; not missing needs every member seen
+    media("file-video", "available")
+    assert matches(pred("has_missing", "equals", False)) == empty
+    media("file-subtitle", "available")
+    assert matches(pred("has_missing", "equals", False)) == {"bundle-000000", *empty}
+    media("file-subtitle", "unavailable")
+    assert matches(pred("has_missing", "equals", True)) == {"bundle-000000"}
+    assert {row.id for row in page(store, view="missing").items} == {"bundle-000000"}
+    assert matches({"op": "not", "child": pred("has_missing", "equals", True)}) == empty
+    # Ordinary authored predicates combine with them unchanged
+    rated = {
+        "op": "and",
+        "children": [pred("rating", "gte", 2), pred("has_missing", "equals", True)],
+    }
+    assert matches(rated) == {"bundle-000000"}
+
+
 def test_literal_text_dates_and_notes(tmp_path):
     store = prepare_disposable(create_disposable(parent=tmp_path, bundles=3)).store
     assert (
