@@ -273,6 +273,32 @@ def browse_total(db: sqlite3.Connection, request: CatalogBrowseRequest) -> int:
     return int(db.execute(f"SELECT count(*) FROM catalog_rows b WHERE {where}", args).fetchone()[0])
 
 
+# Selection version 6: Select All reads the identities of the whole query in pages
+class CatalogBrowseIdsRequest(CatalogBrowseRequest):
+    limit: int = Field(default=1000, ge=1, le=1000)
+
+
+class CatalogIdPage(StrictModel):
+    ids: list[str]
+    total: int
+    offset: int
+    limit: int
+
+
+def browse_ids(db: sqlite3.Connection, request: CatalogBrowseIdsRequest) -> CatalogIdPage:
+    """One page of a browse query's identities, in its order, without card facts."""
+    where, args = _scope(db, request)
+    total = db.execute(f"SELECT count(*) FROM catalog_rows b WHERE {where}", args).fetchone()[0]
+    ordering, order_args = _ordering(db, request)
+    rows = db.execute(
+        f"SELECT b.entity FROM catalog_rows b WHERE {where} ORDER BY {ordering} LIMIT ? OFFSET ?",
+        [*args, *order_args, request.limit, request.offset],
+    )
+    return CatalogIdPage(
+        ids=[row[0] for row in rows], total=total, offset=request.offset, limit=request.limit
+    )
+
+
 def browse(db: sqlite3.Connection, request: CatalogBrowseRequest) -> CatalogBrowsePage:
     """Search the complete eligible projection before SQL ordering and pagination."""
     where, args = _scope(db, request)
@@ -465,8 +491,10 @@ class CatalogUnbundledPage(StrictModel):
     limit: int
 
 
-def unbundled(db: sqlite3.Connection, request: CatalogUnbundledRequest) -> CatalogUnbundledPage:
-    """Page staged and privately discovered files without observing source bytes."""
+def _unbundled_rows(
+    db: sqlite3.Connection, request: CatalogUnbundledRequest, columns: str
+) -> tuple[int, list[sqlite3.Row]]:
+    """The matching queue's total and one ordered page of it, from stored rows only."""
     from cairndex.replicas.catalog.unbundled_sources import QUEUE, order_by
 
     where = (
@@ -479,11 +507,17 @@ def unbundled(db: sqlite3.Connection, request: CatalogUnbundledRequest) -> Catal
     total = db.execute(QUEUE + "SELECT count(*) " + source, (request.q,)).fetchone()[0]
     rows = db.execute(
         QUEUE
-        + "SELECT id,bundle_id,relative_path,added "
+        + f"SELECT {columns} "
         + source
         + f" ORDER BY {order_by(request.sort, request.order)} LIMIT ? OFFSET ?",
         (request.q, request.limit, request.offset),
-    )
+    ).fetchall()
+    return total, rows
+
+
+def unbundled(db: sqlite3.Connection, request: CatalogUnbundledRequest) -> CatalogUnbundledPage:
+    """Page staged and privately discovered files without observing source bytes."""
+    total, rows = _unbundled_rows(db, request, "id,bundle_id,relative_path,added")
     return CatalogUnbundledPage(
         items=[
             CatalogUnbundledFile(
@@ -494,6 +528,39 @@ def unbundled(db: sqlite3.Connection, request: CatalogUnbundledRequest) -> Catal
                 created_at=None if row[3] is None else datetime.fromtimestamp(row[3], UTC),
             )
             for row in rows
+        ],
+        total=total,
+        offset=request.offset,
+        limit=request.limit,
+    )
+
+
+# Selection version 6: Select All reads the whole matching queue's keys in pages,
+# in the queue's order. Nothing here observes source files.
+class CatalogUnbundledKeysRequest(CatalogUnbundledRequest):
+    limit: int = Field(default=1000, ge=1, le=1000)
+
+
+class CatalogUnbundledKey(StrictModel):
+    id: str | None
+    bundle_id: str | None
+    relative_path: str
+
+
+class CatalogUnbundledKeyPage(StrictModel):
+    items: list[CatalogUnbundledKey]
+    total: int
+    offset: int
+    limit: int
+
+
+def unbundled_keys(
+    db: sqlite3.Connection, request: CatalogUnbundledKeysRequest
+) -> CatalogUnbundledKeyPage:
+    total, rows = _unbundled_rows(db, request, "id,bundle_id,relative_path")
+    return CatalogUnbundledKeyPage(
+        items=[
+            CatalogUnbundledKey(id=row[0], bundle_id=row[1], relative_path=row[2]) for row in rows
         ],
         total=total,
         offset=request.offset,

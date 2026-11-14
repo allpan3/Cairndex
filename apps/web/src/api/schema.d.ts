@@ -2797,6 +2797,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/browse/ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Browse Bundle Ids */
+        post: operations["browse_bundle_ids_api_v1_libraries__library_id__replica_catalog_bundles_browse_ids_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/catalog/bundles/counts": {
         parameters: {
             query?: never;
@@ -3114,6 +3131,23 @@ export interface paths {
         put?: never;
         /** Unbundled Files */
         post: operations["unbundled_files_api_v1_libraries__library_id__replica_catalog_files_unbundled_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/files/unbundled/ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unbundled File Keys */
+        post: operations["unbundled_file_keys_api_v1_libraries__library_id__replica_catalog_files_unbundled_ids_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4811,6 +4845,57 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** CatalogBrowseIdsRequest */
+        CatalogBrowseIdsRequest: {
+            /** Collection Id */
+            collection_id?: string | null;
+            filter?: components["schemas"]["FilterExpression-Input"] | null;
+            /**
+             * Include Descendants
+             * @default true
+             */
+            include_descendants: boolean;
+            /**
+             * Limit
+             * @default 1000
+             */
+            limit: number;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Order
+             * @default asc
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /**
+             * Q
+             * @default
+             */
+            q: string;
+            /**
+             * Seed
+             * @default 0
+             */
+            seed: number;
+            /** Smart Collection Id */
+            smart_collection_id?: string | null;
+            /**
+             * Sort
+             * @default title
+             * @enum {string}
+             */
+            sort: "title" | "rating" | "date_added" | "manual" | "file_count" | "size" | "date_modified" | "date_opened";
+            /**
+             * View
+             * @default all
+             * @enum {string}
+             */
+            view: "all" | "uncategorized" | "untagged" | "recent" | "random" | "missing";
+        };
         /** CatalogBrowsePage */
         CatalogBrowsePage: {
             /** Items */
@@ -5158,6 +5243,17 @@ export interface components {
             /** Value */
             value: string | null;
         };
+        /** CatalogIdPage */
+        CatalogIdPage: {
+            /** Ids */
+            ids: string[];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** CatalogJob */
         CatalogJob: {
             /**
@@ -5304,6 +5400,52 @@ export interface components {
             relative_path: string;
             /** Size Bytes */
             size_bytes?: number | null;
+        };
+        /** CatalogUnbundledKey */
+        CatalogUnbundledKey: {
+            /** Bundle Id */
+            bundle_id: string | null;
+            /** Id */
+            id: string | null;
+            /** Relative Path */
+            relative_path: string;
+        };
+        /** CatalogUnbundledKeyPage */
+        CatalogUnbundledKeyPage: {
+            /** Items */
+            items: components["schemas"]["CatalogUnbundledKey"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** CatalogUnbundledKeysRequest */
+        CatalogUnbundledKeysRequest: {
+            /**
+             * Limit
+             * @default 1000
+             */
+            limit: number;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Order
+             * @default asc
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /**
+             * Q
+             * @default
+             */
+            q: string;
+            /** Sort */
+            sort?: ("name" | "type" | "size" | "added" | "modified") | null;
         };
         /** CatalogUnbundledPage */
         CatalogUnbundledPage: {
@@ -13876,6 +14018,45 @@ export interface operations {
             };
         };
     };
+    browse_bundle_ids_api_v1_libraries__library_id__replica_catalog_bundles_browse_ids_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogBrowseIdsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogIdPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     bundle_view_counts_api_v1_libraries__library_id__replica_catalog_bundles_counts_get: {
         parameters: {
             query?: never;
@@ -14597,6 +14778,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogUnbundledPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unbundled_file_keys_api_v1_libraries__library_id__replica_catalog_files_unbundled_ids_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogUnbundledKeysRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogUnbundledKeyPage"];
                 };
             };
             /** @description Validation Error */

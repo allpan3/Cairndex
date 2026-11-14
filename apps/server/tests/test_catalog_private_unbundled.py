@@ -166,3 +166,43 @@ def test_sorts_order_the_whole_queue_before_each_page(replicas):
     assert order("modified", "desc") == ["beta.mkv", "alpha.mp4", "mid.JPG", "zeta.srt"]
     # Fresh discoveries have no catalog addition time, which sorts last both ways
     assert order("added") == order("added", "desc") == order("name")
+
+
+# Selection version 6: Select All reads the whole queue's keys in the listing's order
+def test_queue_keys_follow_the_listing_order_without_observing_sources(replicas, monkeypatch):
+    from cairndex.replicas.catalog.browse import CatalogUnbundledKeysRequest, unbundled_keys
+
+    store, root, _ = replicas[0]
+    paths = [f"Keys/clip-{index:03}.mp4" for index in range(23)] + ["Keys/notes.srt"]
+    files(root, paths)
+    scan(store, root)
+
+    def forbid(*_args, **_kwargs):
+        raise AssertionError("Key reads must not walk or inspect source bytes")
+
+    monkeypatch.setattr("os.scandir", forbid)
+    monkeypatch.setattr("cairndex.replicas.media.open_source", forbid)
+    for sort, order in ((None, "asc"), ("name", "desc"), ("type", "asc")):
+        with store.connection(readonly=True) as db:
+            listed = [
+                item.relative_path
+                for offset in (0, 10, 20)
+                for item in unbundled(
+                    db,
+                    CatalogUnbundledRequest(
+                        q="Keys/", sort=sort, order=order, offset=offset, limit=10
+                    ),
+                ).items
+            ]
+            keys = []
+            for offset in range(0, 24, 5):
+                result = unbundled_keys(
+                    db,
+                    CatalogUnbundledKeysRequest(
+                        q="Keys/", sort=sort, order=order, offset=offset, limit=5
+                    ),
+                )
+                assert result.total == 24
+                keys += result.items
+        assert [key.relative_path for key in keys] == listed
+        assert all(key.id is None and key.bundle_id is None for key in keys)

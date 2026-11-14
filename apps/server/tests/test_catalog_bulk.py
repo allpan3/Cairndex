@@ -256,7 +256,7 @@ def test_staging_retries_freezes_and_refuses_incomplete_selections(store):
 def test_bulk_routes_stage_pages_and_list_unchanged_bundles(api):  # noqa: F811
     client, base, store = api
     base += "/replica/catalog"
-    assert client.get(base.rsplit("/catalog", 1)[0] + "/status").json()["selection_version"] == 5
+    assert client.get(base.rsplit("/catalog", 1)[0] + "/status").json()["selection_version"] == 6
     items = reviewed(store, "title", IDS[:3])
     foreign = [{"id": IDS[0], "observed": {f"asset_bundles/{IDS[1]}/title": []}}]
     assert (

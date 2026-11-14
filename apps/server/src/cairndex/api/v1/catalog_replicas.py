@@ -8,16 +8,22 @@ from cairndex.api.media_deps import MediaAccessDep
 from cairndex.api.v1.replicas import CommonReplicaStore
 from cairndex.replicas.catalog import bulk, jobs
 from cairndex.replicas.catalog.browse import (
+    CatalogBrowseIdsRequest,
     CatalogBrowsePage,
     CatalogBrowseRequest,
     CatalogBundleSummary,
     CatalogDirectoryBundleCount,
+    CatalogIdPage,
+    CatalogUnbundledKeyPage,
+    CatalogUnbundledKeysRequest,
     CatalogUnbundledPage,
     CatalogUnbundledRequest,
     browse,
+    browse_ids,
     bundle_summary,
     directory_bundles,
     unbundled,
+    unbundled_keys,
 )
 from cairndex.replicas.catalog.bulk import CatalogBulkStage, CatalogBulkStaged, CatalogBulkUnchanged
 from cairndex.replicas.catalog.inspector import (
@@ -178,6 +184,13 @@ def browse_bundles(payload: CatalogBrowseRequest, store: Catalog) -> CatalogBrow
         return browse(db, payload)
 
 
+# Select All reads a query's identities in pages of up to 1,000 (selection_version 6)
+@router.post("/bundles/browse/ids", response_model=CatalogIdPage)
+def browse_bundle_ids(payload: CatalogBrowseIdsRequest, store: Catalog) -> CatalogIdPage:
+    with store.connection(readonly=True) as db:
+        return browse_ids(db, payload)
+
+
 @router.get("/bundles/{bundle_id}/summary", response_model=CatalogBundleSummary)
 def read_bundle_summary(bundle_id: Token, store: Catalog) -> CatalogBundleSummary:
     with store.connection(readonly=True) as db:
@@ -289,6 +302,15 @@ def unbundled_files(
         item.size_bytes = observed.size_bytes
         item.modified_at = observed.modified_at
     return page
+
+
+# Select All in Unbundled reads the queue's keys without the listing's local stat
+@router.post("/files/unbundled/ids", response_model=CatalogUnbundledKeyPage)
+def unbundled_file_keys(
+    payload: CatalogUnbundledKeysRequest, store: Catalog
+) -> CatalogUnbundledKeyPage:
+    with store.connection(readonly=True) as db:
+        return unbundled_keys(db, payload)
 
 
 # The folder dialog states what Create will file before it is pressed
