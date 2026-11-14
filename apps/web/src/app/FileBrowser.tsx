@@ -1,4 +1,5 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { catalog } from '../api/catalog'
 import { replicaRequest } from '../api/replicas'
 import { useReplicaStatus } from '../api/useReplicaStatus'
@@ -63,6 +64,12 @@ import {
   type SelectionModifiers,
 } from './selection'
 import { SelectionCount } from './SelectionCount'
+import {
+  readUnbundledKeys,
+  SelectAllAborted,
+  type SelectAllProgress,
+} from '../api/catalogSelectAll'
+import { unbundledEntry, useUnbundledWindow } from './useUnbundledWindow'
 import { navTargetsFrom, rowStep } from './spatialNav'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
@@ -144,6 +151,8 @@ interface FileBrowserProps {
   onNewFolder?: (parent: string, name: string) => void | Promise<void>
   /** Portable Copy to…, Move to… and Move to Trash, in place of the legacy writes. */
   onSourceAction?: (action: 'copy' | 'move' | 'trash', relativePaths: string[]) => void
+  /** Changing it starts a new, empty file selection, such as after files were bundled. */
+  selectionGeneration?: number
   /** Library paths a running Move or Trash is taking out of their folder; hidden at once. */
   leavingPaths?: ReadonlySet<string>
   /** Folders a running New Folder is creating; listed at once and inert until created. */
@@ -486,62 +495,54 @@ function CatalogBrowseScope(props: FileScopeProps) {
   )
 }
 
-const PLAYABLE = new Set(['video', 'image', 'audio'])
-
 /** Retained staging and fresh private discoveries share the ordinary file queue. */
 function CatalogUnbundledScope(props: FileScopeProps) {
+  const library = props.catalogLibrary!
   const q = props.search.trim()
+  const status = useReplicaStatus(library).data
   // The server orders the whole matching queue before each page (browse 17)
-  const sortable = (useReplicaStatus(props.catalogLibrary).data?.browse_version ?? 0) >= 17
-  const order = sortable ? { sort: props.prefs.sort, order: props.prefs.order } : {}
-  const query = useInfiniteQuery({
-    queryKey: ['catalog-unbundled', props.catalogLibrary, q, order],
-    initialPageParam: 0,
-    queryFn: ({ pageParam }) =>
-      catalog<components['schemas']['CatalogUnbundledPage']>(
-        props.catalogLibrary!,
-        '/files/unbundled',
-        'POST',
-        { q, offset: pageParam, limit: 100, ...order },
-      ),
-    getNextPageParam: (page) =>
-      page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
-    refetchInterval: 4000,
-  })
-  const entries = useMemo(
-    () =>
-      query.data?.pages.flatMap((page) =>
-        page.items.map((item): FileBrowserEntry => {
-          const name = item.relative_path.split('/').pop() ?? item.relative_path
-          const dot = name.lastIndexOf('.')
-          // This bounded page carries a fresh local stat, independently of catalog presence.
-          return {
-            kind: 'file',
-            name,
-            relative_path: item.relative_path,
-            file_id: item.id,
-            bundle_id: item.bundle_id,
-            linked: item.id != null,
-            unbundled: true,
-            local_state: item.local_state ?? 'unknown',
-            media_kind: item.media_kind ?? null,
-            supported: PLAYABLE.has(item.media_kind ?? ''),
-            extension: dot > 0 ? name.slice(dot + 1).toLowerCase() : null,
-            size_bytes: item.size_bytes ?? null,
-            created_at: item.created_at ?? null,
-            modified_at: item.modified_at ?? null,
-            duration: null,
-            mime_type: null,
-            container: null,
-            video_codec: null,
-            video_codec_tag: null,
-            audio_codec: null,
-            resume_position: null,
-          }
-        }),
-      ) ?? [],
-    [query.data],
+  const sortable = (status?.browse_version ?? 0) >= 17
+  const sort = sortable ? props.prefs.sort : undefined
+  const direction = sortable ? props.prefs.order : undefined
+  const query = useMemo(
+    () => ({ q, ...(sort ? { sort, order: direction } : {}) }),
+    [q, sort, direction],
   )
+  const [range, setRange] = useState({ start: 0, end: 0 })
+  const listing = useUnbundledWindow(library, query, range)
+  // Select All and Shift ranges read keys of rows not yet fetched (`selection_version: 6`)
+  const keyed = (status?.selection_version ?? 0) >= 6
+  const listingWindow: ListingWindow = {
+    identity: JSON.stringify(query),
+    count: listing.count,
+    at: listing.at,
+    slotOf: listing.slotOf,
+    onRange: (start, end) =>
+      setRange((previous) =>
+        previous.start === start && previous.end === end ? previous : { start, end },
+      ),
+    readAll: keyed
+      ? (onProgress, signal) =>
+          readUnbundledKeys(library, query, onProgress, signal).then((items) =>
+            items.map(unbundledEntry),
+          )
+      : undefined,
+    readRange: keyed
+      ? async (first, last) => {
+          const found: FileBrowserEntry[] = []
+          for (let offset = first; offset <= last; offset += 1000) {
+            const page = await catalog<components['schemas']['CatalogUnbundledKeyPage']>(
+              library,
+              '/files/unbundled/ids',
+              'POST',
+              { ...query, offset, limit: Math.min(1000, last - offset + 1) },
+            )
+            found.push(...page.items.map(unbundledEntry))
+          }
+          return found
+        }
+      : undefined,
+  }
   return (
     <div className="file-browser">
       <FileList
@@ -553,20 +554,18 @@ function CatalogUnbundledScope(props: FileScopeProps) {
             <span className="toolbar__title">Unbundled</span>
           </>
         }
-        entries={entries}
-        isLoading={query.isLoading}
-        isError={query.isError}
-        complete={!!query.data && !query.isFetching && !query.isError && !query.hasNextPage}
-        onRetry={() => void query.refetch()}
-        errorText={query.error?.message}
+        entries={listing.entries}
+        window={listingWindow}
+        isLoading={listing.isLoading}
+        isError={listing.isError}
+        complete={listing.complete && !listing.isError}
+        onRetry={listing.refetch}
+        errorText={listing.error?.message}
         emptyText={
           q
             ? `No files match “${props.search}”.`
             : 'Nothing to bundle — every file is already in a bundle.'
         }
-        hasMore={query.hasNextPage}
-        isFetchingMore={query.isFetchingNextPage}
-        onLoadMore={() => void query.fetchNextPage()}
       />
     </div>
   )
@@ -674,7 +673,38 @@ interface FileListProps extends FileScopeProps {
   hasMore?: boolean
   isFetchingMore?: boolean
   onLoadMore?: () => void
+  /** A window over a long list: sized from its total, rows fetched as they come into view. */
+  window?: ListingWindow
 }
+
+/** A long flat list rendered as a window: only rows on screen are fetched and drawn. */
+interface ListingWindow {
+  /** Changes with the query (search or sort); the list then returns to its top. */
+  identity: string
+  count: number
+  at: (slot: number) => FileBrowserEntry | undefined
+  slotOf: (path: string) => number
+  /** The rows the virtual list shows, so their pages can be fetched. */
+  onRange: (start: number, end: number) => void
+  /** Keys of rows `first`..`last` in list order, including rows not fetched. */
+  readRange?: (first: number, last: number) => Promise<FileBrowserEntry[]>
+  /** Keys of every row, for Select All. */
+  readAll?: (
+    onProgress: (progress: SelectAllProgress) => void,
+    signal: AbortSignal,
+  ) => Promise<FileBrowserEntry[]>
+}
+
+/** The most files a bundle can be made from or added to in one step, the server's bound. */
+const BUNDLE_LIMIT = 100
+/**
+ * The most items one Copy, Move or Trash or one drag-out takes from a windowed list.
+ * Each item is its own journaled operation in one task, so a larger selection
+ * would run for hours and hold its whole task in the window.
+ */
+const SOURCE_LIMIT = 1000
+const NO_ENTRIES = new Map<string, FileBrowserEntry>()
+const GRID_GAP = 12
 
 /** The selectable, right-clickable table/grid of file/dir entries shared by
  * both scopes, with a bundle-browser-style toolbar (search / sort / layout /
@@ -704,6 +734,8 @@ function FileList({
   hasMore,
   isFetchingMore,
   onLoadMore,
+  window: listing,
+  selectionGeneration = 0,
   selectedPath,
   onNavigate,
   onSelectEntry,
@@ -831,13 +863,32 @@ function FileList({
   // `entry.name`, so hiding extensions can never change what an action does.
   const labelFor = (entry: FileBrowserEntry) =>
     displayName(entry.name, entry.kind === 'directory', displayPrefs.hideFileExtensions)
+  // A windowed list selects rows it has not fetched, by keys read from the server
+  const selectionScope = JSON.stringify([scope, currentPath, search, selectionGeneration])
+  const [extra, setExtra] = useState({ scope: selectionScope, map: NO_ENTRIES })
+  const known = extra.scope === selectionScope ? extra.map : NO_ENTRIES
+  const remember = (found: FileBrowserEntry[]) => {
+    const map = new Map(known)
+    for (const entry of found) map.set(entry.relative_path, entry)
+    setExtra({ scope: selectionScope, map })
+  }
+  // Once every row is fetched, the rows themselves decide what is still selectable
+  const selectionEntries = useMemo(() => {
+    if (!listing || complete || known.size === 0) return entries
+    const listed = new Set(entries.map((entry) => entry.relative_path))
+    return [...entries, ...[...known.values()].filter((entry) => !listed.has(entry.relative_path))]
+  }, [listing, complete, known, entries])
   const { selected, setSelected, anchor, setAnchor, focusedPath, setFocusedPath, selectedEntry } =
     useFileSelection(
-      libraryStateKey(`cairndex.fileSelection:${JSON.stringify([scope, currentPath, search])}`),
-      entries,
+      libraryStateKey(`cairndex.fileSelection:${selectionScope}`),
+      selectionEntries,
       complete,
       selectedPath,
     )
+  const [selectingAll, setSelectingAll] = useState<{
+    progress: SelectAllProgress
+    abort: AbortController
+  } | null>(null)
   // Keep the inspector and host actions on the refreshed path of the selected indexed file
   const refreshSelectedEntry = useEffectEvent((entry: FileBrowserEntry | null) => {
     if (catalogLibrary || selectedPath !== entry?.relative_path) onSelectEntry(entry)
@@ -864,7 +915,7 @@ function FileList({
   // analogous to collections). Whole-library / recursive file search is a
   // future backend enhancement — see docs/STATUS.md.
   const visible = useMemo(() => {
-    if (scope === 'unbundled') return entries
+    if (scope === 'unbundled' || listing) return entries
     const q = search.trim()
     const filtered = q ? entries.filter((e) => matchSearch(e.name)) : entries
     const dir = activeSort.order === 'asc' ? 1 : -1
@@ -873,7 +924,13 @@ function FileList({
     const dirs = filtered.filter((e) => e.kind === 'directory').sort(cmp)
     const files = filtered.filter((e) => e.kind !== 'directory').sort(cmp)
     return [...dirs, ...files]
-  }, [entries, scope, search, activeSort.sort, activeSort.order, matchSearch])
+  }, [entries, listing, scope, search, activeSort.sort, activeSort.order, matchSearch])
+  // Each selected path's entry: a visible row, or in a windowed list a key read for it
+  const entryByPath = useMemo(
+    () =>
+      new Map((listing ? selectionEntries : visible).map((entry) => [entry.relative_path, entry])),
+    [listing, selectionEntries, visible],
+  )
 
   const openable = useMemo(() => visible.filter((e) => e.kind === 'file' && e.supported), [visible])
   const [openKey, setOpenKey] = useState<string | null>(null)
@@ -900,6 +957,15 @@ function FileList({
     // Rename/Move to…/Move to Trash resolving against the previous folder.
     if (stale) return
     setFocusedPath(entry.relative_path)
+    if (listing && e.shiftKey && anchor) {
+      const from = listing.slotOf(anchor)
+      const to = listing.slotOf(entry.relative_path)
+      if (from !== -1 && to !== -1) {
+        selectSlots(Math.min(from, to), Math.max(from, to), e.metaKey || e.ctrlKey)
+        onSelectEntry(entry)
+        return
+      }
+    }
     if (e.shiftKey && anchor) {
       const ids = visible.map((v) => v.relative_path)
       const a = ids.indexOf(anchor)
@@ -929,6 +995,74 @@ function FileList({
     }
     setAnchor(entry.relative_path)
     onSelectEntry(entry)
+  }
+
+  /**
+   * Select rows `first`..`last` of a windowed list. Rows not fetched yet are named
+   * by keys read from the server; without that read the range cannot be complete,
+   * so it is refused rather than cut short.
+   */
+  const selectSlots = (first: number, last: number, additive: boolean) => {
+    if (!listing) return
+    const rows: FileBrowserEntry[] = []
+    for (let slot = first; slot <= last; slot++) {
+      const row = listing.at(slot)
+      if (!row) break
+      rows.push(row)
+    }
+    const apply = (found: FileBrowserEntry[]) => {
+      remember(found)
+      const paths = found.map((row) => row.relative_path)
+      setSelected((previous) => new Set(additive ? [...previous, ...paths] : paths), found)
+    }
+    if (rows.length === last - first + 1) return apply(rows)
+    if (!listing.readRange) {
+      onFlash?.('Scroll through the rows first; this server cannot select rows it has not shown.')
+      return
+    }
+    void listing
+      .readRange(first, last)
+      .then(apply)
+      .catch((reason: Error) => onFlash?.(reason.message))
+  }
+
+  /** Select every row; a windowed list reads the keys of rows it has not fetched. */
+  const selectAll = () => {
+    const first = focusedPath ?? visible[0]?.relative_path ?? null
+    const finish = (paths: string[], found: FileBrowserEntry[] = []) => {
+      setSelected(new Set(paths), found)
+      setFocusedPath(first)
+      setAnchor(first)
+      onSelectEntry(visible.find((entry) => entry.relative_path === first) ?? null)
+    }
+    if (!listing?.readAll || visible.length >= listing.count) {
+      finish(visible.map((entry) => entry.relative_path))
+      return
+    }
+    if (selectingAll) return
+    const abort = new AbortController()
+    setSelectingAll({ progress: { done: 0, total: listing.count }, abort })
+    void listing
+      .readAll(
+        (progress) =>
+          setSelectingAll((current) =>
+            current?.abort === abort ? { ...current, progress } : current,
+          ),
+        abort.signal,
+      )
+      .then((found) => {
+        if (abort.signal.aborted) return
+        remember(found)
+        finish(
+          found.map((entry) => entry.relative_path),
+          found,
+        )
+      })
+      .catch((reason: Error) => {
+        if (!abort.signal.aborted && !(reason instanceof SelectAllAborted))
+          onFlash?.(reason.message)
+      })
+      .finally(() => setSelectingAll((current) => (current?.abort === abort ? null : current)))
   }
 
   const openEntry = (entry: FileBrowserEntry) => {
@@ -1005,13 +1139,15 @@ function FileList({
     const inSelection = selected.has(entry.relative_path)
     // The selection can now include directories (drag/shift-select), so restrict
     // the bundling targets to files.
-    const filePaths = new Set(visible.filter((v) => v.kind === 'file').map((v) => v.relative_path))
-    const targets = selectionTargets(entry.relative_path, selected).filter((p) => filePaths.has(p))
+    const targets = selectionTargets(entry.relative_path, selected).filter(
+      (path) => entryByPath.get(path)?.kind === 'file',
+    )
     if (!inSelection) {
       setSelected(new Set([entry.relative_path]))
       onSelectEntry(entry)
     }
     const n = targets.length
+    const count = n.toLocaleString()
     const items: MenuEntry[] = []
     if (n === 1) {
       const hostItems = hostFileMenuEntries(
@@ -1034,18 +1170,30 @@ function FileList({
       const moveTargets = selectionTargets(entry.relative_path, selected)
       if (onSourceAction) {
         const many = moveTargets.length > 1
+        const moving = moveTargets.length.toLocaleString()
+        // A windowed list can select far more items than one task can carry
+        const tooMany = Boolean(listing) && moveTargets.length > SOURCE_LIMIT
+        const limit = tooMany
+          ? {
+              disabled: true,
+              detail: `Select up to ${SOURCE_LIMIT.toLocaleString()} items to copy, move or trash them.`,
+            }
+          : {}
         writeItems.push(
           {
-            label: many ? `Copy ${moveTargets.length} Items to…` : 'Copy to…',
+            label: many ? `Copy ${moving} Items to…` : 'Copy to…',
             onClick: () => onSourceAction('copy', moveTargets),
+            ...limit,
           },
           {
-            label: many ? `Move ${moveTargets.length} Items to…` : 'Move to…',
+            label: many ? `Move ${moving} Items to…` : 'Move to…',
             onClick: () => onSourceAction('move', moveTargets),
+            ...limit,
           },
           {
-            label: many ? `Move ${moveTargets.length} Items to Trash` : 'Move to Trash',
+            label: many ? `Move ${moving} Items to Trash` : 'Move to Trash',
             onClick: () => onSourceAction('trash', moveTargets),
+            ...limit,
           },
         )
       } else if (writeMode) {
@@ -1065,7 +1213,7 @@ function FileList({
       }
     }
     if (items.length > 0) items.push(null)
-    const selectedEntries = visible.filter((item) => targets.includes(item.relative_path))
+    const selectedEntries = targets.flatMap((path) => entryByPath.get(path) ?? [])
     const eligiblePaths =
       catalogPathBundling && selectedEntries.every((item) => !item.linked || item.unbundled)
     if (!catalogLibrary || scope === 'unbundled' || eligiblePaths) {
@@ -1073,14 +1221,22 @@ function FileList({
       const paths = catalogLibrary
         ? selectedEntries.filter((item) => !item.file_id).map((item) => item.relative_path)
         : targets
+      // A portable bundle takes 1 to 100 files per step; a larger selection is
+      // refused here rather than cut short
+      const limit =
+        catalogLibrary && n > BUNDLE_LIMIT
+          ? { disabled: true, detail: `Select up to ${BUNDLE_LIMIT} files to bundle them.` }
+          : {}
       items.push(
         {
-          label: n > 1 ? `Create Bundle from ${n} Files…` : 'Create Bundle…',
+          label: n > 1 ? `Create Bundle from ${count} Files…` : 'Create Bundle…',
           onClick: () => onCreateBundle(paths, ids),
+          ...limit,
         },
         {
-          label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
+          label: n > 1 ? `Add ${count} Files to Bundle…` : 'Add to Bundle…',
           onClick: () => onAddToBundle(paths, ids),
+          ...limit,
         },
       )
     }
@@ -1172,7 +1328,7 @@ function FileList({
   // pausing over, and the one thing the confirmation can say that a file
   // manager's could not.
   const linkedCount = (paths: string[]): number =>
-    visible.filter((entry) => paths.includes(entry.relative_path) && entry.linked).length
+    paths.filter((path) => entryByPath.get(path)?.linked).length
 
   /** Move the selection one step through the listing (arrow keys). */
   const moveSelection = (
@@ -1183,6 +1339,30 @@ function FileList({
     // The anchor is where the last deliberate click landed; `selectedPath` keeps
     // a Locate-in-File-Browser arrival navigable without a click first.
     const from = focusedPath ?? selectedPath ?? [...selected].at(-1)
+    if (listing) {
+      // A windowed list moves by position: the row above or below may not be drawn
+      const slot = from ? listing.slotOf(from) : -1
+      const step = { up: -columns, down: columns, left: -1, right: 1 } as const
+      const target =
+        direction === 'home'
+          ? 0
+          : direction === 'end'
+            ? listing.count - 1
+            : slot < 0
+              ? 0
+              : slot + step[direction]
+      if (target < 0 || target >= listing.count) return
+      reveal(target)
+      const row = listing.at(target)
+      pendingMove.current = null
+      if (row) moveTo(row, event)
+      else
+        pendingMove.current = {
+          slot: target,
+          event: { shiftKey: event.shiftKey, metaKey: event.metaKey, ctrlKey: event.ctrlKey },
+        }
+      return
+    }
     const index = visible.findIndex((entry) => entry.relative_path === from)
     // Up/Down move by row — in the card layout that is a row of cards, in the
     // list layout the next row is the next entry anyway. Left/Right step one
@@ -1221,6 +1401,21 @@ function FileList({
     }
   }
 
+  // Keyboard focus that lands on a row still being fetched moves there once it arrives
+  const pendingMove = useRef<{ slot: number; event: SelectionModifiers } | null>(null)
+  const moveTo = (row: FileBrowserEntry, event: SelectionModifiers) => {
+    setFocusedPath(row.relative_path)
+    if (event.shiftKey || (!event.metaKey && !event.ctrlKey)) clickEntry(row, event)
+    scrollEl?.focus({ preventScroll: true })
+  }
+  useEffect(() => {
+    const pending = pendingMove.current
+    const row = pending ? listing?.at(pending.slot) : undefined
+    if (!pending || !row) return
+    pendingMove.current = null
+    moveTo(row, pending.event)
+  })
+
   // The focused listing owns selection keys while editors and overlays keep their commands
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1237,11 +1432,7 @@ function FileList({
       const command = event.metaKey || event.ctrlKey
       if (command && !event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault()
-        setSelected(new Set(visible.map((entry) => entry.relative_path)))
-        const first = focusedPath ?? visible[0]?.relative_path ?? null
-        setFocusedPath(first)
-        setAnchor(first)
-        onSelectEntry(visible.find((entry) => entry.relative_path === first) ?? null)
+        selectAll()
         return
       }
       if (event.altKey) return
@@ -1265,6 +1456,7 @@ function FileList({
         }
       } else if (event.key === 'Escape') {
         event.preventDefault()
+        selectingAll?.abort.abort()
         setSelected(new Set())
         setFocusedPath(null)
         setAnchor(null)
@@ -1322,6 +1514,10 @@ function FileList({
       if (selected.size === 0) return
       e.preventDefault()
       const paths = [...selected]
+      if (listing && paths.length > SOURCE_LIMIT) {
+        onFlash?.(`Select up to ${SOURCE_LIMIT.toLocaleString()} items to move them to the Trash.`)
+        return
+      }
       if (onSourceAction) onSourceAction('trash', paths)
       else write.askToDelete(paths, linkedCount(paths))
     }
@@ -1331,8 +1527,14 @@ function FileList({
   // multi-selection, else just this file. Directories are never drag sources, and
   // any selected directory is filtered out (mirrors the context-menu rule).
   const dragTargets = (entry: FileBrowserEntry): string[] => {
-    const filePaths = new Set(visible.filter((v) => v.kind === 'file').map((v) => v.relative_path))
-    return selectionTargets(entry.relative_path, selected).filter((p) => filePaths.has(p))
+    const targets = selectionTargets(entry.relative_path, selected).filter(
+      (path) => entryByPath.get(path)?.kind === 'file',
+    )
+    if (listing && targets.length > SOURCE_LIMIT) {
+      onFlash?.(`Drag up to ${SOURCE_LIMIT.toLocaleString()} files at a time.`)
+      return []
+    }
+    return targets
   }
   const entryDragProps = (entry: FileBrowserEntry): FileDragProps => {
     // Directories are never drag sources. In list layout a row also starts the
@@ -1349,6 +1551,7 @@ function FileList({
   // (only files carry `data-relpath`) — simpler than Browser.tsx's row-math
   // since the file list/grid isn't virtualized, so every node is mounted.
   const hitTest = (rect: MarqueeRect): string[] => {
+    if (listing) return windowHits(rect)
     const wrapperEl = wrapperRef.current
     if (!wrapperEl) return []
     const wrapperRect = wrapperEl.getBoundingClientRect()
@@ -1385,6 +1588,107 @@ function FileList({
     },
   })
 
+  // A windowed list draws only the rows on screen; its size comes from the total
+  const [geometry, setGeometry] = useState({ width: 0, margin: 0, head: 0, rowsTop: 0 })
+  const rowsRef = useRef<HTMLDivElement | null>(null)
+  const columns =
+    listing && prefs.layout === 'grid'
+      ? Math.max(1, Math.floor((geometry.width - GRID_GAP) / (prefs.zoom + GRID_GAP)))
+      : 1
+  const rowHeight =
+    prefs.layout === 'grid' ? Math.round(prefs.zoom * 0.78) + GRID_GAP : listRowHeight(prefs.zoom)
+  const rowCount = listing ? Math.ceil(listing.count / columns) : 0
+  const windowed = listing !== undefined
+  useLayoutEffect(() => {
+    if (!windowed || !scrollEl) return
+    const measure = () => {
+      const rows = rowsRef.current
+      const box = scrollEl.getBoundingClientRect()
+      const top = rows ? rows.getBoundingClientRect().top : box.top
+      const wrapper = wrapperRef.current?.getBoundingClientRect().top ?? top
+      const head = wrapperRef.current?.querySelector('.file-table__head')
+      const next = {
+        width: scrollEl.clientWidth,
+        margin: top - box.top + scrollEl.scrollTop,
+        head: head ? head.getBoundingClientRect().height : 0,
+        rowsTop: top - wrapper,
+      }
+      setGeometry((previous) =>
+        previous.width === next.width &&
+        previous.margin === next.margin &&
+        previous.head === next.head &&
+        previous.rowsTop === next.rowsTop
+          ? previous
+          : next,
+      )
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(scrollEl)
+    if (rowsRef.current) observer.observe(rowsRef.current)
+    return () => observer.disconnect()
+    // Anything drawn above the rows moves them: the header, a notice or an error
+  }, [windowed, scrollEl, prefs.layout, prefs.zoom, isError, isLoading, notice])
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns non-memoizable fns; safe here
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollEl,
+    estimateSize: () => rowHeight,
+    overscan: 6,
+    scrollMargin: geometry.margin,
+    // The list's sticky header covers the top of the viewport
+    scrollPaddingStart: prefs.layout === 'list' ? geometry.head : 0,
+  })
+  useEffect(() => {
+    virtualizer.measure()
+  }, [rowHeight, columns, virtualizer])
+  const virtualRows = listing ? virtualizer.getVirtualItems() : []
+  const firstRow = virtualRows[0]?.index ?? 0
+  const lastRow = virtualRows.at(-1)?.index ?? 0
+  const reportRange = useEffectEvent((first: number, last: number) => listing?.onRange(first, last))
+  useEffect(() => {
+    reportRange(firstRow * columns, (lastRow + 1) * columns - 1)
+  }, [firstRow, lastRow, columns])
+  // A new search or sort starts at the top of its list
+  const listingIdentity = listing?.identity
+  useLayoutEffect(() => {
+    if (listingIdentity !== undefined && scrollEl) scrollEl.scrollTop = 0
+  }, [listingIdentity, scrollEl])
+  const reveal = (slot: number) =>
+    virtualizer.scrollToIndex(Math.floor(slot / columns), { align: 'auto' })
+  // Marquee hits by position, so rows scrolled out of the drawn window still count
+  const windowHits = (rect: MarqueeRect): string[] => {
+    if (!listing) return []
+    const top = rect.top - geometry.rowsTop
+    const first = Math.max(0, Math.floor(top / rowHeight))
+    const last = Math.min(rowCount - 1, Math.floor((top + rect.height) / rowHeight))
+    const cell = (geometry.width - GRID_GAP * (columns + 1)) / columns
+    const hits: string[] = []
+    for (let row = first; row <= last; row++)
+      for (let column = 0; column < columns; column++) {
+        const slot = row * columns + column
+        const entry = listing.at(slot)
+        if (!entry) continue
+        const box: MarqueeRect =
+          prefs.layout === 'grid'
+            ? {
+                left: GRID_GAP + column * (cell + GRID_GAP),
+                top: geometry.rowsTop + row * rowHeight + GRID_GAP,
+                width: cell,
+                height: rowHeight - GRID_GAP,
+              }
+            : {
+                left: 0,
+                top: geometry.rowsTop + row * rowHeight,
+                width: geometry.width,
+                height: rowHeight,
+              }
+        if (rectsIntersect(rect, box)) hits.push(entry.relative_path)
+      }
+    return hits
+  }
+
+  const listed = listing ? listing.count : entries.length
   const gridStyle =
     prefs.layout === 'grid'
       ? {
@@ -1402,10 +1706,12 @@ function FileList({
         <div className="toolbar" data-tauri-drag-region="deep">
           {header}
           <SelectionCount
-            total={visible.length}
+            total={listing ? listing.count : visible.length}
             selected={selected.size}
             loaded={visible.length}
-            more={hasMore === true}
+            more={listing ? visible.length < listing.count : hasMore === true}
+            everything={Boolean(listing?.readAll)}
+            selecting={selectingAll?.progress ?? null}
             noun="entries"
           />
           <span className="toolbar__spacer" />
@@ -1546,6 +1852,8 @@ function FileList({
         // from the toolbar controls above it.
         tabIndex={0}
         role={prefs.layout === 'list' ? 'grid' : 'listbox'}
+        // A windowed list draws a few rows of many; the count says how many there are
+        aria-rowcount={listing && prefs.layout === 'list' ? listing.count + 1 : undefined}
         aria-label="Files"
         aria-activedescendant={
           focusedPath ? `file-option-${encodeURIComponent(focusedPath)}` : undefined
@@ -1594,9 +1902,9 @@ function FileList({
         )}
         {isLoading ? (
           <div className="empty">Loading…</div>
-        ) : isError && entries.length === 0 ? null : entries.length === 0 ? (
+        ) : isError && listed === 0 ? null : listed === 0 ? (
           !write.creatingFolder && <div className="empty">{emptyText}</div>
-        ) : visible.length === 0 ? (
+        ) : visible.length === 0 && !listing ? (
           <div className="empty">No files match “{search}”.</div>
         ) : (
           <>
@@ -1649,21 +1957,121 @@ function FileList({
                       ),
                     )}
                   </div>
-                  {visible.map((entry) => (
-                    <FileRow
-                      key={entry.relative_path}
-                      entry={entry}
-                      pending={arriving(entry)}
-                      label={labelFor(entry)}
-                      selected={selected.has(entry.relative_path)}
-                      onClick={(e) => clickEntry(entry, e)}
-                      onDoubleClick={() => openEntry(entry)}
-                      onContextMenu={(e) => contextRow(entry, e)}
-                      dragProps={entryDragProps(entry)}
-                      renaming={canRename && write.renamingPath === entry.relative_path}
-                      onRename={(name) => submitRename(entry.relative_path, name)}
-                      onCancelRename={write.cancelRename}
-                    />
+                  {listing ? (
+                    <div
+                      ref={rowsRef}
+                      className="file-window"
+                      style={{ height: virtualizer.getTotalSize() }}
+                    >
+                      {virtualRows.map((row) => {
+                        const entry = listing.at(row.index)
+                        return (
+                          <div
+                            key={row.key}
+                            className="file-window__slot"
+                            style={{ top: row.start - geometry.margin, height: row.size }}
+                          >
+                            {entry ? (
+                              <FileRow
+                                entry={entry}
+                                position={row.index}
+                                label={labelFor(entry)}
+                                selected={selected.has(entry.relative_path)}
+                                onClick={(e) => clickEntry(entry, e)}
+                                onDoubleClick={() => openEntry(entry)}
+                                onContextMenu={(e) => contextRow(entry, e)}
+                                dragProps={entryDragProps(entry)}
+                                renaming={canRename && write.renamingPath === entry.relative_path}
+                                onRename={(name) => submitRename(entry.relative_path, name)}
+                                onCancelRename={write.cancelRename}
+                              />
+                            ) : (
+                              <div
+                                className="file-row file-row--placeholder"
+                                role="row"
+                                aria-busy="true"
+                                aria-rowindex={row.index + 2}
+                              >
+                                <span role="gridcell" className="file-row__name">
+                                  Loading…
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                  {!listing &&
+                    visible.map((entry) => (
+                      <FileRow
+                        key={entry.relative_path}
+                        entry={entry}
+                        pending={arriving(entry)}
+                        label={labelFor(entry)}
+                        selected={selected.has(entry.relative_path)}
+                        onClick={(e) => clickEntry(entry, e)}
+                        onDoubleClick={() => openEntry(entry)}
+                        onContextMenu={(e) => contextRow(entry, e)}
+                        dragProps={entryDragProps(entry)}
+                        renaming={canRename && write.renamingPath === entry.relative_path}
+                        onRename={(name) => submitRename(entry.relative_path, name)}
+                        onCancelRename={write.cancelRename}
+                      />
+                    ))}
+                </div>
+              ) : listing ? (
+                <div
+                  ref={rowsRef}
+                  className="file-window"
+                  style={{ height: virtualizer.getTotalSize() + GRID_GAP }}
+                >
+                  {virtualRows.map((row) => (
+                    <div
+                      key={row.key}
+                      className="file-grid file-window__slot"
+                      style={{
+                        top: row.start - geometry.margin,
+                        height: row.size,
+                        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                        gridAutoRows: `${row.size - GRID_GAP}px`,
+                        padding: `${GRID_GAP}px ${GRID_GAP}px 0`,
+                      }}
+                    >
+                      {Array.from({ length: columns }, (_, column) => {
+                        const slot = row.index * columns + column
+                        if (slot >= listing.count) return null
+                        const entry = listing.at(slot)
+                        return entry ? (
+                          <FileCard
+                            key={entry.relative_path}
+                            entry={entry}
+                            position={{ index: slot, size: listing.count }}
+                            label={labelFor(entry)}
+                            selected={selected.has(entry.relative_path)}
+                            onClick={(e) => clickEntry(entry, e)}
+                            onDoubleClick={() => openEntry(entry)}
+                            onContextMenu={(e) => contextRow(entry, e)}
+                            previewDisabled={marqueeRect !== null || menu.state !== null}
+                            dragProps={entryDragProps(entry)}
+                            renaming={canRename && write.renamingPath === entry.relative_path}
+                            onRename={(name) => submitRename(entry.relative_path, name)}
+                            onCancelRename={write.cancelRename}
+                          />
+                        ) : (
+                          <div
+                            key={`slot-${slot}`}
+                            className="card card--placeholder"
+                            role="option"
+                            aria-selected="false"
+                            aria-busy="true"
+                            aria-setsize={listing.count}
+                            aria-posinset={slot + 1}
+                            aria-label="Loading…"
+                          />
+                        )
+                      })}
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -1783,9 +2191,12 @@ function FileRow({
   onCancelRename,
   label,
   pending = false,
+  position,
 }: {
   /** A folder still being created: shown, but not yet openable. */
   pending?: boolean
+  /** The row's place in a windowed list, which draws only some of its rows. */
+  position?: number
   entry: FileBrowserEntry
   /** The name as displayed — may have its extension hidden (a display pref). */
   label: string
@@ -1808,6 +2219,8 @@ function FileRow({
       onContextMenu={onContextMenu}
       role="row"
       aria-selected={selected}
+      // The header is row 1
+      aria-rowindex={position === undefined ? undefined : position + 2}
       id={`file-option-${encodeURIComponent(entry.relative_path)}`}
       data-relpath={entry.relative_path}
       // A row being renamed must not also be a drag source: the pointer belongs
@@ -1877,9 +2290,12 @@ function FileCard({
   onCancelRename,
   label,
   pending = false,
+  position,
 }: {
   /** A folder still being created: shown, but not yet openable. */
   pending?: boolean
+  /** The card's place in a windowed list, which draws only some of its cards. */
+  position?: { index: number; size: number }
   entry: FileBrowserEntry
   /** The name as displayed — may have its extension hidden (a display pref). */
   label: string
@@ -1943,6 +2359,8 @@ function FileCard({
       onContextMenu={onContextMenu}
       role="option"
       aria-selected={selected}
+      aria-setsize={position?.size}
+      aria-posinset={position === undefined ? undefined : position.index + 1}
       id={`file-option-${encodeURIComponent(entry.relative_path)}`}
       data-relpath={entry.relative_path}
       {...(renaming ? {} : dragProps)}

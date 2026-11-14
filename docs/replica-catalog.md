@@ -734,8 +734,36 @@ it keeps path order. Size and Date Modified come from stored observations (a
 staged file's path-matched local fact, or a fresh file's discovery observation),
 not the page's live stat, so a file changed since sorts by its last observation.
 Unknown values sort last in either direction, with name and path ties. Date Added
-is the catalog addition time of a staged file; fresh discoveries have none. The
-view still pages 100 files at a time behind **Load more**. Reading choices never
+is the catalog addition time of a staged file; fresh discoveries have none.
+
+The view is a virtualized window over the whole queue, as the Bundle Browser's
+grid is. Each `POST /files/unbundled` page stats its files on the library share,
+one round trip per file, so the client never asks for the whole queue. The
+server's total sizes the list; pages of 100 are fetched by offset for the rows
+on screen, with the next page fetched ahead. A jump such as dragging the
+scrollbar waits 150 ms for the scroll to rest and then fetches only the page it
+lands on, not the pages before it; rows still loading show a placeholder. Only
+the pages in the window refresh every four seconds, so a long queue costs no
+more stats than a short one. A new search or sort returns to the top. List and
+card layouts, keyboard movement (Up/Down by row, Left/Right by item, Home/End to
+the first and last row, fetching it first when needed), Shift ranges, marquee
+selection and the context menu work across the whole list.
+
+With `selection_version: 6`, Select All and a Shift range over rows not yet
+fetched read their keys from `POST /files/unbundled/ids` (path, file ID and
+staging bundle ID; pages of up to 1,000; same search and sort; no stat), as the
+Bundle Browser does. Older servers select only the fetched rows, and a range
+over unfetched rows asks to scroll through them first. Actions on a large
+selection either accept it or are disabled with the reason in the menu:
+
+| Action | Large selection |
+| --- | --- |
+| Create Bundle, Add to Bundle | Disabled above 100 files (the `bundle_files` preview bound), in every portable File Browser scope |
+| Copy to…, Move to…, Move to Trash, Delete key, drag-out | Disabled above 1,000 items in Unbundled: each item is its own journaled operation in one client task |
+| Rename, Copy Path, Open, Reveal, Locate, Save Contact Sheet | One file only, as before |
+
+Creating or adding to a bundle clears the selection, since its files leave the
+queue. Reading choices never
 publishes a provisional bundle. Manual confirmation prepares/revalidates sources
 through the existing private job before authoring the chosen confirmed bundle.
 

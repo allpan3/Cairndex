@@ -153,6 +153,7 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
             }}
           >
             {item.label}
+            {item.detail && <span className="context-menu__detail">{item.detail}</span>}
           </button>
         ),
       )}
