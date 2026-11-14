@@ -7,6 +7,7 @@ import { IconFilter, IconLayoutCard, IconLayoutJustified, IconLayoutList } from 
 import { ZOOM_MAX, ZOOM_MIN } from './layout'
 import { RatingFilterControl } from './RatingFilterControl'
 import { SelectionCount } from './SelectionCount'
+import type { SelectAllProgress } from '../api/catalogSelectAll'
 import { SortControl } from './SortControl'
 import { TagFilterControl } from './TagFilterControl'
 import { BUNDLE_SORTS, type BrowsePrefs, type LayoutMode } from './types'
@@ -28,7 +29,14 @@ interface ToolbarProps {
   title: string
   total: number
   /** The listing's selection, counted beside the total. */
-  selection?: { selected: number; loaded: number; more: boolean }
+  selection?: {
+    selected: number
+    loaded: number
+    more: boolean
+    /** Select All takes every matching bundle (`selection_version: 6`). */
+    everything?: boolean
+    selecting?: SelectAllProgress | null
+  }
   search: string
   onSearch: (value: string) => void
   // prefs drives layout + zoom; the sort is passed separately (App resolves it
@@ -107,6 +115,8 @@ export function Toolbar({
           selected={selection?.selected ?? 0}
           loaded={selection?.loaded ?? 0}
           more={selection?.more ?? false}
+          everything={selection?.everything}
+          selecting={selection?.selecting}
           noun="bundles"
         />
         <span className="toolbar__spacer" />

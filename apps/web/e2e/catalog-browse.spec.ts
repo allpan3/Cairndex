@@ -204,7 +204,9 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     const top = await listing.getByRole('option').first().boundingBox()
     await a.keyboard.press('ControlOrMeta+A')
     const count = a.locator('.toolbar__count').filter({ hasText: /\d selected/ })
-    await expect(count).toHaveAttribute('title', /^Select All selects the \d+ loaded bundles$/)
+    // Select All takes every matching bundle, loaded or not
+    await expect(count).toHaveText(/^([\d,]+) items · \1 selected$/)
+    await expect(count).not.toHaveAttribute('title')
     expect(await listing.getByRole('option').first().boundingBox()).toEqual(top)
     await a.screenshot({ path: '/tmp/cairndex-catalog-browse.png' })
   } finally {

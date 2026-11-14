@@ -55,6 +55,26 @@ export function changeableTogether(count: number, selectionVersion: number): boo
   return count <= SELECTION_REQUEST || selectionVersion >= 5
 }
 
+/**
+ * A query-key part for a selection. A large one is named by its size and a 64-bit
+ * digest, so a key does not hash 100,000 identities on every render.
+ */
+export function selectionKey(ids: string[]): string | string[] {
+  if (ids.length <= SELECTION_REQUEST) return ids
+  let a = 0x811c9dc5
+  let b = 0x9e3779b9
+  for (const id of ids) {
+    for (let index = 0; index < id.length; index++) {
+      const code = id.charCodeAt(index)
+      a = Math.imul(a ^ code, 0x01000193)
+      b = Math.imul(b ^ code, 0x5bd1e995)
+    }
+    a = Math.imul(a ^ 0x2c, 0x01000193)
+    b = Math.imul(b ^ 0x2c, 0x5bd1e995)
+  }
+  return `${ids.length}:${(a >>> 0).toString(16)}${(b >>> 0).toString(16)}`
+}
+
 export function chunks<T>(items: T[], size = SELECTION_REQUEST): T[][] {
   const result: T[][] = []
   for (let start = 0; start < items.length; start += size)
@@ -268,6 +288,7 @@ export async function followBulk(library: string, queued: Job, staged = 0): Prom
   }
   scope()
   const { total, applied, skipped } = progress()
+  const n = (value: number) => value.toLocaleString()
   if (job.state === 'succeeded' && !skipped) return
   const unchanged: string[] = []
   let start: number | null = 0
@@ -282,10 +303,10 @@ export async function followBulk(library: string, queued: Job, staged = 0): Prom
   }
   const left =
     job.state === 'succeeded'
-      ? `Changed ${applied} of ${total} bundles. ${skipped} changed elsewhere or need ` +
+      ? `Changed ${n(applied)} of ${n(total)} bundles. ${n(skipped)} changed elsewhere or need ` +
         'conflict review, so they were left as they were.'
       : job.state === 'cancelled'
-        ? `Cancelled after ${applied} of ${total} bundles; the rest were left as they were.`
+        ? `Cancelled after ${n(applied)} of ${n(total)} bundles; the rest were left as they were.`
         : (job.error ?? 'The bulk change stopped.')
   if (job.state === 'failed' && !unchanged.length) throw new CatalogJobError(left)
   throw new CatalogBulkIncomplete(left, unchanged)

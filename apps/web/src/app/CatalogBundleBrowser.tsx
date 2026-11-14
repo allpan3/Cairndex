@@ -58,6 +58,7 @@ import type { CatalogCollection, CatalogCollections } from './useCatalogCollecti
 import { useCatalogTagClipboard } from './useCatalogTagClipboard'
 import { copiedCatalogTags } from '../api/catalogTagClipboard'
 import { changeableTogether } from '../api/catalogBulk'
+import { readBundleIds, SelectAllAborted, type SelectAllProgress } from '../api/catalogSelectAll'
 import { SELECT_BUNDLES_EVENT } from './catalogBulkNotice'
 import { navTargetsFrom, rowStep } from './spatialNav'
 
@@ -286,6 +287,18 @@ export function CatalogBundleBrowser({
     const timer = setTimeout(() => setQuery(search), 200)
     return () => clearTimeout(timer)
   }, [search])
+  // One browse request; its pages and Select All's identity read share it
+  const browseQuery = {
+    q: query,
+    ...(systemViewsEnabled ? { seed } : {}),
+    view: selection.view,
+    collection_id: selection.collectionId,
+    include_descendants: includeDescendants,
+    smart_collection_id: selection.smartCollectionId ?? null,
+    filter: expression,
+    sort: activeSort,
+    order: activeOrder,
+  }
   const browse = useInfiniteQuery({
     queryKey: [
       'catalog-browse',
@@ -301,15 +314,7 @@ export function CatalogBundleBrowser({
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       catalog<Page>(library, '/bundles/browse', 'POST', {
-        q: query,
-        ...(systemViewsEnabled ? { seed } : {}),
-        view: selection.view,
-        collection_id: selection.collectionId,
-        include_descendants: includeDescendants,
-        smart_collection_id: selection.smartCollectionId ?? null,
-        filter: expression,
-        sort: activeSort,
-        order: activeOrder,
+        ...browseQuery,
         offset: pageParam,
         limit: 50,
       }),
@@ -439,6 +444,18 @@ export function CatalogBundleBrowser({
     () => (picked.scope === scope ? picked.ids : new Set<string>()),
     [picked.scope, picked.ids, scope],
   )
+  const sortedIds = useMemo(() => [...selectedIds].sort(), [selectedIds])
+  // Select All reads every matching bundle first (`selection_version: 6`)
+  const selectsEverything = (status?.selection_version ?? 0) >= 6
+  const [selectingAll, setSelectingAll] = useState<{
+    scope: string
+    progress: SelectAllProgress
+    abort: AbortController
+  } | null>(null)
+  const selecting = selectingAll?.scope === scope ? selectingAll.progress : null
+  // Leaving the view stops a read for the one left behind
+  const selectAbort = useRef<AbortController | null>(null)
+  useEffect(() => () => selectAbort.current?.abort(), [scope])
   const active = picked.scope === scope ? picked.active : null
   const selectedCards = useMemo(
     () => items.filter((item) => selectedIds.has(item.id)),
@@ -522,6 +539,39 @@ export function CatalogBundleBrowser({
     clearFolders()
     outgoing.current = id
     onSelect(id)
+  }
+  // Select every bundle in the view; the active card and the inspector's anchor stay put
+  function selectAll() {
+    if (!browse.hasNextPage || !selectsEverything) {
+      many(items.map((item) => item.id))
+      return
+    }
+    if (selecting) return
+    const abort = new AbortController()
+    selectAbort.current = abort
+    const from = scope
+    const total = browse.data?.pages[0]?.total ?? 0
+    setSelectingAll({ scope: from, progress: { done: 0, total }, abort })
+    void readBundleIds(
+      library,
+      browseQuery,
+      (progress) =>
+        setSelectingAll((current) =>
+          current?.abort === abort ? { ...current, progress } : current,
+        ),
+      abort.signal,
+    )
+      .then((ids) => {
+        if (abort.signal.aborted) return
+        const keep = active && ids.includes(active) ? active : (items[0]?.id ?? ids[0] ?? null)
+        setPicked({ scope: from, ids: new Set(ids), active: keep, anchor: keep })
+        clearFolders()
+      })
+      .catch((reason: Error) => {
+        if (!abort.signal.aborted && !(reason instanceof SelectAllAborted))
+          onNotice({ text: reason.message, alert: true })
+      })
+      .finally(() => setSelectingAll((current) => (current?.abort === abort ? null : current)))
   }
   function many(ids: string[]) {
     const active = ids.at(-1) ?? null
@@ -686,21 +736,21 @@ export function CatalogBundleBrowser({
         items.push({
           label: one
             ? 'Remove from This Collection'
-            : `Remove ${targets.length} from This Collection`,
+            : `Remove ${targets.length.toLocaleString()} from This Collection`,
           disabled: blocked || !together(targets.length),
           onClick: () =>
             organize(
               () => setCollectionMembership(library, targets, collection, false),
               one
                 ? 'Removed from this collection.'
-                : `Removed ${targets.length} from this collection.`,
+                : `Removed ${targets.length.toLocaleString()} from this collection.`,
             ),
         })
     }
     items.push(null, { label: 'Review metadata and conflicts', onClick: onReview })
     if ((status?.browse_version ?? 0) >= 5)
       items.push(null, {
-        label: one ? 'Delete Bundle' : `Delete ${targets.length} Bundles`,
+        label: one ? 'Delete Bundle' : `Delete ${targets.length.toLocaleString()} Bundles`,
         danger: true,
         disabled: blocked || !together(targets.length),
         onClick: () => setDeleting(targets),
@@ -838,11 +888,12 @@ export function CatalogBundleBrowser({
           event.key.toLowerCase() === 'a'
         ) {
           event.preventDefault()
-          many(items.map((item) => item.id))
+          selectAll()
           return
         }
         if (event.key === 'Escape') {
           event.preventDefault()
+          selectingAll?.abort.abort()
           many([])
           clearFolders()
           return
@@ -934,7 +985,13 @@ export function CatalogBundleBrowser({
           total={browse.data?.pages[0]?.total ?? 0}
           selection={
             selectionEnabled
-              ? { selected: selectedIds.size, loaded: items.length, more: browse.hasNextPage }
+              ? {
+                  selected: selectedIds.size,
+                  loaded: items.length,
+                  more: browse.hasNextPage,
+                  everything: selectsEverything,
+                  selecting,
+                }
               : undefined
           }
           search={search}
@@ -1135,7 +1192,7 @@ export function CatalogBundleBrowser({
           key={`${library}/${editor}`}
           library={library}
           editor={editor}
-          ids={[...selectedIds].sort()}
+          ids={sortedIds}
           fileCount={
             selectedIds.size > 0 && selectedCards.length === selectedIds.size
               ? selectedCards.reduce((total, item) => total + item.file_count, 0)
@@ -1295,7 +1352,9 @@ export function CatalogBundleBrowser({
             setPicked({ scope, ids: new Set(), active: null, anchor: null })
             organize(
               () => deleteBundles(library, targets),
-              targets.length === 1 ? 'Bundle deleted.' : `${targets.length} bundles deleted.`,
+              targets.length === 1
+                ? 'Bundle deleted.'
+                : `${targets.length.toLocaleString()} bundles deleted.`,
             )
           }}
         />

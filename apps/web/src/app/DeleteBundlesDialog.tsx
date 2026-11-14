@@ -37,7 +37,7 @@ export function DeleteBundlesDialog({
 
   const { ref: dialogRef, close: closeDialog } = useModalDialog(onCancel, pending)
 
-  const noun = count > 1 ? `these ${count} bundles` : 'this bundle'
+  const noun = count > 1 ? `these ${count.toLocaleString()} bundles` : 'this bundle'
 
   return createPortal(
     <div className="modal-backdrop" onMouseDown={closeDialog}>
@@ -50,7 +50,7 @@ export function DeleteBundlesDialog({
         aria-label="Delete bundle"
       >
         <div className="modal__head">
-          <h2>{count > 1 ? `Delete ${count} bundles` : 'Delete Bundle'}</h2>
+          <h2>{count > 1 ? `Delete ${count.toLocaleString()} bundles` : 'Delete Bundle'}</h2>
           <button className="modal__close" onClick={closeDialog} aria-label="Cancel">
             ×
           </button>

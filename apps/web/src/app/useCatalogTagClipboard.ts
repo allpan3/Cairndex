@@ -69,7 +69,7 @@ export function useCatalogTagClipboard(
     paste: (ids: string[]) =>
       run(async () => {
         const count = await pasteCatalogTags(library, ids)
-        return `Pasted ${count} tag${count === 1 ? '' : 's'} onto ${ids.length} bundle${ids.length === 1 ? '' : 's'}.`
+        return `Pasted ${count} tag${count === 1 ? '' : 's'} onto ${ids.length.toLocaleString()} bundle${ids.length === 1 ? '' : 's'}.`
       }, true),
   }
 }

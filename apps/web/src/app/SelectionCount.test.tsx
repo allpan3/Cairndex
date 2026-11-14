@@ -21,3 +21,27 @@ test('counts a multiple selection beside the total and explains a partial Select
   expect(screen.getByRole('status')).toHaveTextContent(/^· 40 selected$/)
   expect(screen.getByText(/items/)).not.toHaveAttribute('title')
 })
+
+test('says nothing about loaded rows when Select All takes every item, and shows its progress', () => {
+  const { rerender } = render(
+    <SelectionCount total={12345} selected={50} loaded={50} more everything noun="bundles" />,
+  )
+  expect(screen.getByRole('status')).toHaveTextContent(/^· 50 selected$/)
+  expect(screen.getByText(/items/)).not.toHaveAttribute('title')
+  rerender(
+    <SelectionCount
+      total={12345}
+      selected={1}
+      loaded={50}
+      more
+      everything
+      selecting={{ done: 3000, total: 12345 }}
+      noun="bundles"
+    />,
+  )
+  expect(screen.getByRole('status')).toHaveTextContent(/^· Selecting 3,000 of 12,345…$/)
+  rerender(
+    <SelectionCount total={12345} selected={12345} loaded={50} more everything noun="bundles" />,
+  )
+  expect(screen.getByRole('status')).toHaveTextContent(/^· 12,345 selected$/)
+})

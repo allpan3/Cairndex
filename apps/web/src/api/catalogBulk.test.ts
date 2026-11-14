@@ -1,7 +1,12 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import { catalog } from './catalog'
-import { CatalogBulkIncomplete, readSelectionMemberships, runBulk } from './catalogBulk'
+import {
+  CatalogBulkIncomplete,
+  readSelectionMemberships,
+  runBulk,
+  selectionKey,
+} from './catalogBulk'
 
 vi.mock('./catalog', () => ({
   catalog: vi.fn(),
@@ -35,7 +40,7 @@ test('staging pages the selection, follows progress and lists what was left unch
   await expect(outcome).rejects.toBeInstanceOf(CatalogBulkIncomplete)
   await outcome.catch((reason: CatalogBulkIncomplete) => {
     expect(reason.unchanged).toEqual(['bundle-7', 'bundle-901'])
-    expect(reason.message).toContain('Changed 1199 of 1201 bundles')
+    expect(reason.message).toContain('Changed 1,199 of 1,201 bundles')
   })
   const staged = vi
     .mocked(catalog)
@@ -65,4 +70,12 @@ test('a destination is shared only when every chunk lists it as shared', async (
   )
   expect(read.common.map((item) => item.id)).toEqual(['everywhere'])
   expect([...read.some].sort()).toEqual(['first-only', 'partial'])
+})
+
+test('names a large selection by its size and digest, and a small one by its IDs', () => {
+  const many = Array.from({ length: 500 }, (_, index) => `bundle-${index}`)
+  expect(selectionKey(['a', 'b'])).toEqual(['a', 'b'])
+  expect(selectionKey(many)).toBe(selectionKey([...many]))
+  expect(selectionKey(many)).toMatch(/^500:[0-9a-f]+$/)
+  expect(selectionKey(many)).not.toBe(selectionKey([...many.slice(0, 499), 'bundle-x']))
 })

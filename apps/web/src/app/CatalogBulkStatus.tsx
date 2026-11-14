@@ -65,7 +65,7 @@ export function CatalogBulkStatus({
   return (
     <div className="mb-toast catalog-bulk-status" role="status">
       {activity.total
-        ? `Changing ${activity.total} bundles: ${done} of ${activity.total}`
+        ? `Changing ${activity.total.toLocaleString()} bundles: ${done.toLocaleString()} of ${activity.total.toLocaleString()}`
         : 'Changing the selected bundles…'}
       <button
         className="btn btn--sm mb-toast__action"
