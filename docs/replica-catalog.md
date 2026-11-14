@@ -240,7 +240,7 @@ An already observed conflict requires explicit metadata review.
 | Open | Existing `/libraries/register`; capability read at `/replica/status`; normal portable Create and reviewed legacy conversion | Provider delivery and owner acceptance retain the limits in STATUS |
 | Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails; with `browse_version: 4`, card badges and the hover preview from this device's last observations | A file this device has not opened has no duration or preview |
 | Bundle albums | Shared album tiles/rows and virtualized layout; bounded `/replica/media/bundles/{id}/album` pages; mapped regular-file drag-out | Source operations use File Browser; file note/source controls remain deferred |
-| Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews; larger selections run as batched bulk operations | Notes stay per bundle; Select All takes only the loaded pages |
+| Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews; larger selections run as batched bulk operations | Notes stay per bundle; Select All takes every matching bundle from `selection_version: 6`, up to 100,000 |
 | System views | All, Recent (including local Date Opened order), Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Cross-device resume remains separate; Trash uses the source-operation journal |
 | Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
 | Sort and filters | Title, rating and Date Added; with `browse_version: 3`, Manual and File Count; with `browse_version: 11`, local Size, Date Modified and Date Opened; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Unknown size/opening values sort last; unsupported request fields/sorts return 422 |
@@ -375,8 +375,18 @@ bundle has (`common: true`), which the bulk inspector shows as chips, as v0.2.1
 did. Against version 3 the inspector filters the `assigned` page the same way.
 With `selection_version: 5`, a selection larger than one request changes as a
 bulk operation, described below.
-Cmd/Ctrl+A selects
-only the loaded bundle pages; Escape clears selection. Search, filter, sort,
+With `selection_version: 6`, Cmd/Ctrl+A selects every bundle the view matches,
+loaded or not. `POST /bundles/browse/ids` takes the browse request and returns
+the matching identities in the listing's order, up to 1,000 per page, without
+card facts. The browser reads the pages (four at a time) while the toolbar shows
+"Selecting N of M…", then selects them all; Escape or leaving the view stops the
+read. If the total changes between pages, or a shift between pages repeats an
+identity, the read starts again once and otherwise reports that the list
+changed, so a selection never silently misses bundles. A view above 100,000
+bundles asks to be narrowed first. Unloaded bundles show no card facts, so the
+inspector's file count and size are unknown for such a selection; destructive
+confirmations state the full count. Older servers select only the loaded pages,
+and the toolbar's tooltip says so. Escape clears selection. Search, filter, sort,
 collection and system-view changes clear the active selection. Appending a page
 does not select its new rows automatically.
 

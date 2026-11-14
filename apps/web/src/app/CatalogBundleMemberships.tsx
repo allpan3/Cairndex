@@ -1,7 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog } from '../api/catalog'
-import { changeableTogether, readSelectionMemberships, SELECTION_REQUEST } from '../api/catalogBulk'
+import {
+  changeableTogether,
+  readSelectionMemberships,
+  SELECTION_REQUEST,
+  selectionKey,
+} from '../api/catalogBulk'
 import { rename, setBulkMembership, setMembership } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
 import type { components } from '../api/schema'
@@ -73,6 +78,7 @@ export function CatalogBundleMemberships({
   // v0.2.1's trees list every destination, so a pick reads its one target's bases (version 2)
   const tree = selectionVersion >= 2
   const single = ids.length === 1 ? ids[0]! : null
+  const named = useMemo(() => selectionKey(ids), [ids])
   // A larger selection reads chunk by chunk, so it is read again only after a change
   const large = ids.length > SELECTION_REQUEST
   const together = changeableTogether(ids.length, selectionVersion)
@@ -128,7 +134,7 @@ export function CatalogBundleMemberships({
         }))
   const key = single
     ? ['catalog-memberships', library, single]
-    : ['catalog-bulk-memberships', library, ids]
+    : ['catalog-bulk-memberships', library, named]
   const assigned = useQuery({
     queryKey: [...key, family, 'assigned', common],
     enabled: !large,

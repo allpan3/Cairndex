@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog, CatalogJobError, operationId } from '../api/catalog'
 import {
@@ -7,6 +7,7 @@ import {
   readSelection,
   runBulk,
   SELECTION_REQUEST,
+  selectionKey,
 } from '../api/catalogBulk'
 import { commit } from '../api/catalogOrganize'
 import { useReplicaStatus } from '../api/useReplicaStatus'
@@ -84,8 +85,9 @@ export function CatalogMultiBundleInspector({
   const supported = ids.length > 0 && changeableTogether(ids.length, selectionVersion)
   // A larger selection reads chunk by chunk, so it is read again only after a change
   const large = ids.length > SELECTION_REQUEST
+  const named = useMemo(() => selectionKey(ids), [ids])
   const snapshot = useQuery({
-    queryKey: ['catalog-selection', library, ids],
+    queryKey: ['catalog-selection', library, named],
     enabled: supported,
     queryFn: () =>
       large
@@ -193,7 +195,7 @@ export function CatalogMultiBundleInspector({
   return (
     <aside className="inspector catalog-bulk-inspector" aria-label="Selected bundles inspector">
       <div className="inspector__multi-head">
-        <h2>{ids.length} bundles selected</h2>
+        <h2>{ids.length.toLocaleString()} bundles selected</h2>
         <button className="add-btn" onClick={onClose}>
           Clear
         </button>

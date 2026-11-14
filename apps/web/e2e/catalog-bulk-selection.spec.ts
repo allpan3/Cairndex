@@ -11,20 +11,14 @@ const IDS = Array.from({ length: TOTAL }, (_, index) => `bundle-${String(index).
 
 type Selection = { items: { id: string; title: string | null }[] }
 
-// Select every bundle: load the whole grid, then Select All, which takes loaded pages
+// Select All takes every matching bundle without loading the grid's later pages
 async function selectAll(page: Page) {
   const listing = page.getByRole('listbox', { name: 'Bundles', exact: true })
   await listing.getByRole('option').first().click()
-  await expect
-    .poll(
-      async () => {
-        await listing.getByRole('option').last().scrollIntoViewIfNeeded()
-        await page.keyboard.press('ControlOrMeta+A')
-        return page.locator('.toolbar__count').first().textContent()
-      },
-      { timeout: 30_000 },
-    )
-    .toContain(`${TOTAL} selected`)
+  await page.keyboard.press('ControlOrMeta+A')
+  await expect(page.locator('.toolbar__count').first()).toContainText(`${TOTAL} selected`, {
+    timeout: 30_000,
+  })
 }
 
 test('a selection above 100 bundles changes title, tags and deletion in batches @fullstack', async ({
@@ -61,9 +55,20 @@ test('a selection above 100 bundles changes title, tags and deletion in batches 
         )
       ).flatMap((page) => page.items.map((item) => item.title))
     const page = await context.newPage()
+    // Which grid pages the browser loaded, and whether Select All read identities
+    const offsets: number[] = []
+    let identityReads = 0
+    page.on('request', (request) => {
+      if (request.url().endsWith('/bundles/browse'))
+        offsets.push((request.postDataJSON() as { offset: number }).offset)
+      if (request.url().endsWith('/bundles/browse/ids')) identityReads += 1
+    })
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
     await selectAll(page)
+    // The grid pages 50 bundles at a time and never reached its last page
+    expect(identityReads).toBeGreaterThan(0)
+    expect(Math.max(...offsets)).toBeLessThan(100)
     const bulk = page.getByRole('complementary', { name: 'Selected bundles inspector' })
     await expect(bulk.getByRole('heading', { name: `${TOTAL} bundles selected` })).toBeVisible()
     await expect(bulk.getByText('Select up to 100 bundles')).toHaveCount(0)
