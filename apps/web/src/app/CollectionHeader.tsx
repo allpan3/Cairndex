@@ -10,7 +10,6 @@ import { focusListing } from './selection'
 import { IconChevron, IconFolder } from './icons'
 import { collectionCardWidth, listRowHeight } from './layout'
 import { gapBefore } from './reorder'
-import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
 interface CollectionHeaderProps {
   subcollections: CollectionRead[]
@@ -28,9 +27,8 @@ interface CollectionHeaderProps {
   showContents?: boolean
   onToggleShowContents?: (value: boolean) => void
   // Click (with modifier = toggle) selects a subcollection card; double-click
-  // navigates into it. Drag-select fires onMarqueeSelect instead.
+  // navigates into it. Drag-select is the Browser's, which this header scrolls in.
   onSelectSubcollection: (id: string, e: React.MouseEvent) => void
-  onMarqueeSelect: (ids: string[]) => void
   onOpenSubcollection: (id: string) => void
   // Right-click a folder card (mirrors the sidebar's Delete Collection menu).
   onContextMenuSubcollection?: (id: string, e: React.MouseEvent) => void
@@ -177,14 +175,14 @@ function CollectionCard({
  * and around (Contents) the bundle grid when a collection has subcollections —
  * modeled on Eagle's folder view. No hard separator: the header shares the
  * grid's background so the whole surface reads as one. Folding "Subcollections"
- * hides the folder tiles; folding "Contents" hides the bundle grid (the parent
- * renders the grid conditionally). The "Show subcollection contents" toggle
+ * hides the folder tiles; folding "Contents" hides the bundle grid. The "Show subcollection contents" toggle
  * decides whether the grid lists only this collection's own bundles or also its
  * descendants'.
  *
- * The folder grid gets its own drag-to-select (mirroring Browser.tsx), scoped
- * to this section only — a marquee here can't also pick up bundle cards, since
- * selecting subcollections and bundles together doesn't mean anything.
+ * The header scrolls with the bundles inside the Browser, which owns drag-to-
+ * select for both. `data-band` tells the Browser which section a band started
+ * in: collections from the title row and the folder grid, bundles from the
+ * Contents row down.
  */
 export function CollectionHeader({
   subcollections,
@@ -194,7 +192,6 @@ export function CollectionHeader({
   showContents,
   onToggleShowContents,
   onSelectSubcollection,
-  onMarqueeSelect,
   onOpenSubcollection,
   onContextMenuSubcollection,
   onReorderCollections,
@@ -212,10 +209,6 @@ export function CollectionHeader({
   contentsCollapsed,
   onToggleContents,
 }: CollectionHeaderProps) {
-  // .collhead (the outer wrapper) is the actual scrollable element — the grid
-  // itself doesn't scroll — so auto-scroll-on-drag targets that, while hit
-  // testing and the marquee rect stay relative to the grid.
-  const scrollElRef = useRef<HTMLDivElement | null>(null)
   const listLayout = layout === 'list'
   const gridRef = useRef<HTMLDivElement | null>(null)
   // Drop feedback for the hovered folder card: which card and which zone
@@ -326,45 +319,12 @@ export function CollectionHeader({
     clearDrag()
   }
 
-  const hitTest = (rect: MarqueeRect): string[] => {
-    const gridEl = gridRef.current
-    if (!gridEl) return []
-    const gridRect = gridEl.getBoundingClientRect()
-    const ids: string[] = []
-    for (const el of gridEl.querySelectorAll<HTMLElement>('[data-collection-id]')) {
-      const r = el.getBoundingClientRect()
-      const cardRect: MarqueeRect = {
-        left: r.left - gridRect.left,
-        top: r.top - gridRect.top,
-        width: r.width,
-        height: r.height,
-      }
-      if (rectsIntersect(rect, cardRect)) ids.push(el.dataset.collectionId as string)
-    }
-    return ids
-  }
-
-  const { marqueeRect, onMouseDown } = useMarqueeSelect({
-    getScrollEl: () => scrollElRef.current,
-    getWrapperEl: () => gridRef.current,
-    // Everything that isn't a folder card or one of the header's own controls
-    // counts as background — including the wide empty strip beside the
-    // "Subcollections"/"Contents" titles, which reads as blank space and so has
-    // to deselect (and start a marquee) like any other blank space.
-    isBackgroundTarget: (target) =>
-      !target.closest('[data-collection-id]') && !target.closest('button, label, input'),
-    hitTest,
-    getBaseSelection: () => selectedIds,
-    onChange: onMarqueeSelect,
-  })
-
   return (
     <div
-      className={`collhead${marqueeRect ? ' browser--dragging' : ''}`}
-      ref={scrollElRef}
+      className="collhead"
+      data-band="collections"
       tabIndex={0}
       onMouseDownCapture={focusListing}
-      onMouseDown={onMouseDown}
       onDragOver={onSurfaceDragOver}
       onDrop={onSurfaceDrop}
       // Right-click empty section space (not a card — those handle their own
@@ -411,19 +371,6 @@ export function CollectionHeader({
             position: 'relative',
           }}
         >
-          {marqueeRect && (
-            <div
-              className="marquee"
-              style={{
-                position: 'absolute',
-                left: marqueeRect.left,
-                top: marqueeRect.top,
-                width: marqueeRect.width,
-                height: marqueeRect.height,
-                pointerEvents: 'none',
-              }}
-            />
-          )}
           {subcollections.map((c) => (
             <CollectionCard
               key={c.id}
@@ -458,7 +405,7 @@ export function CollectionHeader({
           ))}
         </div>
       )}
-      <div className="collsec__row">
+      <div className="collsec__row" data-band="bundles">
         <button
           className="collsec__title"
           onClick={onToggleContents}

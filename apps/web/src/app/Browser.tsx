@@ -65,6 +65,14 @@ interface BrowserProps {
   hasNextPage: boolean
   isFetchingNextPage: boolean
   fetchNextPage: () => void
+  // The collection sections, drawn above the bundles in the same scroll area so
+  // one scrollbar and one band cover both. A band selects within the section it
+  // starts in: collections and bundles selected together mean nothing.
+  header?: React.ReactNode
+  headerSelectedIds?: Set<string>
+  onHeaderMarqueeSelect?: (ids: string[]) => void
+  // The header's Contents section is folded, so no bundles are shown.
+  contentsHidden?: boolean
   // When set, an empty result is shown as "no matches" for this query rather
   // than the generic "nothing here yet" state.
   searchQuery?: string
@@ -107,6 +115,13 @@ function computeGap(
   }
   if (best === null) return null
   return { overId: best.id, before: best.before }
+}
+
+// Where `inner` sits within `outer`; both scroll together, so this holds at any scroll position
+function offsetWithin(outer: HTMLElement | null, inner: HTMLElement | null) {
+  const a = outer?.getBoundingClientRect()
+  const b = inner?.getBoundingClientRect()
+  return a && b ? { x: b.left - a.left, y: b.top - a.top } : null
 }
 
 export function Browser(props: BrowserProps) {
@@ -217,6 +232,25 @@ export function Browser(props: BrowserProps) {
   }
   const [width, setWidth] = useState(0)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
+  // Everything that scrolls: the header, then the listing. Band coordinates are
+  // relative to it, so a band is never cut off where the sections meet.
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const listingRef = useRef<HTMLDivElement | null>(null)
+  // How far below the top of the scrolled content the bundle grid starts
+  const [scrollMargin, setScrollMargin] = useState(0)
+  const gridOffset = () => offsetWithin(contentRef.current, wrapperRef.current)
+  useLayoutEffect(() => {
+    const content = contentRef.current
+    if (!content) return
+    // The header folding, a list header appearing or the grid mounting resize
+    // the content, or, when it is shorter than the view, the listing below
+    const update = () => setScrollMargin(offsetWithin(content, wrapperRef.current)?.y ?? 0)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(content)
+    if (listingRef.current) ro.observe(listingRef.current)
+    return () => ro.disconnect()
+  }, [props.contentsHidden])
 
   useLayoutEffect(() => {
     if (!scrollEl) return
@@ -264,28 +298,69 @@ export function Browser(props: BrowserProps) {
     return ids
   }
 
-  const { marqueeRect, onMouseDown: onBackgroundMouseDown } = useMarqueeSelect({
+  // The header marks its own space with data-band; the rest belongs to the bundles
+  const bundleSpace = (target: HTMLElement) =>
+    (target.closest<HTMLElement>('[data-band]')?.dataset.band ?? 'bundles') === 'bundles'
+
+  const collectionsInRect = (rect: MarqueeRect): string[] => {
+    const content = contentRef.current
+    if (!content) return []
+    const origin = content.getBoundingClientRect()
+    const ids: string[] = []
+    for (const el of content.querySelectorAll<HTMLElement>('[data-collection-id]')) {
+      const r = el.getBoundingClientRect()
+      const card = {
+        left: r.left - origin.left,
+        top: r.top - origin.top,
+        width: r.width,
+        height: r.height,
+      }
+      if (rectsIntersect(rect, card)) ids.push(el.dataset.collectionId as string)
+    }
+    return ids
+  }
+
+  const bundleBand = useMarqueeSelect({
     getScrollEl: () => scrollEl,
-    getWrapperEl: () => wrapperRef.current,
-    // A drag can rubber-band from empty space always, and *from a list row* when
-    // rows aren't reorder-draggable (list rows fill the width, so there'd be no
-    // empty space to grab otherwise; a plain click still selects via the 4px
-    // threshold). In manual sort the native row-drag owns the gesture instead.
+    getWrapperEl: () => contentRef.current,
     // Only true empty space starts a band; a card or row is never a band origin.
     isBackgroundTarget: (target) =>
-      !target.closest('.list-row--head') && !target.closest('[data-bundle-id]'),
+      bundleSpace(target) &&
+      !target.closest('button, label, input') &&
+      !target.closest('.list-row--head') &&
+      !target.closest('[data-bundle-id]'),
     rubberBand: layout !== 'list',
-    hitTest: idsInRect,
+    hitTest: (rect) => {
+      const at = gridOffset()
+      return at ? idsInRect({ ...rect, left: rect.left - at.x, top: rect.top - at.y }) : []
+    },
     getBaseSelection: () => selectedIds,
     onChange: onMarqueeSelect,
   })
+  const collectionBand = useMarqueeSelect({
+    getScrollEl: () => scrollEl,
+    getWrapperEl: () => contentRef.current,
+    isBackgroundTarget: (target) =>
+      !bundleSpace(target) &&
+      !target.closest('[data-collection-id]') &&
+      !target.closest('button, label, input'),
+    hitTest: collectionsInRect,
+    getBaseSelection: () => props.headerSelectedIds ?? new Set<string>(),
+    onChange: (ids) => props.onHeaderMarqueeSelect?.(ids),
+  })
+  const marqueeRect = bundleBand.marqueeRect ?? collectionBand.marqueeRect
+  const onBackgroundMouseDown = (e: React.MouseEvent) => {
+    if (!props.singleSelection) bundleBand.onMouseDown(e)
+    if (props.header) collectionBand.onMouseDown(e)
+  }
 
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns non-memoizable fns; safe here
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: props.contentsHidden ? 0 : rows.length,
     getScrollElement: () => scrollEl,
     estimateSize: (i) => rows[i]?.height ?? 100,
     overscan: 6,
+    scrollMargin,
   })
 
   useImperativeHandle(props.navigationRef, () => ({
@@ -308,7 +383,7 @@ export function Browser(props: BrowserProps) {
     focus: (id) => {
       const index = rows.findIndex((row) => row.cards.some((card) => card.item.id === id))
       if (index >= 0) virtualizer.scrollToIndex(index, { align: 'auto' })
-      scrollEl?.focus({ preventScroll: true })
+      listingRef.current?.focus({ preventScroll: true })
     },
   }))
 
@@ -340,7 +415,7 @@ export function Browser(props: BrowserProps) {
 
   // The scroll container is always mounted (even for states) so its width is
   // measured once the data arrives — otherwise the virtualizer would size to 0.
-  const showGrid = !props.isError && !props.isLoading && items.length > 0
+  const showGrid = !props.isError && !props.isLoading && items.length > 0 && !props.contentsHidden
 
   // Fire the empty-space menu only when the target isn't a card/row (cards call
   // their own onContextMenu, which bubbles here).
@@ -395,138 +470,148 @@ export function Browser(props: BrowserProps) {
     <div
       className={`browser${marqueeRect ? ' browser--dragging' : ''}`}
       ref={setScrollEl}
-      role="listbox"
-      aria-label="Bundles"
-      aria-multiselectable={!props.singleSelection}
-      aria-activedescendant={props.activeId ? `bundle-option-${props.activeId}` : undefined}
-      tabIndex={0}
-      onMouseDownCapture={focusListing}
-      onMouseDown={props.singleSelection ? undefined : onBackgroundMouseDown}
+      onMouseDown={onBackgroundMouseDown}
       onMouseMove={onContainerMouseMove}
-      onContextMenu={onRootContextMenu}
-      onDragOver={onContainerDragOver}
-      onDrop={onContainerDrop}
-      onDragLeave={onContainerDragLeave}
     >
-      {props.isError && (
-        <div className="state state--error">
-          <div>Couldn’t load the library.</div>
-          <code>{props.error instanceof Error ? props.error.message : 'Unknown error'}</code>
-          {props.onRetry && (
-            <button className="btn" onClick={props.onRetry}>
-              Try Again
-            </button>
-          )}
-        </div>
-      )}
-      {props.isLoading && (
-        <div className="state">{props.searchQuery ? 'Searching…' : 'Loading library…'}</div>
-      )}
-      {!props.isLoading && !props.isError && items.length === 0 && (
-        <div className="state">
-          {props.searchQuery ? (
-            <>
-              <div>No matches for “{props.searchQuery}”.</div>
-              <div>Try a different title, filename, tag, or collection.</div>
-            </>
-          ) : (
-            (props.emptyState ?? (
-              <>
-                <div>Nothing here yet.</div>
-                <div>Update the library or add files to see bundles.</div>
-              </>
-            ))
-          )}
-        </div>
-      )}
+      <div ref={contentRef} className="browser__content">
+        {props.header}
+        {marqueeRect && (
+          <div
+            className="marquee"
+            style={{
+              position: 'absolute',
+              left: marqueeRect.left,
+              top: marqueeRect.top,
+              width: marqueeRect.width,
+              height: marqueeRect.height,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+        {!props.contentsHidden && (
+          <div
+            ref={listingRef}
+            className="browser__listing"
+            role="listbox"
+            aria-label="Bundles"
+            aria-multiselectable={!props.singleSelection}
+            aria-activedescendant={props.activeId ? `bundle-option-${props.activeId}` : undefined}
+            tabIndex={0}
+            onMouseDownCapture={focusListing}
+            onContextMenu={onRootContextMenu}
+            onDragOver={onContainerDragOver}
+            onDrop={onContainerDrop}
+            onDragLeave={onContainerDragLeave}
+          >
+            {props.isError && (
+              <div className="state state--error">
+                <div>Couldn’t load the library.</div>
+                <code>{props.error instanceof Error ? props.error.message : 'Unknown error'}</code>
+                {props.onRetry && (
+                  <button className="btn" onClick={props.onRetry}>
+                    Try Again
+                  </button>
+                )}
+              </div>
+            )}
+            {props.isLoading && (
+              <div className="state">{props.searchQuery ? 'Searching…' : 'Loading library…'}</div>
+            )}
+            {!props.isLoading && !props.isError && items.length === 0 && (
+              <div className="state">
+                {props.searchQuery ? (
+                  <>
+                    <div>No matches for “{props.searchQuery}”.</div>
+                    <div>Try a different title, filename, tag, or collection.</div>
+                  </>
+                ) : (
+                  (props.emptyState ?? (
+                    <>
+                      <div>Nothing here yet.</div>
+                      <div>Update the library or add files to see bundles.</div>
+                    </>
+                  ))
+                )}
+              </div>
+            )}
 
-      {showGrid && layout === 'list' && (
-        <ListHeader sort={props.sort} order={props.order} onSort={props.onSort} />
-      )}
-      {showGrid && (
-        <div
-          ref={wrapperRef}
-          style={{
-            height: virtualizer.getTotalSize(),
-            position: 'relative',
-            margin: `0 ${H_PADDING}px`,
-          }}
-        >
-          {marqueeRect && (
-            <div
-              className="marquee"
-              style={{
-                position: 'absolute',
-                left: marqueeRect.left,
-                top: marqueeRect.top,
-                width: marqueeRect.width,
-                height: marqueeRect.height,
-                pointerEvents: 'none',
-              }}
-            />
-          )}
-          {virtualItems.map((vRow) => {
-            const row = rows[vRow.index]
-            if (!row) return null
-            return (
+            {showGrid && layout === 'list' && (
+              <ListHeader sort={props.sort} order={props.order} onSort={props.onSort} />
+            )}
+            {showGrid && (
               <div
-                key={vRow.key}
+                ref={wrapperRef}
                 style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width,
-                  height: vRow.size,
-                  transform: `translateY(${vRow.start}px)`,
+                  height: virtualizer.getTotalSize(),
+                  position: 'relative',
+                  margin: `0 ${H_PADDING}px`,
                 }}
               >
-                {layout === 'list'
-                  ? row.cards.map((c) => (
-                      <ListRow
-                        unavailableSize={props.unavailableSize}
-                        key={c.item.id}
-                        item={c.item}
-                        selected={selectedIds.has(c.item.id)}
-                        onSelect={onSelect}
-                        onOpen={onOpen}
-                        onContextMenu={onContextMenu}
-                        dragProps={dragProps(c.item.id)}
-                      />
-                    ))
-                  : row.cards.map((c) => (
-                      <div
-                        key={c.item.id}
-                        className="browser__cardslot"
-                        style={{
-                          position: 'absolute',
-                          left: c.x,
-                          width: c.width,
-                          height: row.height - 10,
-                        }}
-                        {...dragProps(c.item.id)}
-                      >
-                        <BundleCard
-                          item={c.item}
-                          selected={selectedIds.has(c.item.id)}
-                          showMeta={layout === 'grid'}
-                          onSelect={onSelect}
-                          onOpen={onOpen}
-                          onContextMenu={onContextMenu}
-                          previewDisabled={
-                            dragId !== null ||
-                            settling ||
-                            marqueeRect !== null ||
-                            props.contextMenuOpen === true
-                          }
-                          onDropFiles={props.onDropFilesOnBundle}
-                        />
-                      </div>
-                    ))}
+                {virtualItems.map((vRow) => {
+                  const row = rows[vRow.index]
+                  if (!row) return null
+                  return (
+                    <div
+                      key={vRow.key}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width,
+                        height: vRow.size,
+                        transform: `translateY(${vRow.start - scrollMargin}px)`,
+                      }}
+                    >
+                      {layout === 'list'
+                        ? row.cards.map((c) => (
+                            <ListRow
+                              unavailableSize={props.unavailableSize}
+                              key={c.item.id}
+                              item={c.item}
+                              selected={selectedIds.has(c.item.id)}
+                              onSelect={onSelect}
+                              onOpen={onOpen}
+                              onContextMenu={onContextMenu}
+                              dragProps={dragProps(c.item.id)}
+                            />
+                          ))
+                        : row.cards.map((c) => (
+                            <div
+                              key={c.item.id}
+                              className="browser__cardslot"
+                              style={{
+                                position: 'absolute',
+                                left: c.x,
+                                width: c.width,
+                                height: row.height - 10,
+                              }}
+                              {...dragProps(c.item.id)}
+                            >
+                              <BundleCard
+                                item={c.item}
+                                selected={selectedIds.has(c.item.id)}
+                                showMeta={layout === 'grid'}
+                                onSelect={onSelect}
+                                onOpen={onOpen}
+                                onContextMenu={onContextMenu}
+                                previewDisabled={
+                                  dragId !== null ||
+                                  settling ||
+                                  marqueeRect !== null ||
+                                  props.contextMenuOpen === true
+                                }
+                                onDropFiles={props.onDropFilesOnBundle}
+                              />
+                            </div>
+                          ))}
+                    </div>
+                  )
+                })}
               </div>
-            )
-          })}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
