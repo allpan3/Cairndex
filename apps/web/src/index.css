@@ -1157,6 +1157,18 @@ button {
 .browser--dragging {
   user-select: none;
 }
+/* The collection sections and the bundles scroll as one surface, so a band can
+   cross from one to the other without being cut off. The listing fills what is
+   left below the header, so empty space there still belongs to the bundles. */
+.browser__content {
+  position: relative;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.browser__listing {
+  flex: 1 0 auto;
+}
 
 .marquee {
   background: var(--accent-soft);
@@ -1169,8 +1181,6 @@ button {
    reads as one coherent view (Eagle-style). */
 .collhead {
   flex: 0 0 auto;
-  max-height: 45%;
-  overflow-y: auto;
   padding: 6px 14px 0;
   background: var(--bg);
 }
@@ -7857,15 +7867,18 @@ code {
   resize: vertical;
 }
 
+/* The listings are focusable only so keys reach them. A click must not frame the
+   whole grid or the collection sections (owner, 2026-11-14), as in the File
+   Browser; the focused card carries the ring instead. */
+.browser__listing,
+.collhead {
+  outline: none;
+}
 /* Keyboard focus remains visible within a selected range */
-.browser:focus [data-focused='true'],
+.browser__listing:focus [data-focused='true'],
 .collcard:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-}
-/* The active card carries the ring, so a click does not also frame the whole grid */
-.browser:focus-visible:has([data-focused='true']) {
-  outline: none;
 }
 /* Compatibility notices reserve space instead of covering browsing controls. */
 .library-workspace {

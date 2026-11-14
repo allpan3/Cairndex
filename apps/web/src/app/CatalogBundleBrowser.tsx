@@ -1027,130 +1027,132 @@ export function CatalogBundleBrowser({
         />
         {smart.error && <p role="alert">Saved conditions are unavailable.</p>}
         <div hidden={Boolean(albumId)} className="catalog-album-browser-return">
-          {folders.length > 0 && (
-            <CollectionHeader
-              subcollections={folders}
-              layout={prefs.layout}
-              sectionLabel={selection.collectionId ? 'Subcollections' : 'Collections'}
-              counts={Object.fromEntries(
-                folders.map((item) => [
-                  item.id,
-                  showSubContents ? item.count : (item.direct_count ?? item.count),
-                ]),
-              )}
-              subcounts={subcounts}
-              showContents={selection.collectionId ? showSubContents : undefined}
-              onToggleShowContents={selection.collectionId ? onShowSubContents : undefined}
-              onSelectSubcollection={selectFolder}
-              onMarqueeSelect={(ids) => pickFolders(new Set(ids), ids.at(-1) ?? null)}
-              onOpenSubcollection={onOpenCollection}
-              onContextMenuSubcollection={folderMenu}
-              onSectionContextMenu={(event) => {
-                const parent = selection.collectionId ?? null
-                menu.open(event, [
-                  {
-                    label: parent ? 'New Subcollection' : 'New Collection',
-                    disabled: blocked || !onNewCollection,
-                    onClick: () => onNewCollection?.(parent),
-                  },
-                  null,
-                  {
-                    label: 'Clean Up Order…',
-                    disabled: blocked || includeDescendants,
-                    onClick: collections.requestCleanup,
-                  },
-                ])
-              }}
-              // A flattened view spans several parents, so it has no one order
-              onReorderCollections={
-                blocked || includeDescendants
-                  ? undefined
-                  : (moved, before) =>
-                      collections.arrange(moved, selection.collectionId ?? null, before)
-              }
-              onReparentCollections={(moved, target) =>
-                !blocked && collections.arrange(moved, target, null)
-              }
-              onMoveBundlesInto={(target, copy) =>
-                bundleMovesEnabled && collections.moveBundlesInto(target, copy)
-              }
-              dragItem={dragItem}
-              onDragItem={onDragItem}
-              selectedIds={folderIds as Set<string>}
-              zoom={prefs.zoom}
-              subcollapsed={foldersFolded}
-              onToggleSubcollapsed={() => setFoldersFolded((value) => !value)}
-              contentsCount={browse.data?.pages[0]?.total ?? 0}
-              contentsCollapsed={contentsFolded}
-              onToggleContents={() => setContentsFolded((value) => !value)}
-            />
-          )}
-          {!(folders.length > 0 && contentsFolded) && (
-            <Browser
-              navigationRef={navigation}
-              unavailableSize={!localHistoryEnabled}
-              singleSelection={!selectionEnabled}
-              items={items}
-              total={browse.data?.pages[0]?.total ?? 0}
-              layout={prefs.layout}
-              zoom={prefs.zoom}
-              sort={activeSort}
-              order={activeOrder}
-              onSort={changeSort}
-              selectedIds={selectedIds}
-              activeId={active}
-              onSelect={select}
-              onMarqueeSelect={many}
-              onOpen={onOpen}
-              contextMenuOpen={menu.state !== null}
-              onContextMenu={bundleMenu}
-              onEmptyContextMenu={emptyMenu}
-              onReorder={reorder}
-              onDropFilesOnBundle={
-                onDropFilesOnBundle &&
-                ((id, files) => {
-                  const item = items.find((candidate) => candidate.id === id)
-                  onDropFilesOnBundle(files, {
-                    id,
-                    title: item?.title ?? '',
-                    folder: item?.resume_relative_path
-                      ? parentFolder(item.resume_relative_path)
-                      : null,
-                  })
+          <Browser
+            header={
+              folders.length > 0 && (
+                <CollectionHeader
+                  subcollections={folders}
+                  layout={prefs.layout}
+                  sectionLabel={selection.collectionId ? 'Subcollections' : 'Collections'}
+                  counts={Object.fromEntries(
+                    folders.map((item) => [
+                      item.id,
+                      showSubContents ? item.count : (item.direct_count ?? item.count),
+                    ]),
+                  )}
+                  subcounts={subcounts}
+                  showContents={selection.collectionId ? showSubContents : undefined}
+                  onToggleShowContents={selection.collectionId ? onShowSubContents : undefined}
+                  onSelectSubcollection={selectFolder}
+                  onOpenSubcollection={onOpenCollection}
+                  onContextMenuSubcollection={folderMenu}
+                  onSectionContextMenu={(event) => {
+                    const parent = selection.collectionId ?? null
+                    menu.open(event, [
+                      {
+                        label: parent ? 'New Subcollection' : 'New Collection',
+                        disabled: blocked || !onNewCollection,
+                        onClick: () => onNewCollection?.(parent),
+                      },
+                      null,
+                      {
+                        label: 'Clean Up Order…',
+                        disabled: blocked || includeDescendants,
+                        onClick: collections.requestCleanup,
+                      },
+                    ])
+                  }}
+                  // A flattened view spans several parents, so it has no one order
+                  onReorderCollections={
+                    blocked || includeDescendants
+                      ? undefined
+                      : (moved, before) =>
+                          collections.arrange(moved, selection.collectionId ?? null, before)
+                  }
+                  onReparentCollections={(moved, target) =>
+                    !blocked && collections.arrange(moved, target, null)
+                  }
+                  onMoveBundlesInto={(target, copy) =>
+                    bundleMovesEnabled && collections.moveBundlesInto(target, copy)
+                  }
+                  dragItem={dragItem}
+                  onDragItem={onDragItem}
+                  selectedIds={folderIds as Set<string>}
+                  zoom={prefs.zoom}
+                  subcollapsed={foldersFolded}
+                  onToggleSubcollapsed={() => setFoldersFolded((value) => !value)}
+                  contentsCount={browse.data?.pages[0]?.total ?? 0}
+                  contentsCollapsed={contentsFolded}
+                  onToggleContents={() => setContentsFolded((value) => !value)}
+                />
+              )
+            }
+            headerSelectedIds={folderIds as Set<string>}
+            onHeaderMarqueeSelect={(ids) => pickFolders(new Set(ids), ids.at(-1) ?? null)}
+            contentsHidden={folders.length > 0 && contentsFolded}
+            navigationRef={navigation}
+            unavailableSize={!localHistoryEnabled}
+            singleSelection={!selectionEnabled}
+            items={items}
+            total={browse.data?.pages[0]?.total ?? 0}
+            layout={prefs.layout}
+            zoom={prefs.zoom}
+            sort={activeSort}
+            order={activeOrder}
+            onSort={changeSort}
+            selectedIds={selectedIds}
+            activeId={active}
+            onSelect={select}
+            onMarqueeSelect={many}
+            onOpen={onOpen}
+            contextMenuOpen={menu.state !== null}
+            onContextMenu={bundleMenu}
+            onEmptyContextMenu={emptyMenu}
+            onReorder={reorder}
+            onDropFilesOnBundle={
+              onDropFilesOnBundle &&
+              ((id, files) => {
+                const item = items.find((candidate) => candidate.id === id)
+                onDropFilesOnBundle(files, {
+                  id,
+                  title: item?.title ?? '',
+                  folder: item?.resume_relative_path
+                    ? parentFolder(item.resume_relative_path)
+                    : null,
                 })
-              }
-              onBundleDragStart={onBundleDrag}
-              onBundleDragEnd={onBundleDrag && (() => onBundleDrag(null))}
-              isLoading={browse.isPending}
-              isError={browse.isError}
-              error={browse.error}
-              hasNextPage={browse.hasNextPage}
-              isFetchingNextPage={browse.isFetchingNextPage}
-              fetchNextPage={() => void browse.fetchNextPage()}
-              searchQuery={query}
-              onRetry={() => void browse.refetch()}
-              emptyState={
-                anyAdHocActive(filters) ? (
-                  <>
-                    <div>No bundles here match the filters.</div>
-                    <button className="btn" onClick={() => onFilters(emptyAdHocFilters())}>
-                      Clear Filters
-                    </button>
-                  </>
-                ) : selection.collectionId && folders.length > 0 && !showSubContents ? (
-                  <>
-                    <div>No bundles directly in this collection.</div>
-                    <div>Open a subcollection above, or tick “Show subcollection contents”.</div>
-                  </>
-                ) : selection.collectionId ? (
-                  <>
-                    <div>This collection is empty.</div>
-                    <div>Add bundles to it from the grid or file view.</div>
-                  </>
-                ) : undefined
-              }
-            />
-          )}
+              })
+            }
+            onBundleDragStart={onBundleDrag}
+            onBundleDragEnd={onBundleDrag && (() => onBundleDrag(null))}
+            isLoading={browse.isPending}
+            isError={browse.isError}
+            error={browse.error}
+            hasNextPage={browse.hasNextPage}
+            isFetchingNextPage={browse.isFetchingNextPage}
+            fetchNextPage={() => void browse.fetchNextPage()}
+            searchQuery={query}
+            onRetry={() => void browse.refetch()}
+            emptyState={
+              anyAdHocActive(filters) ? (
+                <>
+                  <div>No bundles here match the filters.</div>
+                  <button className="btn" onClick={() => onFilters(emptyAdHocFilters())}>
+                    Clear Filters
+                  </button>
+                </>
+              ) : selection.collectionId && folders.length > 0 && !showSubContents ? (
+                <>
+                  <div>No bundles directly in this collection.</div>
+                  <div>Open a subcollection above, or tick “Show subcollection contents”.</div>
+                </>
+              ) : selection.collectionId ? (
+                <>
+                  <div>This collection is empty.</div>
+                  <div>Add bundles to it from the grid or file view.</div>
+                </>
+              ) : undefined
+            }
+          />
         </div>
         {albumId && (
           <CatalogBundleAlbum
