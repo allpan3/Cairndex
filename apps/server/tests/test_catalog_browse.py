@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from cairndex.devtools.catalog_fixture import create_disposable
 from cairndex.replicas.catalog.browse import CatalogBrowseRequest, browse
 from cairndex.replicas.catalog.conversion import prepare_disposable
@@ -512,3 +514,73 @@ def test_unbundled_size_sort_uses_path_matched_local_facts(tmp_path):
             "('file-video','Synthetic/雪.mp4',50,'2026-01-01T00:00:00+00:00')"
         )
     assert sizes("desc")[:2] == ["file-video", "file-subtitle"]
+
+
+# Selection version 6: Select All reads a query's identities in its order, in pages
+def test_browse_ids_page_the_same_population_and_order_as_browse(tmp_path):
+    from cairndex.replicas.catalog.browse import CatalogBrowseIdsRequest, browse_ids
+
+    store = prepare_disposable(create_disposable(parent=tmp_path, bundles=65)).store
+    save(store, edit(store, "asset_bundles", "bundle-000007", "rating", 4), "rating")
+    save(store, edit(store, "asset_bundles", "bundle-000009", "title", "Amber"), "title")
+
+    def ids(**args):
+        found, offset = [], 0
+        with store.connection(readonly=True) as db:
+            while True:
+                result = browse_ids(db, CatalogBrowseIdsRequest(offset=offset, limit=7, **args))
+                assert result.total == page(store, **args).total
+                found += result.ids
+                offset += result.limit
+                if offset >= result.total:
+                    return found
+
+    def shown(**args):
+        return [item.id for o in range(0, 65, 50) for item in page(store, offset=o, **args).items]
+
+    rated = {"version": 1, "root": {"field": "rating", "operator": "gte", "value": 4}}
+    for args in (
+        {},
+        {"sort": "rating", "order": "desc"},
+        {"sort": "date_added", "order": "desc"},
+        {"view": "random", "seed": 99},
+        {"q": "amber"},
+        {"filter": rated},
+        {"collection_id": "collections-root"},
+        {"view": "untagged"},
+    ):
+        assert ids(**args) == shown(**args), args
+    assert len(ids()) == 65 == len(set(ids()))
+    assert ids(filter=rated) == ["bundle-000007"]
+    with pytest.raises(ValueError):
+        CatalogBrowseIdsRequest(limit=1001)
+
+
+def test_api_selection_ids_routes_are_bounded_and_never_stat_sources(api, monkeypatch):  # noqa: F811
+    client, base, _ = api
+    catalog = base + "/replica/catalog"
+    result = client.post(catalog + "/bundles/browse/ids", json={"limit": 2, "sort": "title"})
+    assert result.status_code == 200
+    assert result.json() == {
+        "ids": [
+            item["id"]
+            for item in client.post(
+                catalog + "/bundles/browse", json={"limit": 2, "sort": "title"}
+            ).json()["items"]
+        ],
+        "total": 3,
+        "offset": 0,
+        "limit": 2,
+    }
+    for url in ("/bundles/browse/ids", "/files/unbundled/ids"):
+        assert client.post(catalog + url, json={"limit": 1001}).status_code == 422
+        assert client.post(catalog + url, json={"sort": "unsupported"}).status_code == 422
+
+    def forbid(*_args, **_kwargs):
+        raise AssertionError("Selection keys must not observe source files")
+
+    monkeypatch.setattr("cairndex.replicas.catalog.file_browser.observe_entries", forbid)
+    keys = client.post(catalog + "/files/unbundled/ids", json={})
+    assert keys.status_code == 200
+    assert keys.json() == {"items": [], "total": 0, "offset": 0, "limit": 1000}
+    assert client.get(base + "/replica/status").json()["selection_version"] == 6

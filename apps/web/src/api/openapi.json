@@ -1427,6 +1427,113 @@
         "title": "CatalogAlbumPage",
         "type": "object"
       },
+      "CatalogBrowseIdsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterExpression-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "include_descendants": {
+            "default": true,
+            "title": "Include Descendants",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 1000,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "order": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "q": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Q",
+            "type": "string"
+          },
+          "seed": {
+            "default": 0,
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "smart_collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smart Collection Id"
+          },
+          "sort": {
+            "default": "title",
+            "enum": [
+              "title",
+              "rating",
+              "date_added",
+              "manual",
+              "file_count",
+              "size",
+              "date_modified",
+              "date_opened"
+            ],
+            "title": "Sort",
+            "type": "string"
+          },
+          "view": {
+            "default": "all",
+            "enum": [
+              "all",
+              "uncategorized",
+              "untagged",
+              "recent",
+              "random",
+              "missing"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "title": "CatalogBrowseIdsRequest",
+        "type": "object"
+      },
       "CatalogBrowsePage": {
         "additionalProperties": false,
         "properties": {
@@ -2426,6 +2533,38 @@
         "title": "CatalogField",
         "type": "object"
       },
+      "CatalogIdPage": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ids",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ids",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "CatalogIdPage",
+        "type": "object"
+      },
       "CatalogJob": {
         "additionalProperties": false,
         "properties": {
@@ -2942,6 +3081,129 @@
           "relative_path"
         ],
         "title": "CatalogUnbundledFile",
+        "type": "object"
+      },
+      "CatalogUnbundledKey": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Id"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "bundle_id",
+          "relative_path"
+        ],
+        "title": "CatalogUnbundledKey",
+        "type": "object"
+      },
+      "CatalogUnbundledKeyPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogUnbundledKey"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "CatalogUnbundledKeyPage",
+        "type": "object"
+      },
+      "CatalogUnbundledKeysRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 1000,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "order": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "q": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Q",
+            "type": "string"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "name",
+                  "type",
+                  "size",
+                  "added",
+                  "modified"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          }
+        },
+        "title": "CatalogUnbundledKeysRequest",
         "type": "object"
       },
       "CatalogUnbundledPage": {
@@ -24151,6 +24413,90 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/replica/catalog/bundles/browse/ids": {
+      "post": {
+        "operationId": "browse_bundle_ids_api_v1_libraries__library_id__replica_catalog_bundles_browse_ids_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogBrowseIdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogIdPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Browse Bundle Ids",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/replica/catalog/bundles/counts": {
       "get": {
         "operationId": "bundle_view_counts_api_v1_libraries__library_id__replica_catalog_bundles_counts_get",
@@ -26015,6 +26361,90 @@
           }
         },
         "summary": "Unbundled Files",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/files/unbundled/ids": {
+      "post": {
+        "operationId": "unbundled_file_keys_api_v1_libraries__library_id__replica_catalog_files_unbundled_ids_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogUnbundledKeysRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogUnbundledKeyPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unbundled File Keys",
         "tags": [
           "replica-catalog"
         ]
