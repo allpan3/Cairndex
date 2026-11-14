@@ -30,14 +30,21 @@ export function useFileSelection(
     [entries],
   )
   const pathFor = (id: string | null) => (id ? (byId.get(id)?.relative_path ?? null) : null)
-  const selected = new Set([...state.ids].flatMap((id) => byId.get(id)?.relative_path ?? []))
+  // Memoized: a windowed list can hold 100,000 selected keys across scroll renders
+  const selected = useMemo(
+    () => new Set([...state.ids].flatMap((id) => byId.get(id)?.relative_path ?? [])),
+    [state.ids, byId],
+  )
   const anchor = pathFor(state.anchor)
   const focusedPath = pathFor(state.focus)
-  const setSelected = (update: SetStateAction<Set<string>>) => {
+  // `found` names entries this render has not listed yet, such as keys just read for
+  // rows a windowed list has not fetched
+  const setSelected = (update: SetStateAction<Set<string>>, found: FileBrowserEntry[] = []) => {
     const paths = typeof update === 'function' ? update(selected) : update
+    const extra = new Map(found.map((entry) => [entry.relative_path, fileEntryKey(entry)]))
     setState((previous) => ({
       ...previous,
-      ids: new Set([...paths].flatMap((path) => byPath.get(path) ?? [])),
+      ids: new Set([...paths].flatMap((path) => byPath.get(path) ?? extra.get(path) ?? [])),
     }))
   }
   const setAnchor = (path: string | null) =>

@@ -46,6 +46,8 @@ export function CatalogUnbundledBrowser({
   } | null>(null)
   const pathBundling = (useReplicaStatus(library).data?.browse_version ?? 0) >= 15
   const [player, setPlayer] = useState(DEFAULT_PLAYER_PREFS)
+  // Bundled files leave the queue; a selection that named rows not shown would keep them
+  const [generation, setGeneration] = useState(0)
   const path = file?.kind === 'file' ? file.relative_path : null
   useEffect(() => {
     onHostPath?.(path)
@@ -57,6 +59,7 @@ export function CatalogUnbundledBrowser({
   const applied = (message: string) => {
     setDialog(null)
     setFile(null)
+    setGeneration((value) => value + 1)
     onNotice({ text: message })
   }
   return (
@@ -67,6 +70,7 @@ export function CatalogUnbundledBrowser({
         libraryName={libraryName}
         scope="unbundled"
         path=""
+        selectionGeneration={generation}
         selectedPath={file?.relative_path ?? null}
         onNavigate={() => undefined}
         onSelectEntry={setFile}

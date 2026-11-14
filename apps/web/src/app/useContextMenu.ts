@@ -10,6 +10,8 @@ export interface MenuItem {
   /** Render in the destructive (red) style, e.g. delete actions. */
   danger?: boolean
   disabled?: boolean
+  /** A second line, such as why the item is disabled. */
+  detail?: string
 }
 
 export type MenuEntry = MenuItem | null
@@ -39,8 +41,9 @@ export function useContextMenu() {
     // bail-out below, because the stray highlight is just as wrong on a surface
     // whose menu turned out to have nothing to offer.
     dropRightClickSelection(e.target)
-    // An all-disabled or empty menu would just be an empty box — skip it.
-    if (!items.some((i) => i && !i.disabled)) return
+    // An all-disabled or empty menu would just be an empty box — skip it, unless
+    // a disabled item says why it is unavailable (a selection too large for it).
+    if (!items.some((i) => i && (!i.disabled || i.detail))) return
     const element = e.target instanceof Element ? e.target : null
     const returnFocus = element?.closest<HTMLElement>('button, [tabindex]') ?? null
     const { x, y } = at ?? { x: e.clientX, y: e.clientY }

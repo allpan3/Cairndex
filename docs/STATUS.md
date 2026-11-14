@@ -270,10 +270,20 @@ is not an owner-NAS or full-UI Update benchmark.
   the whole queue (`browse_version: 17`); and selections above 100 bundles as
   batched server bulk operations (`selection_version: 5`, owner-chosen design:
   skip changed bundles and continue, stop on a change to the shared target).
-  Limits: Unbundled still pages 100 files behind **Load more**; Size is not in
-  the ordinary condition editor; Select All takes only loaded pages; a large
-  selection's inspector is read again only after a change, not every two
-  seconds; Size-based Clean Up Order is out of scope.
+  Follow-up branch `feat/windowed-unbundled-select-all` on top of it, also not
+  pushed or installed: Unbundled is a windowed list sized from the server's
+  total that fetches and stats only the pages on screen, and Select All takes
+  every matching bundle or queued file through paged key reads
+  (`selection_version: 6`). The backend and frontend gates and the Playwright
+  suite pass in the Cairndex macOS VM with synthetic data, except the bulk-review
+  reload case in `catalog-selection.spec.ts`, which also fails on the base branch.
+  Limits: Size is not in the ordinary condition editor; Select All refuses
+  views above 100,000 items; each Select All page re-sorts the whole view on
+  the server; a selection of many thousand bundles reads its inspector state
+  in chunks of 100 (about 1,000 requests for 100,000 bundles) and is read
+  again only after a change; in Unbundled, bundling takes at most 100 files
+  and Copy/Move/Trash/Delete/drag-out at most 1,000 items, with the reason in
+  the menu; Size-based Clean Up Order is out of scope.
 - File Browser responsiveness (2026-11-09). On the disposable Samba share at the
   owner's measured 0.6 ms round trip, a New Folder took 1.1–2.0 s from Enter to
   the listed folder and a one-file Move 0.8–1.2 s. Server-side spans: about

@@ -2934,6 +2934,13 @@ button {
   color: var(--text-muted);
   cursor: default;
 }
+/* Why an item is unavailable, under its label */
+.context-menu__detail {
+  display: block;
+  max-width: 280px;
+  font-size: 11px;
+  white-space: normal;
+}
 .context-menu__item--danger {
   color: var(--error);
 }
@@ -6394,6 +6401,27 @@ code {
 }
 .file-browser__wrapper {
   position: relative;
+}
+/* A windowed list (Unbundled) draws only the rows on screen, each placed at its
+   offset in a box sized for the whole list. */
+.file-window {
+  position: relative;
+}
+.file-window__slot {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+.file-window__slot > .file-row {
+  height: 100%;
+}
+.file-row--placeholder {
+  color: var(--text-muted);
+  cursor: default;
+}
+.card--placeholder {
+  background: var(--bg-2);
+  opacity: 0.5;
 }
 /* Grid columns/rows are driven inline by the zoom slider (see FileBrowser.tsx). */
 .file-grid {

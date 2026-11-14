@@ -87,7 +87,8 @@ for folder in ('Atlas','Aardvark') for p in (root/folder).iterdir()},sort_keys=T
     // descending over every file, not just the loaded ones.
     const rows = page.locator('[data-relpath]')
     await expect(rows.first()).toHaveAttribute('data-relpath', 'Aardvark/noise-000.mp4')
-    await expect(page.getByRole('button', { name: 'Load more', exact: true })).toBeVisible()
+    // The list is sized from the server's total; rows arrive as they come into view
+    await expect(page.locator('.file-browser .toolbar__count')).toContainText('122 items')
     const sort = async (...labels: string[]) => {
       await page.getByRole('button', { name: 'Sort', exact: true }).click()
       const panel = page.locator('.sortctl__panel')
