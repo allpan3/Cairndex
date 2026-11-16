@@ -555,7 +555,7 @@ export function Browser(props: BrowserProps) {
   // change, otherwise list rows wouldn't grow/shrink with the slider.
   useEffect(() => {
     virtualizer.measure()
-  }, [shownZoom, layout, width, virtualizer])
+  }, [shownZoom, layout, width, showCardDetails, virtualizer])
 
   // Load the next page when the user scrolls near the end.
   const virtualItems = virtualizer.getVirtualItems()
@@ -681,7 +681,9 @@ export function Browser(props: BrowserProps) {
                     <div>No matches for “{props.searchQuery}”.</div>
                     <div>Try a different title, filename, tag, or collection.</div>
                     {props.onClearSearch && (
-                      <button className="btn" onClick={props.onClearSearch}>Clear search</button>
+                      <button className="btn" onClick={props.onClearSearch}>
+                        Clear search
+                      </button>
                     )}
                   </>
                 ) : (

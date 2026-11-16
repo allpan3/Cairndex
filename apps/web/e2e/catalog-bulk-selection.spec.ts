@@ -102,6 +102,26 @@ test('a selection above 100 bundles changes title, tags and deletion in batches 
     await expect.poll(tagged, { timeout: 30_000 }).toBe(TOTAL)
     await expect(tags.getByRole('button', { name: 'Remove Synthetic child' })).toBeEnabled()
 
+    // The Tags submenu keeps the server's large-selection capability after copying.
+    const first = page
+      .getByRole('listbox', { name: 'Bundles', exact: true })
+      .getByRole('option')
+      .first()
+    await first.click()
+    await first.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Tags', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Copy Tags', exact: true }).click()
+    await expect(page.getByText(/Copied \d+ tags?\./)).toBeVisible()
+    await selectAll(page)
+    await first.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Tags', exact: true }).click()
+    const paste = page.getByRole('menuitem', { name: 'Paste Tags', exact: true })
+    await expect(paste).toBeEnabled()
+    await paste.click()
+    await expect(page.getByText(/Pasted \d+ tags? onto 130 bundles\./)).toBeVisible({
+      timeout: 60_000,
+    })
+
     // Another device rates one bundle after the inspector read it; the bulk rating
     // leaves that bundle as it was and offers to select it for review
     const peer = IDS[120]!

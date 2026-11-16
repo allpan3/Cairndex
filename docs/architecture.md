@@ -365,6 +365,9 @@ Tag pickers retain at most 12 recently chosen tag IDs in session storage per
 server and library, never tag names. Recent and Selected filters share the same
 hierarchical rows; arrow keys move between visible choices and the search field.
 
+Card-detail changes invalidate the virtual row measurements. The grid keeps the
+collections header in the shared scroll surface when zooming and previewing.
+
 Interface transitions share `--motion-duration` (150 ms) and `--motion-easing`
 (ease-out). Reduce Motion sets the duration to zero and stops progress sweeps;
 feedback delays and normal loading-indicator cycle lengths remain independent.

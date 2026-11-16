@@ -187,8 +187,8 @@ acceptance remains open.
 
 ## Eagle interaction polish
 
-Branch `feat/eagle-interaction-polish`, rebased onto `main` after
-[PR #137](https://github.com/allpan3/Cairndex/pull/137) merged, is
+Branch `feat/eagle-interaction-polish`, rebased onto current `main` including
+the windowed Unbundled, Select All and shared-scroll changes, is
 [PR #141](https://github.com/allpan3/Cairndex/pull/141). Its two screenshots
 are declared first in [PR #140](https://github.com/allpan3/Cairndex/pull/140),
 which must merge before #141's trusted privacy check can pass. It carries
@@ -202,9 +202,8 @@ no history across reloads. One ⌘Z serves both this Undo and #137's file-operat
 Undo: it takes back the newest change of either kind first. In Safari and in the packaged macOS app, the page
 receives ⌘Z before the Edit ▸ Undo menu item, and the cover drag image renders.
 Choosing Edit ▸ Undo with the pointer still runs only WebKit's text undo; routing
-that menu item to organizing Undo is a follow-up. The branch does not include the windowed-Unbundled / one-scroll-area
-stack; `Browser.tsx` and `CatalogBundleBrowser.tsx` will need a careful rebase
-over it.
+that menu item to organizing Undo is a follow-up. The shared scroll surface and
+batched operations from main are preserved. Selections above 100 bundles still use bulk jobs, without organizing Undo.
 
 The follow-up polish uses Eagle 4.0 as its interaction reference. Bundle menus
 have Copy and Tags submenus with icons and keyboard navigation; Add to Collection
@@ -218,6 +217,7 @@ bar. Interface transitions use 150 ms ease-out and respect Reduce Motion.
 Rating submenus, repeat-last-organizing and collapsible inspector sections remain
 outside this polish scope. Shared menu focus now also serves grouping review;
 Tab dismisses the menu, and hidden card details retain accessible titles.
+Changing card details also refreshes virtual row heights.
 
 ## Qualification and evidence
 
@@ -250,7 +250,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 | Installed New Folder follow-up | Linux 2,061 memory plus 77 disk backend cases; macOS 91 source-operation cases; both-platform backend static and full frontend gates with 1,439 units, seven browser cases per platform; packaged New Folder/Undo smoke, four frozen integrations, app-only build, signature/distribution and installed desktop/web checks |
 | Installed inline naming follow-up | macOS full frontend gate with 1,439 units and four source/Rename browser cases; synthetic screenshot inspected; app-only build, sidecar smoke, signature/distribution and installed desktop/web checks. Backend, Rust, Linux and frozen-integration evidence retained for unchanged source areas |
 | Installed source-access recovery | Linux 2,063 memory plus 81 disk backend cases; macOS 90 source/API/exchange/Keychain cases; backend static checks on both platforms; sidecar smoke, four frozen integrations, app-only build, signature/distribution and installed desktop/web checks. Frontend and Rust evidence retained for unchanged sources |
-| Eagle interaction polish | On the tree rebased onto `main` after #137: macOS full frontend gate with 1,523 units and production build, and the eight interaction and inspector browser cases, two inspector cases only on rerun under concurrent VM load (one also fails there with `main`'s inspector code). Before the rebase: all 77 browser cases, four only on rerun after load timeouts; manual WebKit check in Safari; app-only macOS package checked by hand with a synthetic library (zoom, Space preview, drag image, toast Undo and ⌘Z). The rebased app-only package is built, signature- and distribution-checked and smoke-checked. No Linux qualification |
+| Eagle interaction polish | Rebased onto main including windowed Unbundled, Select All and shared scrolling: macOS full frontend gate, 202 files / 1,544 unit tests and production build; all 89 browser cases passed without reruns. Earlier manual Safari and packaged-app checks covered zoom, Space preview, drag images, toast Undo and ⌘Z. Final row-height/zoom regressions (two browser cases), ten focused units and static checks also pass. Packaged-app qualification is in progress. No fresh Linux qualification |
 
 The album/conflict round corrected an effect that returned the browser’s scroll
 Promise as React cleanup. The failed browser attempt remains retained. Final
