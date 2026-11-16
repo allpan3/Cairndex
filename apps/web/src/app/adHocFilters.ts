@@ -41,6 +41,7 @@ export interface RatingFilter {
 }
 
 export interface AdHocFilters {
+  extension?: string | null
   tags: TagFilter
   rating: RatingFilter | null
 }
@@ -65,7 +66,7 @@ export const tagFilterActive = (t: TagFilter): boolean =>
 export const ratingFilterActive = (r: RatingFilter | null): boolean => r !== null
 
 export const anyAdHocActive = (f: AdHocFilters): boolean =>
-  tagFilterActive(f.tags) || ratingFilterActive(f.rating)
+  tagFilterActive(f.tags) || ratingFilterActive(f.rating) || Boolean(f.extension)
 
 /** Drop one category (used to build the base scope for that category's facet
  * counts — a category's own selections must not shrink its own counts). */
@@ -117,6 +118,7 @@ function ratingPredicates(r: RatingFilter | null): Pred[] {
  * predicates are AND-composed. */
 export function adHocFiltersToExpression(f: AdHocFilters): FilterExpression | null {
   const preds: Pred[] = [...tagPredicates(f.tags), ...ratingPredicates(f.rating)]
+  if (f.extension) preds.push({ field: 'extension', operator: 'equals', value: f.extension })
   if (preds.length === 0) return null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- structural nodes
   const nodes = preds as any[]

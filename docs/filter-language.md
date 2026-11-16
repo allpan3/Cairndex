@@ -74,6 +74,10 @@ This table will move into generated/tested documentation (e.g. derived from
 the Pydantic field/operator registry) once Phase 5 implements the compiler,
 so the two cannot drift.
 
+The toolbar’s File type chip uses `extension` + `equals`, normalized to lowercase
+without a leading dot. It combines with tags, rating and the active Smart
+Collection on the server; it does not filter only the loaded cards.
+
 ## Implemented fields (Phase 5)
 
 The compiler (`filters/compiler.py`) currently supports the following. Each

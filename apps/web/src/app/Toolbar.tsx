@@ -5,6 +5,7 @@ import type { BundleSort, SortOrder } from '../api/client'
 import { type AdHocFilters, type FacetContext, anyAdHocActive } from './adHocFilters'
 import { IconFilter, IconLayoutCard, IconLayoutJustified, IconLayoutList } from './icons'
 import { ZOOM_MAX, ZOOM_MIN } from './layout'
+import { TypeFilterControl } from './TypeFilterControl'
 import { RatingFilterControl } from './RatingFilterControl'
 import { SelectionCount } from './SelectionCount'
 import type { SelectAllProgress } from '../api/catalogSelectAll'
@@ -114,7 +115,15 @@ export function Toolbar({
     <>
       <div className="toolbar" data-tauri-drag-region="deep">
         {leading}
-        <span className="toolbar__title">{title}</span>
+        {search.trim() ? (
+          <nav className="toolbar__title toolbar__breadcrumb" aria-label="Browse location">
+            <button onClick={() => onSearch('')}>{title}</button>
+            <span aria-hidden="true"> / </span>
+            <span>Search results ({total.toLocaleString()})</span>
+          </nav>
+        ) : (
+          <span className="toolbar__title">{title}</span>
+        )}
         <SelectionCount
           total={total}
           selected={selection?.selected ?? 0}
@@ -234,6 +243,7 @@ export function Toolbar({
         <div className="filterbar" role="group" aria-label="Filters">
           <span className="filterbar__label">Filter</span>
           <TagFilterControl filters={adHocFilters} onChange={onAdHocFilters} ctx={facetContext} />
+          <TypeFilterControl filters={adHocFilters} onChange={onAdHocFilters} />
           <RatingFilterControl
             filters={adHocFilters}
             onChange={onAdHocFilters}

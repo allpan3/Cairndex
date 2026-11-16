@@ -441,3 +441,45 @@ test('view options update cards and sorting without closing @fullstack', async (
     await library.close()
   }
 })
+
+test('search breadcrumbs and type filters use the complete server result @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const library = await openLibrary(page, 65)
+  try {
+    await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('Synthetic')
+    await expect(page.getByRole('navigation', { name: 'Browse location' })).toContainText(
+      'Search results (65)',
+    )
+    await page.getByRole('button', { name: 'Filters', exact: true }).click()
+    await page.getByRole('button', { name: 'File type filter', exact: true }).click()
+    const filter = page.getByRole('dialog', { name: 'File type filter' })
+    const request = page.waitForRequest(
+      (request) =>
+        request.url().endsWith('/bundles/browse') &&
+        JSON.stringify(request.postDataJSON()?.filter).includes('extension'),
+    )
+    await filter.getByRole('button', { name: 'MP4', exact: true }).click()
+    expect((await request).postDataJSON().filter.root).toEqual({
+      field: 'extension',
+      operator: 'equals',
+      value: 'mp4',
+    })
+    await expect(page.getByRole('navigation', { name: 'Browse location' })).toContainText(
+      'Search results (1)',
+    )
+    await filter.getByRole('button', { name: 'Clear file type' }).click()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('navigation', { name: 'Browse location' })).toContainText(
+      'Search results (65)',
+    )
+    await page
+      .getByRole('navigation', { name: 'Browse location' })
+      .getByRole('button', { name: 'All', exact: true })
+      .click()
+    await expect(page.getByRole('searchbox', { name: 'Search', exact: true })).toHaveValue('')
+  } finally {
+    await library.close()
+  }
+})

@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Search results show their browse scope and complete result count. A File
+  type filter accepts an extension or common format and filters all matches
+  on the server, together with tags, ratings and Smart Collections.
+
 - The multi-bundle inspector shows a small stack of selected covers, with
   placeholders for unavailable covers and at most three thumbnail loads.
 
