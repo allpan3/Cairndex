@@ -409,3 +409,32 @@ test('tag picking uses arrows and recalls recent choices @fullstack', async ({ p
     await library.close()
   }
 })
+
+test('view options update cards and sorting without closing @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const library = await openLibrary(page, 6)
+  try {
+    const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
+    await expect(grid.locator('.card__meta').first()).toBeVisible()
+    await page.getByRole('button', { name: 'View options', exact: true }).click()
+    const options = page.getByRole('dialog', { name: 'View options' })
+    await options.getByRole('checkbox', { name: 'Card details' }).uncheck()
+    await expect(grid.locator('.card__meta')).toHaveCount(0)
+    await options.getByRole('button', { name: 'Title', exact: true }).click()
+    await expect(options.getByRole('button', { name: 'Title', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await options.getByRole('combobox', { name: 'Layout' }).selectOption('list')
+    await expect(grid.locator('.list-row--head')).toBeVisible()
+    await expect(options).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('button', { name: 'View options', exact: true })).toBeFocused()
+    await page.reload()
+    await page.getByRole('button', { name: 'View options', exact: true }).click()
+    await expect(options.getByRole('combobox', { name: 'Layout' })).toHaveValue('list')
+    await expect(options.getByRole('checkbox', { name: 'Card details' })).not.toBeChecked()
+  } finally {
+    await library.close()
+  }
+})

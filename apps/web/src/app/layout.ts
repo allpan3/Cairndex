@@ -97,6 +97,7 @@ export function computeRows(
   layout: LayoutMode,
   containerWidth: number,
   zoom: number,
+  showCardDetails = true,
 ): Row[] {
   if (containerWidth <= 0 || items.length === 0) return []
 
@@ -112,7 +113,7 @@ export function computeRows(
     const cardW = zoom
     const cols = Math.max(1, Math.floor((containerWidth + GAP) / (cardW + GAP)))
     const actualW = (containerWidth - (cols - 1) * GAP) / cols
-    const cardH = actualW / CARD_COVER_ASPECT + META_HEIGHT
+    const cardH = actualW / CARD_COVER_ASPECT + (showCardDetails ? META_HEIGHT : 0)
     const rows: Row[] = []
     for (let i = 0; i < items.length; i += cols) {
       const slice = items.slice(i, i + cols)

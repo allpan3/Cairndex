@@ -77,6 +77,7 @@ export interface PlayerPrefs {
 }
 
 export interface BrowsePrefs {
+  showCardDetails?: boolean
   layout: LayoutMode
   zoom: number // target card width in px (grid/justified)
   sidebarVisible: boolean

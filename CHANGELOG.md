@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- View options combines layout, item size, sort and card details in one
+  anchored panel. Changes update the grid live and keep the panel open; the
+  card-details preference survives reloads.
+
 - Quick preview places Previous, the result counter and Next together below
   the media. Tab stays inside the preview and Enter activates focused buttons.
 

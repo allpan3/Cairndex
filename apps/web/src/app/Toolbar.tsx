@@ -8,7 +8,7 @@ import { ZOOM_MAX, ZOOM_MIN } from './layout'
 import { RatingFilterControl } from './RatingFilterControl'
 import { SelectionCount } from './SelectionCount'
 import type { SelectAllProgress } from '../api/catalogSelectAll'
-import { SortControl } from './SortControl'
+import { SortFields } from './SortControl'
 import { ZoomSlider } from './ZoomSlider'
 import { TagFilterControl } from './TagFilterControl'
 import { BUNDLE_SORTS, type BrowsePrefs, type LayoutMode } from './types'
@@ -182,20 +182,6 @@ export function Toolbar({
 
         {/* No sort in Random: explicit sorting would un-shuffle the one thing
             the view is for. The Reshuffle button above stands in its place. */}
-        {!onReshuffle && (
-          <SortControl
-            sort={sort}
-            order={order}
-            onChange={onSort}
-            options={
-              allowedSorts
-                ? BUNDLE_SORTS.filter((option) => allowedSorts.includes(option.value))
-                : BUNDLE_SORTS
-            }
-            perCollection={allowCollectionSort ? perCollectionSort : undefined}
-            onPerCollection={allowCollectionSort ? onPerCollectionSort : undefined}
-          />
-        )}
 
         <div className="seg toolbar__layouts" role="group" aria-label="Layout">
           {LAYOUTS.map((l) => (
@@ -213,6 +199,25 @@ export function Toolbar({
         </div>
 
         <ViewOptions
+          alwaysVisible
+          showDetails={prefs.showCardDetails ?? true}
+          onShowDetails={(showCardDetails) => onPrefs({ ...prefs, showCardDetails })}
+          sortControls={
+            !onReshuffle && (
+              <SortFields
+                sort={sort}
+                order={order}
+                onChange={onSort}
+                options={
+                  allowedSorts
+                    ? BUNDLE_SORTS.filter((option) => allowedSorts.includes(option.value))
+                    : BUNDLE_SORTS
+                }
+                perCollection={allowCollectionSort ? perCollectionSort : undefined}
+                onPerCollection={allowCollectionSort ? onPerCollectionSort : undefined}
+              />
+            )
+          }
           layout={prefs.layout}
           layouts={LAYOUTS}
           onLayout={(layout) => onPrefs({ ...prefs, layout })}

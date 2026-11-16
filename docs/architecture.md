@@ -329,6 +329,9 @@ Current browsing surfaces:
   Undo reverses exactly those through the same guarded bulk membership commit.
   The synthetic [quick preview](screenshots/quick-preview.png) and
   [Undo message](screenshots/organize-undo.png) captures show both.
+- View options groups layout, zoom, sort and card details in one anchored
+  panel. Changes apply live; hiding card details also removes their row height
+  from virtualized layout and marquee geometry.
 - Context menus share keyboard navigation and viewport-clamped submenus. Bundle
   Copy actions read the selected bundle; tag pastes reuse guarded membership
   changes and organizing Undo. Text fields retain their own shortcuts.
