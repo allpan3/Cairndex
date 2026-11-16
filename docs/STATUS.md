@@ -34,16 +34,18 @@ inline New Folder naming, source-write network access
 recovery, incoming-files dialogs and background tasks on top of
 the merged historical audit, latest-Update acceptance, Widen title repair and
 SMB source-read improvement. This is an owner-test installation, not a release.
-Rollback copies and private profiles are preserved. Incoming-files remains
-unmerged pending the owner's step-by-step acceptance.
+Rollback copies and private profiles are preserved. At the owner's direction,
+[PR #137](https://github.com/allpan3/Cairndex/pull/137) merged incoming-files on
+2026-11-16, before the owner's step-by-step acceptance.
 
 [PR #130](https://github.com/allpan3/Cairndex/pull/130) merged the qualified audit
 fixes and privacy correction into main after all required hosted checks passed.
 [PR #131](https://github.com/allpan3/Cairndex/pull/131) merged the separate SMB
 source-read change after all six required checks and the full hosted CI passed.
 
-The incoming-files branch is backed up remotely. Its combined test build is
-installed; owner testing is the remaining merge checkpoint. Original local
+PR #137 merged after the full hosted CI and the full-stack browser suite in the
+Cairndex macOS VM passed. Its combined test build is installed and still awaits
+owner testing; a problem found there is now fixed on main. Original local
 branches and unfinished worktree edits remain untouched. No release is authorized.
 
 ## Implementation and decisions
@@ -102,8 +104,8 @@ Original branches remain available as local implementation and evidence records.
 The prepared stack keeps the audit fixes and privacy correction together,
 followed by the separate SMB and incoming-files changes. Application runtime
 files match the tested audit and installed SMB snapshots; the incoming application
-tree matches a merge of the original branches. Audit and SMB are merged;
-incoming-files now includes main and stays unmerged for owner testing.
+tree matches a merge of the original branches. Audit, SMB and
+incoming-files are merged.
 
 | Scope | Original branch | Prepared branch |
 | --- | --- | --- |
@@ -153,7 +155,7 @@ production page and shutdown checks passed. Installed app bytes, modes and
 symlinks match the qualified package. A stopped-profile snapshot confirms private
 file names, modes, sizes and modification times survived installation and smoke;
 credentials were untouched. Rollback and receipts are retained locally under
-`20261105-inline-name-errors`. The branch remains unmerged for owner acceptance.
+`20261105-inline-name-errors`. Owner acceptance remains open.
 
 The album inspector follow-up is installed on desktop and web.
 A selected album file shows file details only; clearing selection restores bundle
@@ -167,7 +169,7 @@ packaging, sidecar smoke, signature/distribution and installed desktop/web check
 passed. The stopped-profile comparison confirms unchanged private file names,
 modes, sizes and modification times; credentials remain untouched. Rollback and
 local receipts are retained under `20261106-album-inspector`. Owner acceptance
-remains the merge checkpoint.
+remains open.
 
 Open-bundle incoming drops are installed on desktop and web. Drops and
 Add Files target the open bundle; the first ordered file's parent (or directory
@@ -180,8 +182,8 @@ or dependency changed. App-only packaging, sidecar smoke, signature/distribution
 and installed desktop/web identity, health and shutdown checks passed. Installed
 application bytes match the package; stopped private profiles retain identical
 files, modes, sizes and modification times. Credentials were untouched. Rollback
-and local receipts are retained under `20261106-open-bundle-drop`. The branch
-remains unmerged for owner acceptance.
+and local receipts are retained under `20261106-open-bundle-drop`. Owner
+acceptance remains open.
 
 ## Qualification and evidence
 
@@ -263,20 +265,21 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
-- Portable migration gaps (owner request, 2026-11-11), local branch
-  `fix/portable-migration-gaps`, not pushed or installed. Restored: Size, Has
+- Portable migration gaps (owner request, 2026-11-11), in review as
+  `prepare/portable-select-all` on top of #137, not installed. Restored: Size, Has
   missing file and Has cover filters from this device's observations; File
   Browser card hover previews for unchanged observed videos; Unbundled sorts over
   the whole queue (`browse_version: 17`); and selections above 100 bundles as
   batched server bulk operations (`selection_version: 5`, owner-chosen design:
   skip changed bundles and continue, stop on a change to the shared target).
-  Follow-up branch `feat/windowed-unbundled-select-all` on top of it, also not
-  pushed or installed: Unbundled is a windowed list sized from the server's
-  total that fetches and stats only the pages on screen, and Select All takes
-  every matching bundle or queued file through paged key reads
-  (`selection_version: 6`). The backend and frontend gates and the Playwright
-  suite pass in the Cairndex macOS VM with synthetic data, except the bulk-review
-  reload case in `catalog-selection.spec.ts`, which also fails on the base branch.
+  The same branch adds the windowed Unbundled and Select All work: Unbundled is
+  a windowed list sized from the server's total that fetches and stats only the
+  pages on screen, and Select All takes every matching bundle or queued file
+  through paged key reads (`selection_version: 6`). Before the rebase, the
+  backend and frontend gates and the Playwright suite passed in the Cairndex
+  macOS VM with synthetic data, except a bulk-review reload case in
+  `catalog-selection.spec.ts` that also failed on its base branch. Hosted CI is
+  the full gate for the rebased branch.
   Limits: Size is not in the ordinary condition editor; Select All refuses
   views above 100,000 items; each Select All page re-sorts the whole view on
   the server; a selection of many thousand bundles reads its inspector state
@@ -384,10 +387,10 @@ is not an owner-NAS or full-UI Update benchmark.
   scan passes with all actual private literals retained. Required hosted checks
   also passed on both audit and SMB merge heads.
 - Test incoming-files one workflow at a time, now beginning with right-click →
-  New Folder in File Browser with Write Mode enabled. Keep its branch unmerged
-  until owner acceptance. Combined automated checks and local installation
-  passed; native Finder-drop delivery and interaction quality remain owner
-  checks. Rust source is unchanged, so its existing gates were retained.
+  New Folder in File Browser with Write Mode enabled. It is merged (#137), so a
+  problem found now is fixed on main. Combined automated checks and local
+  installation passed; native Finder-drop delivery and interaction quality
+  remain owner checks. Rust source is unchanged, so its existing gates were retained.
 - Complete owner acceptance and representative NAS/media timing. Synthetic
   measurements do not establish large-library readiness on the owner's storage.
 - Provider/cloud delivery, offline delivery, hydration, conflicts, large-scale use
