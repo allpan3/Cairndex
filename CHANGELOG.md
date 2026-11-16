@@ -10,888 +10,295 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Portable libraries (library format three).** A library keeps its metadata history in
+  its own folder. Working databases, drafts, jobs, access settings and caches are
+  private to each server ([ADR-0035](docs/adr/0035-portable-library-format.md)).
+  Creating a library starts its first file scan at once, also when a native create
+  switches servers; registering or reopening an existing library does not rescan it. A
+  library opened on another server can need preparation first, and the preparation and
+  first-scan messages say which server they apply to. Browsers on the same server share
+  its working catalog and cache. A damaged private store can be rebuilt from the
+  library, and container deployments keep private snapshots in a separate backup volume.
+- **Reviewed conversion of old libraries.** Opening an old library from Libraries, the
+  first-run screen or the desktop **Browse…** opens a conversion review. Inspection and
+  private preparation check the authored metadata before the owner activates the exact
+  review. The old metadata folder stays beside the new one as a backup, media is not
+  touched, and an interrupted swap resumes. Undo restores the old folder and keeps the
+  converted history. Old passphrases, resume positions, caches, retired prototype data
+  and old trash stay in the backup. Libraries that earlier versions upgraded in place
+  convert too. Conversion tasks report an `error_code`.
+- **Portable libraries keep v0.2.1's workflow.**
+  - *Browsing:* sidebar counts for every view and collection; collections as folder
+    cards with **Show subcollection contents**; **‹ ›** Back and Forward; remembered
+    layout, zoom and sort, with **Remember sort per collection**. Sorts include Manual
+    (the default), File Count, Date Added, Date Opened, Date Modified and Size, the last
+    three from this device's own history and observations. Cards show hover previews,
+    resume start and media badges once this device has opened the file, and File Browser
+    cards preview video on hover. Search covers filenames, paths, source values, tags,
+    collections, notes and moment comments. Size, Has missing file and Has cover
+    filters, Smart Collections with live counts, arrow-key movement across collection
+    cards and bundles, Locate in Bundle Browser and Locate in File Browser work as
+    before. File Browser badges mark unlinked, unbundled and missing files, and
+    collections and bundles scroll as one surface.
+  - *Organizing:* New Collection, New Subcollection, Rename, Delete (which keeps the
+    bundles and moves subcollections up a level), drag to reorder or reparent, Clean Up
+    Order, collection covers and **New Collection from Folder…**. Dragging cards onto a
+    collection adds them, and out of an open collection also removes them from it unless
+    Option/Alt is held. The All Tags page creates, nests (with `/`), renames, deletes
+    and reparents tags and manages tag groups; tag chips filter, rename, copy and paste.
+    **Create Bundle…**, **Add to Bundle…** and **Add Files…** offer ranked targets and
+    suggested titles, and **Delete Bundle** returns each file to Unbundled with its
+    identity and moments. Bundles reorder by dragging under the Manual sort. Bulk
+    changes to more than 100 bundles apply in batches of 100 with progress and Cancel; a
+    bundle changed elsewhere since it was read is left as it was, and **Select
+    Unchanged** selects those for review. Collection and tag changes save at once and
+    are refused for review when another device changed them first. The card menu has
+    Play / View, Open Bundle, Locate in File Browser, Set as Collection Cover and Remove
+    from This Collection, and acts for the whole selection. None of this touches source
+    files.
+  - *Inspectors:* v0.2.1's layout, with the cover and ▶ Play, title, rating, Files and
+    Date Added, tag and collection chips with × and tree pickers, and **Files in
+    bundle** listing each file's kind, size, dimensions and duration, with ★ to choose
+    the cover. A multi-selection shows **N bundles selected** with one title field, one
+    rating and the chips every selected bundle has. Title, notes, rating and cover save
+    automatically, and an interrupted save is kept and retried, even after a reload.
+    **Review Conflicts** opens a compact dialog with readable versions of each
+    conflicting value. Collections and File Browser files have their own inspectors.
+  - *Viewer:* double-click or Enter opens the viewer at this device's current file and
+    position. Moments are back: `B`, Save Moment and the rail's `+` mark a frame or
+    span; the rail plays, loops, comments, tags and deletes them, and shows a preview on
+    hover; the browser inspector lists them too. A tag added to a moment is added to its
+    bundle ([ADR-0025](docs/adr/0025-moment-tag-propagation.md)). Seek-bar storyboards,
+    **Save GIF…**, **Save Contact Sheet…**, **Set Frame as Video Cover** and the full
+    bundle inspector in the viewer's rail work again. The File Browser plays video,
+    audio and images that are not in the catalog.
+  - *Library actions:* the sidebar has **Update** and a ⋯ menu that includes Add Files…,
+    Review Discoveries…, Metadata Review, Scan new files, Suggest grouping, Collect
+    metadata (audio files too) and Generate storyboards; the media passes show progress
+    and Cancel. The sidebar footer shows a running Update and anything that needs the
+    owner. The discovery review opens by itself when an Update you started leaves files
+    to decide.
+  - *Desktop:* Reveal, Open in Default App and dragging files out work again, as do
+    `cairndex://` links and Copy URI, and completion notifications and the Dock badge
+    for Update and media jobs.
+- **Grouping review in portable libraries.** The review is editable as in v0.2.1:
+  rename, Narrow/Widen, file moves and order, bundle/collection conversion, collection
+  placement and keyboard navigation. **Accept selected** prepares, checks and saves the
+  exact review in one step. A new Update's draft keeps the earlier choices for the files
+  still there, and when files changed under a review, Accept selected runs Update and
+  reopens the draft with those choices. Files that are already in the catalog keep their
+  identities, notes, moments and subtitles when grouped.
+- **Update with readable file changes.** Update names its phase with completed and total
+  counts. Its file changes list each file with its folder, a label (Not confirmed,
+  Possibly moved, Content changed) and a plain explanation, and one action (Check and
+  Restore, Check and Link, Use New Content) reads the file when needed, prepares the
+  review and accepts it. Repeat Updates batch their work, skip grouping when there are
+  no new files and no longer pause after each step. On a synthetic 2,269-bundle library,
+  sorts, counts and filter facets take under 0.3 s, and Collect metadata runs about 15
+  files/s.
 - **Incoming files become a bundle, join a bundle or land in a folder.** Files dropped
-  in the Bundle Browser's empty space, or chosen with Add Files…, open **Add N files
-  as a new bundle**, with a name taken from the files, the open collection already
-  chosen and a suggested folder beside that collection's bundles, never inside another
-  bundle's folder. Folders that do not exist yet are marked “new folder” and created,
-  journaled, before the copy, and the folder picker has New Folder. Files dropped on a
-  bundle card, or into an open bundle, join that bundle in its folder; in the File
-  Browser they copy into the open folder. Copies run in the background with Undo, and
-  an occupied name waits for Keep Both, Replace or Skip.
-- **Library file actions are single actions, without the File Operations panel.** With
-  write mode on, files and folders, including those in a bundle's album, have Rename…,
-  Copy to…, Move to…, Move to Trash and Locate in File Browser. Rename and New Folder
-  name the item inline (a new folder starts as **Untitled**) and reject an occupied
-  name in place. Each action responds at once, runs in the background and has Undo,
-  and ⌘Z undoes the latest one. **Trash** in the sidebar lists trashed items with Put
-  Back and replaced versions with Restore a Copy, and has **Empty Trash** for retained
-  originals and **Delete Kept Copies…** for duplicates that earlier versions kept.
-  Operations saved by a reload or another window show in the sidebar with Review….
-  Write mode is switched only in Libraries.
+  in the Bundle Browser's empty space, or chosen with Add Files…, open **Add N files as
+  a new bundle**, with a name taken from the files, the open collection already chosen
+  and a suggested folder beside that collection's bundles, never inside another bundle's
+  folder. Folders that do not exist yet are marked “new folder” and created, journaled,
+  before the copy, and the folder picker has New Folder. Files dropped on a bundle card,
+  or into an open bundle, join that bundle in its folder; in the File Browser they copy
+  into the open folder. Copies run in the background with Undo, and an occupied name
+  waits for Keep Both, Replace or Skip.
+- **Library file actions, in write mode.** With write mode on (per library, and only
+  where the deployment permits it; [ADR-0013](docs/adr/0013-library-write-mode.md)),
+  files and folders, including those in a bundle's album, have Rename…, Copy to…, Move
+  to…, Move to Trash and Locate in File Browser. Rename and New Folder name the item
+  inline (a new folder starts as **Untitled**, and is listed as soon as it is named) and
+  reject an occupied name in place. Each action responds at once, runs in the background
+  as a journaled operation and has Undo, and ⌘Z undoes the latest one
+  ([ADR-0036](docs/adr/0036-portable-source-operations.md)). Same-volume Rename, Move
+  and Trash move the original instead of copying it
+  ([ADR-0041](docs/adr/0041-same-volume-file-operations.md)), and a copy into the
+  library writes the file once and publishes it as its own version
+  ([ADR-0042](docs/adr/0042-copy-publishes-its-version.md)). **Trash** in the sidebar
+  lists trashed items with Put Back and replaced versions with Restore a Copy, and has
+  **Empty Trash** and **Delete Kept Copies…** for duplicates that earlier builds kept.
+  Operations saved by a reload or another window show in the sidebar with Review…. Write
+  mode is switched only in Libraries.
 - **File activity card.** File tasks show in a compact bottom-right card with received
   bytes, an averaged speed, percentage and completed-file counts. A stopped task is
   listed with its reason, Cancel and Try Again, and a cancellation survives a reload.
-- Restore ranked manual-bundling targets, suggested draft titles/roles and
-  related Unbundled files for portable libraries. Recommendations use indexed
-  metadata and filenames, including files outside the first page. Apply remains
-  an explicit guarded catalog change. Add Files also pages and searches the
-  complete Unbundled population alongside recommendations.
-
-- Restore local Date Opened and Date Modified sorts, including Recent's date
-  choices, and Size from this device's file observations. Opening and editing
-  have separate private history; unknown sizes and opening times sort last.
-  Old conversion-backup positions are not imported. Cross-device resume remains
-  separate work.
-
-- Restore Save GIF… and Save Contact Sheet… for portable libraries in the
-  viewer, the bundle album and the File Browser. Both read this device's
-  observed bytes through pinned descriptors and fail if the source changes.
-  Contact sheets stay in the server's private cache; GIFs use the existing
-  private export directory. Servers advertise the capability as `export_version`.
-- Restore seek-bar storyboards for portable libraries. Opening a video queues
-  one background storyboard for the observed generation, newest request first.
-  Sheets stay in the server's private cache and are served only while that
-  generation is current. Release stops the decoder. Servers advertise the
-  capability as `storyboard_version`.
-- Restore moment authoring in the portable viewer. `B`, Save Moment and the
-  rail's `+` mark a frame or a span; the docked Moments rail lists the bundle's
-  moments, edits their comments, plays and loops them, and deletes them. Every
-  write is a catalog job. Servers advertise the capability as `moments_version`.
-- Restore moment tags in the portable viewer. Each rail row shows its tags and
-  a chooser that searches the library's tags. A tag added to a moment is also
-  added to its bundle (ADR-0025); removing it from the moment leaves the bundle
-  tag. Servers advertise the capability as `moments_version: 2`.
-- Restore moment hover previews in the portable viewer. A row shows the frame
-  at the moment's start, and a span plays a short muted clip. The server makes
-  each preview once in the background and keeps it in its private cache.
-  Servers advertise the capability as `moments_version: 3`.
-- Show a bundle's moments in the portable browser inspector. Play from opens
-  the viewer at the moment, and comments, tags and deletes work as in the
-  viewer rail. Servers advertise the capability as `moments_version: 4`.
-- Show the full bundle inspector in the portable viewer's rail. The browser's
-  inspector steps aside while the viewer is open, so unsaved notes and titles
-  move between them without being overwritten.
-- Add the Manual and File Count sorts to the portable Bundle Browser. Manual
-  uses a collection's own order inside that collection. Servers advertise the
-  sorts as `browse_version: 3`.
-- Restore the card hover preview, resume start and media badges in the portable
-  Bundle Browser. They use what this device last observed, so a video shows its
-  duration and preview after this device has opened it once. Servers advertise
-  the card facts as `browse_version: 4`.
-- Restore the portable card menu: Play / View, Open Bundle, Locate in File
-  Browser, Set as Collection Cover and Remove from This Collection. A card in a
-  multi-selection acts for the whole selection. Collection changes save at once
-  and are refused for review when another device changed them first. Removal
-  needs `selection_version: 2`.
-- Open `cairndex://` links in the portable workspace again. A bundle link
-  selects the bundle in All bundles, and a collection link opens the
-  collection. The desktop card menu has Copy URI again.
-- Restore collection organizing in the portable sidebar: New Collection, New
-  Subcollection, Rename, Delete, drag to reorder or reparent, and Clean Up
-  Order. Each change saves at once from the catalog's current hierarchy and is
-  refused for review when another device changed it first. Deleting a
-  collection keeps its bundles and moves its subcollections up one level. The
-  desktop collection menu has Copy URI again.
-- Drag portable cards onto a sidebar collection again. A drop adds the bundles
-  to it; out of an open collection, a plain drop also removes them from that
-  collection, and Option/Alt keeps them there. The browser's empty-space menu
-  has New Collection, or New Subcollection inside a collection. Card drags need
-  `selection_version: 2`.
-- Restore Delete Bundle in the portable card menu. One commit returns each
-  file to Unbundled in its own staging bundle, with its identity and moments,
-  and deletes the bundle; source files are never touched. Servers advertise it
-  as `browse_version: 5`.
-- Reorder portable bundles by dragging under the Manual sort, in a collection
-  or in All bundles, and restore Clean Up Order… in the browser's empty-space
-  menu. The server resolves each move against the complete scope and writes
-  only the positions that change. Manual always reads ascending. Servers
-  advertise the manual order as `browse_version: 6`.
-- Restore New Collection from Folder… in the portable File Browser. One commit
-  creates the collection and files every bundle with a file in that folder or
-  below it; the app then opens the collection. Servers advertise it as
-  `browse_version: 7`.
-- Restore the All Tags page for portable libraries: New Tag (with `/` to
-  nest), New Child Tag, Rename, Delete, drag to reparent, and tag groups with
-  their memberships. Each change saves at once. Deleting a parent states the
-  cost and then takes its child tags too, as in v0.2.1. Servers advertise it as
-  `browse_version: 8`.
-- Restore portable manual bundling: Create Bundle… and Add to Bundle… in the
-  Unbundled view, where Cmd/Ctrl-click selects several files; Create Bundle…
-  in the browser's empty space, which makes an empty bundle; and Add Files… in
-  the bundle inspector. One commit confirms the bundle or adds the files to a
-  confirmed one, with each file's identity, and links a new subtitle to the
-  video it names. Servers advertise it as `browse_version: 9`.
-
-- Restore mapped desktop Reveal, Open in Default App and regular-file drag-out
-  in the portable browser, album, file details and bundle inspector. Library
-  mappings and late replies remain scoped to the configured server.
-- Add Files and regular-file drops open portable copy review. Chosen bytes use
-  the existing upload contract. Source writes require permission and explicit
-  Apply for each saved review. Internal HTML drags remain enabled. Selections,
-  whole-bundle drags and incoming upload sizes have explicit bounds.
-
-- Reviewed conversion of old libraries to portable format three. Inspection and
-  private preparation verify authored metadata before the owner activates an
-  exact review. The original metadata folder stays in a backup; media remains
-  untouched. Durable retries resume interrupted swaps. Undo retains converted
-  history and private work while restoring the old folder. Libraries provides
-  conversion review and resume controls. Old passphrases, resume positions,
-  caches, retired prototype data and old trash remain in the backup.
-
-- Optional stable local macOS sidecar signing with strict identity preflight and
-  disposable Keychain qualification across changed executable builds.
-  Its disposable CI Keychain explicitly supports headless signing while keeping
-  workstation enrollment and saved-login access rules unchanged.
-- Reviewed portable source Copy, Rename, Move, Replace, Trash, conditional Undo
-  and retained recovery copies. Exact private intent, independent versions and
-  no-replace publication protect identities and occupied paths. The File Browser
-  provides saved review, collision choices, interruption Retry and recovery.
-  Writes remain off by default and require per-library and deployment permission.
-- An authenticated mounted-SMB publication adapter with share-scoped saved-login
-  access, signed/encrypted SMB3, bounded visibility waits and exact recovery.
-  New qualification is recorded separately for source, frozen and native runs.
-  Completed renames refresh the former mounted name before checking absence,
-  preserving arriving entries while avoiding stale positive stat results.
-
-### Security
-
-- Update the desktop app's QUIC crates (`quinn-proto` 0.11.19, `quinn-udp` 0.5.16)
-  for RUSTSEC-2026-0523, RUSTSEC-2026-0524 and RUSTSEC-2026-0538, which let a peer
-  exhaust memory or keep a receive loop busy.
-
-- Correct an owner-approved privacy-gate false positive for literal substrings
-  inside the exact public codesign field name. Field values, longer identifiers,
-  private names and secret detection remain protected.
-
-- Update the web development dependencies Undici to 7.30.1 and Zod to 4.6.7
-  for their HTTP parsing, integrity and constrained-collection advisories.
-- Require Pillow 13.0.0 and update certifi and setuptools for image parsing,
-  certificate trust and Windows installation advisories. Update rustls-webpki,
-  webpki-roots and Tokio for certificate distrust and file-descriptor safety.
-
-- Update the Rust lockfile to rustls 0.23.46 for four TLS advisories published
-  on 2026-10-14, including a ServerHello downgrade and secrets in `Debug`
-  output.
-
-- Update the Rust lockfile to quinn-proto 0.11.18 for five denial-of-service
-  advisories and event-listener 5.4.2 for its cross-thread tag safety fix.
-  Replace the yanked chacha20 0.10.1 with 0.10.2.
-
-- Resolve stopped conversion swap checks from the matching saved task. Incoming
-  setup paths select tasks; only accepted stopped swaps trigger metadata checks.
-
-- Resolve picker-upload recovery paths from the persisted upload identity;
-  request text selects the record and strict token and symlink checks remain in force.
-
-- Make the publication privacy gate fail closed when Git ignores `rev-list --objects -z`.
-  Git 2.43 (the Ubuntu 24.04 package) printed newline-delimited output there, and the gate
-  then reported a pass after it had scanned no blobs.
-- Update source-map-js to 1.2.2 (GHSA-68fv-2mgg-jv7q, denial of service through crafted
-  source-map offsets) and Mako to 1.4.3 (GHSA-5639-2j2p-m4mx, a Windows-only template path
-  traversal). Both are transitive dependencies: source-map-js of the web build tools, Mako of
-  Alembic.
-- Update AnyIO, brace-expansion, undici, rustls and rustls-webpki to patch releases that resolve
-  the current dependency audit findings.
-- Send library passphrases and device pairing codes without the metadata edit queue. The
-  queue stores request bodies in localStorage, and before this change only the URL check in
-  `isMetadataWrite` kept these secrets out of it.
-- Build thumbnail, preview, contact-sheet and storyboard cache paths, and the trash folder
-  that a restore removes, from database values and server constants instead of request
-  text. Send the shuffle seed to SQLite as a bound parameter. Behavior does not change: each
-  request value already had to match a database row, a fixed list or a range first.
-
-### Internal
-
-- CI fails when the committed `openapi.json` or `schema.d.ts` no longer matches the
-  server, and `gen:api` pins its generator version so the output is reproducible.
-
-- Keep project status focused on current state and qualification limits; retain
-  SQLite durability measurements in the development guide and superseded status
-  in Git history.
-
-- Wait for both row selection and its inspector callback in Locate tests.
-
-- Make cross-device test boundaries independent of the temporary root. Catalog
-  job checks wait for terminal receipts, and two-sidecar discovery waits for
-  both creation events before testing a move, preserving causal ordering.
-
-- Wait for the file-change acknowledgement before reloading the bundle-file
-  browser test. Delayed acknowledgement coverage checks that the file remains
-  alive, leaves the old bundle and keeps controls locked until delivery finishes.
-
-- Keep the Smart Collection capability check compatible with later browse
-  features while retaining its exact-filter and guarded-rename assertions.
-
-- Record the behavior-restoration audit, published-history check and accepted
-  differences, and reconcile the catalog workflow documentation.
-
-- Wait for completed dialog closure, pagination, nested tag saves and grouping
-  work in UI checks. Refreshing controls and changed button labels are not
-  completion receipts. Batch synthetic fixture schema and rows in one
-  transaction to avoid per-DDL durable commits.
-
-- Make the discovery restart test exercise one durable phase per worker tick,
-  so its completion check does not depend on disk commit latency.
-
-- Record the incomplete portable restoration in a
-  [behavior audit](docs/restoration-audit.md), with the decision timeline,
-  missing interactions and acceptance checks. Repairs remain in progress.
-- Wait for background recovery tasks to reach a terminal state in the private
-  controls browser test, then require success. Its default five-second UI
-  assertion could expire while durable preparation was still running.
-- Drain background replica work before API-test cleanup closes its transport.
-  Direct close could interrupt an executing transport generator on slow storage.
-- Wait for the synthetic media catalog before the streaming connection-pool
-  assertion. Attempted exchanges can skip work while a background pass holds
-  the per-library lock.
-- Exercise large discovery reviews with one phase per worker tick and allow
-  their test driver enough ticks for slow durable storage.
-- Keep portable source API tests under manual worker control. The lifespan
-  worker could claim the same synthetic intent through the default registry
-  while a test drove it against its isolated registry on slower storage.
-- Wait for the path suggestion menu's measured layout in its browser test.
-  Keep both edge hit tests so persistent clipping still fails.
-
-- Declare the reviewed synthetic desktop file-copy screenshot before publishing
-  it with the feature. The declaration fixes its digest, path and provenance.
-
-- Record the completed dependency, Update/recovery and reviewed-conversion
-  merges, hosted checks and remaining owner-test release checkpoint.
-
-- Declare the synthetic legacy-conversion screenshot for independent publication
-  privacy checks before its feature branch publishes the image.
-
-- Update GitHub Actions, the desktop Tauri crates and CLI, and the web runtime and
-  development dependencies, including Vitest 5, React 19.3, Vite 8.3 and
-  Playwright 1.64. The desktop keymap test now pins muda 0.20, which maps Command
-  to `META`. Dependabot no longer proposes major `@types/node` versions beyond the
-  Node 22 runtime.
-- Add a complete CI result, conservative documentation/backend-test job scope,
-  slow-test reporting and isolated memory-backed bulk fixtures. Source-operation
-  and backup/restore safety tests remain on disk; all runtime changes retain the
-  full matrix. Main requires the completion result and independent security
-  checks alongside trusted privacy, preserving strictness and source-app bindings.
-  Qualify the full hosted matrix and record its 1,856 backend tests, timings and
-  the watcher's partial-notification limitation.
-- Record the completed source-operation and distribution/deployment merges,
-  combined reference comparison and corrected matched-deletion inventory.
-- Extract distribution/deployment from the preserved audit reference. Development
-  bundles share checksum-verified media tools from an isolated cache; production
-  bundles copy them. CI covers launcher behavior and Keychain identity continuity.
-  The disposable signing smoke restores the certificate search list after failure;
-  signing diagnostics expose fixed error categories without private tool output.
-- Declare the reviewed synthetic source-operation screenshot by exact digest,
-  path and provenance before the application PR publishes its binary.
-- Allow the binary-inventory test to verify declarations before their assets
-  arrive, while checking every existing asset and retaining exact bytes/path gates.
-- CodeQL no longer analyzes test code (`.github/codeql/codeql-config.yml`). The unit-test
-  localStorage stub keeps every key in one Map, so CodeQL reported false clear-text storage
-  and DOM XSS alerts in application code.
-
-- Repair the Docker smoke and backup-restore acceptance scripts for portable
-  format three. They no longer expect `.cairndex/library.db`, the scan route or
-  the shared ownership lease. The smoke admits a video through a reviewed
-  Update and checks the thumbnail, ranges, HLS, a database-free package, and the
-  same catalog after a clean restart and a forced exit. The recovery smoke keeps
-  the registry backup and adds a separate snapshot volume, recovery of a damaged
-  private store and a retained passphrase.
-- Make the HLS test for an init request during an immediate far-seek restart
-  independent of machine speed. Its stub encoder wrote the first segment as soon
-  as it started, so on a fast machine the first run was complete before the seek
-  and the test failed 13 of 30 runs. The stub now waits before the first segment,
-  as ffmpeg does; the test passed 30 of 30 runs and still fails when an init is
-  served without its first segment.
-- Document the remaining audit PR sequence, isolated VM test procedure,
-  qualification limits and selected-library migration prerequisites.
-
-- Extract the portable application: format-three Create/Open, old-format refusal,
-  private access and recovery, reviewed Update, catalog browsing/editing and
-  local playback. Source operations and mounted-SMB publication remain separate.
-  Merged through PR #45; CodeQL repairs followed in PR #46.
-
-- Add a disposable format-three migration foundation with complete catalog
-  reconstruction, private schema validation, retained recovery, durable intent,
-  interruption/retry checks and separate rollback exports. Owner conversion and
-  activation remain unavailable.
-- Record audit extraction dependencies, reference coverage and inherited
-  publication blockers.
+- **Mounted network shares on macOS.** File work on an SMB share mounted by macOS uses
+  signed or encrypted SMB3 and the share's saved login
+  ([ADR-0037](docs/adr/0037-portable-mounted-smb.md)). A login saved for the share is
+  preferred, one Finder saved for the whole server is accepted, and a login for another
+  share is never used. Cairndex asks for the login when Write Mode is enabled and before
+  a file task's first step; when it cannot read the login, the library, conversion and
+  the stopped task offer **Allow Access…**, which asks macOS (Always Allow lets
+  background work read it from then on). Permission, read-only and full-storage failures
+  are told apart, and metadata saves continue during file work. On a test share, Rename,
+  Move, Trash, Put Back and Undo take about 0.3–0.7 s of server time. Files Cairndex
+  copied in stay confirmed after the share is mounted again, and Update after a
+  reconnect reuses checked folders. Replica status reports `storage_access`; the
+  library's `replica/storage-authorization` and a conversion task's `authorize-storage`
+  ask macOS.
+- **A per-folder sort in the File Browser.** Its sort pane offers *Remember sort per
+  folder*, the counterpart to the Bundle Browser's per-collection scope: each folder
+  keeps its own field and direction, and a folder with none inherits the global sort.
+  The flat Unbundled queue keeps the global sort.
+- **Sortable list-view column headers.** In both browsers' list layouts, clicking a
+  column header sorts by it and clicking the active column reverses the direction. The
+  headers and the toolbar sort control are one preference. Columns with no order behind
+  them (a bundle's Dimensions and Type) stay plain.
+- **Capability fields.** Servers advertise portable features in replica status, and the
+  app uses them to choose what to offer; an older server keeps the earlier behavior.
+  - `browse_version`: 3 Manual and File Count sorts; 4 card facts; 5 Delete Bundle; 6
+    manual order; 7 New Collection from Folder; 8 All Tags; 9 manual bundling; 10 counts
+    and collection covers; 17 Unbundled sorted over the whole queue.
+  - `selection_version`: 2 card drags and Remove from This Collection; 3 the selection's
+    own destinations; 5 batched changes above 100 bundles; 6 paged Select All keys.
+  - `moments_version`: 1 authoring; 2 tags; 3 hover previews; 4 moments in the browser
+    inspector.
+  - `export_version` (Save GIF and Save Contact Sheet), `storyboard_version` and
+    `grouping_version: 1` (editable grouping review).
+- **Stable local macOS signing.** An opted-in local signer signs the sidecar and
+  `Cairndex.app` with one certificate, so macOS approvals such as Network Volumes
+  survive local rebuilds. Preflight checks the identity strictly.
 
 ### Changed
 
 - **Select All selects every match, and Unbundled scrolls the whole queue.** In a
-  portable library, Select All (⌘A) selects every bundle the view matches, not only
-  the loaded pages; the toolbar shows “Selecting N of M…” while it reads them, and
-  Escape stops it. Bulk changes and Delete Bundles act on the whole selection and
-  state its full count. Unbundled is one scrolling list of the whole queue instead of
-  pages behind **Load more**, and only the files on screen are fetched and checked on
-  disk. Select All and Shift ranges include files not shown yet. Create Bundle and Add
-  to Bundle take up to 100 files, and Copy, Move and Trash up to 1,000. The server
-  pages a query's keys, up to 1,000 at a time, through `POST
-  /replica/catalog/bundles/browse/ids` and `POST /replica/catalog/files/unbundled/ids`
-  (`selection_version: 6`); older servers keep loaded-only Select All.
-- **Faster file operations.** Copying a file into the library writes it once instead
-  of copying and hashing it twice (ADR-0042), which halves copy time on a test share,
-  and uploads are written in 4 MiB blocks. Same-volume Rename, Move and Trash move the
-  original instead of keeping a full recovery copy; Undo and Put Back return it. On a
-  network share, Rename, Move, Trash, Put Back and Undo take about 0.3–0.7 s of
-  backend time instead of 3–4 s: Cairndex clears the macOS mount's cached absence of a
-  name instead of waiting it out, moves once instead of twice, and proves a folder's
-  SMB mapping once per mount.
-- **Network share access.** Cairndex asks macOS for a share's saved login when Write
-  Mode is enabled and before a file task's first step, and shows **Allow Access…** in
-  a compact confirmation when the login cannot be used; the stopped task waits for Try
-  Again. A failed step stops the steps after it, so one cause is reported once.
-  Permission, read-only and full-storage failures are told apart, a refused upload
-  shows the server's reason, and metadata saves continue during file work.
-- **Update's file changes are readable, and one action settles each.** Each changed
-  file is listed with its folder and a label (Not confirmed, Possibly moved, Content
-  changed) beside a plain explanation. One button (Check and Restore, Check and Link,
-  Use New Content) reads the file when needed, prepares the review and accepts it,
-  with progress and Cancel. Large files that Cairndex copied in stay confirmed after
-  their share is mounted again, and a file it cannot confirm is called unconfirmed
-  rather than different.
-- **Grouping review accepts in one step and keeps its choices across Updates, as in
-  v0.2.1.** **Accept selected** prepares, checks and saves the exact review. A new
-  Update's draft keeps titles, selection, file order, moves, merges, splits,
-  collection placement and folder choices for the files still there. When Accept
-  selected is refused because files changed, the review runs Update and opens the new
-  draft with those choices kept. Section headings are titles, and the split action
-  reads **Make new bundle**.
-- **Inspectors save automatically and resolve conflicts in place, as in v0.2.1.**
-  Title, notes, rating and cover save without Save or Discard, and an interrupted edit
-  is kept and retried. Selecting a file in an open bundle shows only that file's
-  inspector. Review Conflicts opens a compact dialog over the browser with readable
-  versions of title, rating, notes, cover and main file; file, order and existence
-  conflicts link to Metadata review.
-- Library preparation and the first file scan now explain their server scope.
-  Initial scans retain their label across refresh, cancellation and retry;
-  later Updates keep the compact progress display. Existing libraries opened
-  on a new server can need preparation, while browsers on the same server share
-  the working catalog and cache.
-
-- **The side panels' scrollbars hide until you scroll.** As macOS overlay
-  scrollbars do, the sidebar's and inspector's thumb appears while the panel
-  scrolls and fades a second later; it stays while the pointer is on it or
-  drags it.
-- **The portable bundle inspectors have v0.2.1's layout again.** The cover has a
-  ▶ Play button over it, followed by the title, rating, Files and Date Added.
-  Tags and collections are chips with ×, and **+ Tag** / **+ Collection** search
-  the whole catalog; each pick or removal saves at once. A collection chip opens
-  that collection. **Files in bundle** lists each file's name, kind and size with
-  a ★ that makes it the cover (the current cover's ★ returns to the automatic
-  cover) and ▶ to open it, and **+** in its header adds Unbundled files. A file
-  row shows this device's details for the file. The Browse bundle files, Open
-  media, Add Files… and Review buttons and the explanatory paragraphs are gone;
-  a bundle with competing values shows a Review Conflicts link instead. Save
-  changes appears only once there is a draft, because the portable inspector
-  keeps edits as a private draft until they are saved. Selecting several bundles
-  shows **N bundles selected** with Clear, one title field ("Multiple titles —
-  type to rename all"), one rating, the Files total and chips that change every
-  selected bundle; each change saves at once, and a save whose reply was lost
-  offers Retry, even after a reload. Servers advertise the selection's own
-  destinations as `selection_version: 3`.
-- **The portable Bundle Browser, File Browser and Unbundled view have v0.2.1's
-  layout again.** Nothing sits between the toolbar and the grid any more: the
-  file-size note, **Bulk changes**, the Missing Files paragraph and the Files
-  note are gone, and results and errors appear as a message at the foot of the
-  window. All shows the top-level collections as folder cards, and an open
-  collection shows its subcollections, with **Show subcollection contents** and
-  fold carets in the section header. The switch is off by default and
-  remembered, as in v0.2.1. Folder cards select, open on double-click, drag,
-  take dropped bundles and have Copy URI, Rename and Delete. A selected or open
-  collection shows its cover, name, description and counts in the inspector,
-  where the name and description can be edited. The sidebar shows counts for
-  every view and collection again; a collection's count follows the switch.
-  **‹ ›** go back and forward between places. Layout, zoom and sort are remembered
-  again, Manual is the default sort, and **Remember sort per collection** works.
-  The toolbar names views as the sidebar does. Unbundled uses the File Browser's
-  listing, thumbnails and menu, with Create Bundle… and Add to Bundle…. A
-  library that is not ready shows one card with Try Again, Manage Libraries and
-  Metadata Review. An interrupted bulk save reopens its inspector after a
-  reload. Servers advertise the counts and collection covers as
-  `browse_version: 10`.
-- **A portable library's actions are back in the sidebar, as in v0.2.1.** The
-  rows of buttons and status lines above the bundle browser are gone. The sidebar
-  shows **Update** and a ⋯ menu with **Add Files…**, **File Operations…**,
-  **Review Discoveries…** and **Metadata Review**. As v0.2.1's job rows did, the
-  sidebar's footer shows a running Update with its count, × to stop it and a
-  bar, and leaves when it finishes; the result appears briefly at the bottom of
-  the window. The footer also shows what needs the owner: a failed or cancelled
-  Update, discovered files that wait for review, a metadata exchange problem, or
-  a network share that needs **Allow Access…**. The discovery review is a
-  dialog. As v0.2.1's grouping review did, it opens by itself when an Update you
-  started leaves discovered files to decide, and **Review Discoveries…** opens it
-  at any time. **Saved operations** moved into Metadata review.
-- Container deployments keep private snapshots in a separate writable backup
-  volume, including the bare image default. Registry backup/restore helpers reject
-  legacy shared `library.db`; portable library recovery uses its private stores.
-  Environment examples and deployment guidance describe format-three storage.
-- **Both browsers' toolbars are one row of controls.** Every boxed control in a
-  toolbar — segmented groups, actions, the search field, the sort control — is
-  the same height, and every icon button draws its glyph at the same size. The
-  File Browser now uses the Bundle Browser's sort control instead of a bare
-  `<select>` and a separate direction arrow, and a tight window no longer wraps
-  a button's label onto a second line.
-- **Sidebar and inspector toggles in the toolbar.** Both panels were hideable
-  only from the View menu, which is invisible on the web. Each surface's toolbar
-  now leads with a sidebar toggle and ends with an inspector toggle, each showing
-  whether its panel is open. Their menu shortcuts are now <kbd>⌘S</kbd> and
-  <kbd>⌘I</kbd> (previously <kbd>⇧⌘S</kbd>/<kbd>⇧⌘I</kbd>).
-- **Item size, not card size.** The View menu's zoom items are *Increase Item
-  Size* / *Decrease Item Size*, because the zoom drives card width in the grid
-  layouts and row height in the list ones. They now also apply to the File
-  Browser, which keeps its own zoom and previously ignored them.
-- **New Folder moves to the menu bar.** It leaves the File Browser toolbar for
-  **File ▸ New Folder**, enabled only while a folder can actually be created in
-  the directory on screen. The listing's context menus keep the same item.
-- **One Full Screen item, showing <kbd>⌃⌘F</kbd>.** The View menu offered two
-  *Enter Full Screen* entries — ours and one AppKit adds itself, at
-  <kbd>🌐F</kbd>. Binding ours to the system action removed the duplicate but
-  left the system's shortcut on display, because AppKit substitutes its own item
-  and hides the app's. The shell now registers the AppKit default that stops
-  that substitution, so a single item shows the shortcut the keymap asks for and
-  still carries the system's full-screen action
+  portable library, Select All (⌘A) selects every bundle the view matches, not only the
+  loaded pages; the toolbar shows “Selecting N of M…” while it reads them, and Escape
+  stops it. Bulk changes and Delete Bundles act on the whole selection and state its
+  full count. Unbundled is one scrolling list of the whole queue instead of pages behind
+  **Load more**, and only the files on screen are fetched and checked on disk. Select
+  All and Shift ranges include files not shown yet. Create Bundle and Add to Bundle take
+  up to 100 files, and Copy, Move and Trash up to 1,000. The server pages a query's
+  keys, up to 1,000 at a time, through `POST /replica/catalog/bundles/browse/ids` and
+  `POST /replica/catalog/files/unbundled/ids`.
+- **Both browsers' toolbars are one row of controls.** Every boxed control in a toolbar
+  is the same height, and every icon button draws its glyph at the same size. The File
+  Browser uses the Bundle Browser's sort control. As the window narrows, the toolbar
+  drops what it cannot fit in a fixed order (item count, zoom slider, then the title and
+  Add Files Here) instead of overflowing, and the zoom slider sits ahead of the buttons.
+- **Sidebar and inspector toggles in the toolbar.** Each surface's toolbar starts with a
+  sidebar toggle and ends with an inspector toggle; while the sidebar is open, its
+  toggle sits in the sidebar's top row beside Back and Forward and the window buttons.
+  Their menu shortcuts are now <kbd>⌘S</kbd> and <kbd>⌘I</kbd> (previously
+  <kbd>⇧⌘S</kbd>/<kbd>⇧⌘I</kbd>).
+- **Item size, not card size.** The View menu's zoom items are *Increase Item Size* /
+  *Decrease Item Size*, and they now apply to the File Browser too, which keeps its own
+  zoom.
+- **New Folder moves to the menu bar.** It leaves the File Browser toolbar for **File ▸
+  New Folder**, enabled only while a folder can be created in the folder on screen. The
+  listing's context menus keep the item.
+- **One Full Screen item, showing <kbd>⌃⌘F</kbd>.** The View menu no longer shows a
+  second, system-added *Enter Full Screen* item
   ([ADR-0028](docs/adr/0028-globe-shortcut-default-for-full-screen.md)).
-- **A toolbar Refresh replaces the per-file Check Again.** Refresh, beside Back
-  and Forward, reads what the window shows again: the folder listing, the
-  current collection's bundles and the selected file's details. Portable file
-  details also read their file again on each selection and when the File
-  Browser listing's state for it changes, and a finished Update marks every
-  file's details for a new read.
+- **A toolbar Refresh replaces the per-file Check Again.** Refresh, beside Back and
+  Forward, reads what the window shows again: the folder listing, the current
+  collection's bundles and the selected file's details. File details also read their
+  file again on each selection, and a finished Update marks every file's details for a
+  new read.
+- **The side panels' scrollbars hide until you scroll,** as macOS overlay scrollbars do.
+- **The grouping dialog fits its plan** instead of always filling 88% of the window
+  height.
+- **Servers are chosen from File ▸ Servers…;** choosing the selected server reconnects
+  it. The Libraries dialog's *Access and backups* is now *Settings…*, a separate dialog
+  that also holds the library's Write mode control.
+- **SQLite asks macOS to flush the disk cache (fullfsync) on every commit** for every
+  writer: private metadata, the registry, backups and conversion and recovery copies.
+  Linux and Docker settings are unchanged.
+- **Container deployments keep private snapshots in a separate writable backup volume,**
+  including the image default. Registry backup and restore refuse a legacy shared
+  `library.db`; portable libraries recover from their private stores.
 
-### Added
+### Removed
 
-- **A per-folder sort in the File Browser.** Its sort pane now offers *Remember
-  sort per folder*, the counterpart to the Bundle Browser's per-collection
-  scope: each directory keeps its own field and direction, and a folder with
-  none yet inherits the global sort, so turning it on never changes what is
-  already on screen. The flat unbundled queue is not a folder, so it keeps the
-  global sort and is not offered the choice.
-- **Sortable list-view column headers.** In both browsers' list layouts,
-  clicking a column header sorts by it and clicking the active column reverses
-  the direction. The headers and the toolbar sort control are one preference.
-  Columns with no order behind them (a bundle's Dimensions and Type) stay plain.
+- **Opening an old-format library directly.** It opens the conversion review instead.
+- **The File Operations panel.** Each file action runs on its own (see Added), and
+  operations that need attention show in the sidebar with Review….
+- **The bundle-card review badge,** as ADR-0011 requires. Internal grouping confirmation
+  still controls future suggestions.
 
 ### Fixed
 
-- The library's ⋯ menu enables **Scan new files** as soon as a scan can start, even
-  when the menu was opened before the library's scan state was read.
-- Changes to more than 100 bundles in a portable library work again: title, rating,
-  tags, collections, pasted tags, a drop on a collection and Delete Bundles (metadata
-  only). The server applies them in batches of 100, each its own saved change, with
-  progress and Cancel. A bundle changed elsewhere since it was read is left as it was,
-  and **Select Unchanged** selects those bundles for review.
-- Portable filters for Size, Has missing file and Has cover match what this device has
-  observed and what the card shows. Files this device has not observed still leave the
-  answer unknown.
-- File Browser cards preview a video on hover again, as in v0.2.1, once this device
-  has inspected the file. Nothing is probed while browsing.
-- Unbundled sorts by name, type, size, Date Added and Date Modified across the whole
-  queue, not only the files already loaded.
-- Collections and bundles in the portable Bundle Browser scroll as one surface. A
-  selection band crosses from one to the other and selects only in the section where
-  it started, and clicking empty space no longer draws a focus frame.
-- Restore Set Frame as Video Cover and Reset Video Cover to Default in the portable
-  viewer, as in v0.2.1. The offset is saved as the file's `cover_time` through a
-  catalog save job.
-- Keep macOS approval for network volumes across local rebuilds: with the opted-in
-  local signer, `just build-desktop` re-signs `Cairndex.app` with that certificate
-  instead of an ad-hoc identity.
-- Reduce Update overhead after a macOS SMB reconnect by retaining checked
-  directory handles and overlapping at most sixteen fingerprint reads. Native
-  device changes still require fresh evidence. Cancellation and failures discard
-  the uncommitted batch; review, repair and source-operation checks are unchanged.
-
-- Keep filename-based bundle titles when Narrow/Widen rebuilds groups inside a
-  retained collection. A single widened group no longer takes its parent
-  folder's name; collection titles, file selection and source observations stay
-  intact. Widening a standalone bundle keeps the folder as a collection.
-
-- Open Review Discoveries on the latest completed Update. Earlier edited or
-  prepared drafts no longer take precedence over freshly scanned files, which
-  could cause a file-change error after an SMB remount. Earlier drafts retain
-  their choices and show a notice with a link to the latest Update.
-
-- Restore file and folder Rename in the portable File Browser and Unbundled
-  list, including keyboard and inspector editing. Write Mode changes take
-  effect without restarting. Names enter the existing reviewed source-operation
-  workflow; permission checks, retained recovery copies and explicit Apply remain.
-
-- Reduce repeat Update overhead by batching file observations and catalog checks
-  in bounded transactions, paging known files through existing indexes and
-  avoiding unchanged baseline writes. Settled libraries with no new files skip
-  grouping-index construction. Complete enumeration, content-change detection,
-  moved-file repair, cancellation and durable commits are retained.
-
-- Reduce Update and Collect metadata overhead with read-only SQLite snapshots,
-  indexed bundle-member export and bounded observation commits. Export resumes
-  from its last saved member; metadata observations and progress commit together.
-  Maintenance runs independently of history exchange, and Update and initial
-  grouping review advance cached work in bounded batches.
-  Cancellation, source identity checks and durable writer settings are preserved.
-
-- Open large portable libraries quickly again. Sorts, system views, sidebar
-  counts and filter facets no longer scan every file row for each bundle; on a
-  synthetic 2,269-bundle library they take under 0.3 s instead of up to a minute.
-- Stop rescanning every file when a portable bundle's search entry refreshes.
-  Opening a library replaces the search index's lookup plans in place, without
-  a rebuild. Earlier pre-release builds refuse a store opened this way.
-- Stop rewriting already retained provider objects on every exchange pass. On
-  macOS each rewrite waited for a full disk flush, which slowed Collect
-  metadata and other background work in large portable libraries.
-- Let Collect metadata and Generate storyboards advance several files in each
-  background pass instead of one. A synthetic library collected about
-  15 files/s instead of 1.2.
-- Show each file's size, dimensions and duration again in the portable
-  inspector's file list and the bundle album, from this device's last
-  observations.
-- Keep the bundle and file listings in place when you select. The selection
-  count joins the toolbar's item count, and the note that Select All takes
-  only loaded items moves into its tooltip.
-- Stop framing the whole bundle grid with a focus ring after a click. The
-  active card keeps its own ring for keyboard use.
-- Enable an open inspector tag menu once a pending tag change settles. A menu
-  opened during the change kept Rename, Paste and Remove disabled until it was
-  reopened.
-- Show the portable bundle inspector's Files, Size and Date Added in v0.2.1's
-  order again.
-- Restore v0.2.1's File Browser file inspector for portable libraries: one
-  title, every fact with Path last, Date Modified, and a full-width Locate in
-  Bundle Browser. Technical facts are no longer behind More details.
-- Restore v0.2.1's 16:10 inspector cover, which had become a shorter 16:9
-  banner capped at 144 px.
-- Keep the grouping review's top edge fixed, so expanding or folding a row no
-  longer re-centers the dialog and moves the row under the pointer.
-- Size inspector tag chips like collection chips again. Tag chips with a menu
-  button had doubled padding and stood taller than their "+ Tag" button.
-- Keep a short toolbar title whole while the search field can shrink. The title
-  still lost a fraction of a pixel, which drew an ellipsis ("All" read "A…").
-- Restore the shared hierarchical tag picker for moments, including folding,
-  grouped tags, search and nested-tag creation. Exact target reads preserve
-  conflict checks and one-way propagation to the containing bundle.
-- Restore v0.2.1's tag and collection trees in the portable inspector's
-  "+ Tag" and "+ Collection" pickers, for one bundle or a selection. Tags show
-  their groups, counts and folding; collections show recent ones and their
-  parents. A tag or collection only some selected bundles have shows a dash.
-- Show only the tags and collections every selected bundle has as chips when
-  several bundles are selected, instead of everything any of them has.
-- Open Locate in Bundle Browser on the located file inside its bundle, and
-  disable it for files that are not in a bundle yet.
-- Make a hovered card's missing storyboard on request, so a skim rests on the
-  frame under the pointer instead of flashing the cover first.
-- Let the portable File Browser toolbar fit a narrow window as Bundles does.
-  The folder trail scrolls to its last folder instead of pushing controls out.
-- Show one clear notice while a share login waits for permission, instead of
-  also showing the exchange error in red.
-- Restore the grouping review's folder indent and even row spacing. "Add to
-  existing bundles 1" now reads "New files for existing bundles".
-- Speed up collection moves, bundle/collection conversion in grouping review
-  and select-all there. Queued replica work starts at once, a moved bundle
-  leaves the open collection immediately, and an unchanged collection row is no
-  longer rewritten by each save.
-- Count a page of sidebar tags and collections, and the tag facets, in one
-  read. A page of collections now takes 0.015 s instead of 0.16 s on a
-  synthetic 2,269-bundle library, and the sidebar reads every page every 2 s.
-- Batch Update's cached indexing, grouping and export within one bounded
-  transaction, avoiding a durable flush for each small subject. Retain the
-  32-step or 50 ms limit, cancellation and atomic retry progress.
-
-- Reopen grouping review from a fresh draft list after each Update, so a cached
-  empty draft cannot hide new suggestions. Name the side-view entry for the
-  actual file changes, saved reviews or earlier grouping choices available.
-- Keep repeated video names and their sidecars in separate source folders when
-  converting a merged bundle back to a collection. Preserve file identity,
-  selection and one-subject folder titles through an interrupted edit and retry.
-- Make grouping review compact, with short status text and help on demand.
-  Restore row menus, keyboard rename, relevant Narrow/Widen controls and a
-  clear optional file-verification choice. Show other drafts only when available.
-- Restore File Browser status badges for unlinked, unbundled and missing files.
-  Remove separator dots and routine local-observation text. Report an unreadable
-  folder once above its entries.
-
-- Restore the per-library Write mode control in Libraries. Open library Settings
-  in a separate, scrollable dialog, keeping the library list and keyboard focus
-  intact. Keep visible descriptions short and provide longer help in tooltips.
-- Keep an open bundle-file Actions menu current while a file change saves. Its
-  file actions become available when the save is acknowledged, instead of
-  staying disabled until the menu is reopened.
-
-- Reduce bundle-to-collection review latency by batching cached copying and
-  planning while retaining durable writes and final validation. Keep additions
-  to existing bundles in a separate paged section above collection suggestions,
-  with independent collection counts and selection.
-
-- Restore Collect metadata for indexed audio files. Codec, sample rate and
-  duration stay private, reuse the local probe cache and refresh when bytes change.
-
-- Keep All Tags' global Equal/direct filtering distinct from an inspector
-  chip's Any/subtags filter, which retains the current search, rating and
-  collection scope as in the earlier application.
-
-- Preserve job arrival order when two jobs are created in the same millisecond.
-  Scheduling and active-job listings now use the recorded creation time, with
-  stable IDs only for exact timestamp ties. Work-class priorities stay the same.
-
-- Restore Add Files, collection navigation and mapped cover drag-out in the
-  viewer's bundle inspector. Its Files, Date Added and local Size summary now
-  uses the same complete read-only values as the browser.
-
-- Restore keyboard movement between collection cards and bundles, including
-  row-aware vertical movement and virtualized rows. Restore bulk selection Size
-  from this device's observations, with unknown totals stated explicitly.
-
-- Keep grouping keyboard focus on a requested virtual row until it mounts,
-  without taking focus after the owner moves to another control.
-
-- Fix intermittent refusal of a live private backup when SQLite removes a
-  temporary WAL, shared-memory or journal file during the backup's inventory.
-  Unknown files, links and unsupported file types remain refused.
-
-- Restore ordinary bundle-file ordering, removal back to Unbundled and
-  reversible folder rows through private reviewed metadata operations.
-
-- Restore portable tag-chip Filter, Rename, Copy and Paste actions and desktop
-  tag copy/paste shortcuts. Pasting adds tags to the selected bundles without
-  removing existing tags. The clipboard stays within its server and library.
-  Browser and viewer tag chips retain the current browsing context and include
-  subtags when filtering.
-  Note grips drag again while retaining the private draft and explicit Save;
-  Left/Right again move between bundle cards.
-
-- Remove the obsolete bundle-card review badge, as ADR-0011 requires. Internal
-  grouping confirmation still controls future suggestions.
-
-- Show fresh private discoveries in Unbundled and manual-bundling choices,
-  including ranked nearby files and complete paged search. Confirmation keeps
-  the existing source checks and creates no shared staging bundles.
-
-- Reconnect desktop completion notifications and the Dock badge to portable
-  Update and media-maintenance jobs, using the existing long-run and away-window
-  policy. Retained terminal status cannot trigger repeated notifications.
-
-- Restore unindexed video, audio and image playback in the portable File Browser.
-  Mixed folder playlists keep linked files' resume and viewer tools, while path
-  streams, previews and HLS sessions revalidate the local source generation.
-
-- Restore separate Scan, Suggest grouping, Collect metadata and Generate
-  storyboards controls in portable libraries. Explicit media passes run in the
-  background with progress, cancellation and retained private work.
-
-- Restore ordinary Smart Collection creation, editing and deletion in portable
-  libraries, with live match counts and private retained drafts. Renaming keeps
-  advanced rules unchanged. Saves and deletion retain the editor's opening
-  bases; deletion leaves bundles and source files in place.
-
-- Start initial private discovery after creating a portable library, including
-  native creates that switch servers. Keep discovered files private until
-  reviewed; registering or reopening an existing library does not rescan it.
-
-- Restore portable search across filenames, paths, source values, tags and
-  collections, while retaining bundle/file notes and moment comments. Changes
-  and moves update the private index before paged search results are read.
-
-- Restore Create Bundle and Add to Bundle for unlinked files selected in
-  File Browser, with title/target suggestions, unchanged source bytes and
-  source revalidation before the guarded catalog commit.
-
-- Restore editable grouping review for portable libraries: tree selection,
-  rename, Narrow/Widen, file moves/order, bundle/collection conversion and
-  collection placement, media summaries and expandable same-shape sibling runs.
-  Keyboard navigation works from row controls; file drags reveal their targets.
-  Drafts stay private until guarded acceptance; partial
-  acceptance retains remaining choices. Complete-content verification and
-  identity-change review remain available. Servers advertise `grouping_version: 1`.
-
-- Include still-unconfirmed catalog files in grouping suggestions and preserve
-  their file identities, notes, moments and subtitle selections when accepted.
-  Reuse a complete provisional source bundle where possible; retain its metadata
-  and refuse to discard metadata from another source. Confirmed groupings stay
-  settled, and changed identities require fresh review.
-
-- Release the bulk inspector after a completed save, while retaining interrupted
-  saves for exact retry. Collection badges now show direct membership while
-  expanded and unique membership across descendants while collapsed.
-- Bundle double-click and Enter open the viewer at this device's current file.
-  Reopening waits for the fresh cursor, and changing tracks saves the departing
-  video's position. Open Bundle still opens the album.
-- Update names its current phase and shows completed/total for catalog checks,
-  moved-file checks and grouping indexes. Enumeration shows its observed count
-  without a total. Unbundled checks availability, size and modification time for
-  its displayed page instead of assigning every file unknown availability.
-  Older Update statuses without a phase keep their observed-file counter.
-
-- Commit SQL-backed API writes before sending a success response. Creating a
-  library could return 201 before its registry row was visible, making an
-  immediate Open try a duplicate registration. Commit failures could also
-  follow an already-sent success reply.
-- Request device-cache flushes for every SQLite writer on macOS, including
-  private metadata, the registry, backups and conversion/recovery copies.
-  Connections use FULL synchronous and enable fullfsync for commits and WAL
-  checkpoints. Linux/Docker settings and network journal-mode selection stay
-  unchanged. Filesystems that reject fullfsync retain SQLite's fsync fallback.
-- **The window's top edge is the app again, as in v0.2.1.** A "Server:" bar with
-  *Servers…* and *Reconnect* sat above the whole app, pushed the sidebar down
-  below the window buttons and could not move the window. The server choice is
-  now **File ▸ Servers…** (choosing the selected server reconnects it), and the
-  bar is gone in the desktop app and the browser. The background of the
-  first-run, lock and loading screens now moves the window, which it could not
-  do before. The portable browser also fills the window edge to edge again,
-  instead of sitting inside an 8–12 px margin.
-- **A portable library's panels and View menu work again, as in v0.2.1.**
-  **View ▸ Toggle Sidebar** and **Toggle Inspector**, and the toggle buttons in
-  the sidebar's top row and at the toolbar's end, hide and show the panels; a
-  drag on a panel's inner edge resizes it; both are remembered. **Show
-  Bundles**, **Show Files**, **Zoom In** and **Zoom Out** for bundles, **New
-  Collection** and **New Empty Bundle…** act again. In a portable library they
-  did nothing, and the sidebar's top row stood empty without its toggle.
-- **The Libraries dialog's rows are tidier.** A row shows a status only when
-  the library is unavailable, and that status is the height of the buttons
-  beside it. Open sits with the other buttons, *Access and backups* is now
-  *Settings…*, and every button explains itself in a tooltip.
-- **Selects in a portable library look as in v0.2.1 again.** The sidebar's
-  library picker and the other selects in the bundle browser had lost their
-  background and bright text to a style meant for Metadata review's header.
-  The Servers dialog also had no background of its own.
-- **A portable library shows Date Added in local time.** Its catalog keeps the
-  legacy database's timestamps, which are UTC without an offset, and the browser
-  read them as local time, so a bundle or file added in the evening showed the
-  next day. Bundle summaries, files, folder members and moments now send their
-  timestamps with the UTC offset.
-- **Update no longer pauses after every batch.** The background worker waited one
-  second after each 32-entry step.
-  It now continues after 25 ms while an Update, review, verification, save job or
-  unpublished change is queued, and waits one second only when idle.
-- A recovery from a snapshot taken right after an Update is no longer blocked as if
-  newer private work would be lost. The check now matches each published object
-  under the name that recovery preparation gives it.
-- The recovery command-line `prepare` now refuses while a server still holds the
-  library, as the interface already did. Finish Release or stop the server first.
-- Conversion no longer refuses old libraries that earlier versions upgraded in
-  place. The import staging folder, an unused file cover column and the early
-  Eagle import table now stay in the backup folder, as the unused single bundle
-  note already did.
-- On desktop, **Browse…** in the Libraries dialog and **Manage Libraries…** on the
-  first-run screen now open the conversion review for an old library. They used to
-  refuse it with "Convert it before opening" and offer no way to convert.
-- Mounted SMB publication now finds a login that Finder saved for the whole
-  server. It used to require a login saved for the mounted share, so a common
-  Finder login made conversion and file operations fail. A share's own login is
-  still preferred, and a login saved for another share is never used.
-- When the server may not read a network share's saved login, conversion and the
-  library's status now say so and offer **Allow Access…**. It asks macOS for
-  permission, which asks for the Mac's login password; Always Allow lets
-  background work read the login from then on. Conversion used to stop with
-  "Check storage and retry", which only the `authorize-smb` command could fix.
-  Conversion tasks report an `error_code`, replica status reports
-  `storage_access`, and two endpoints ask macOS: the conversion task's
-  `authorize-storage` and the library's `replica/storage-authorization`.
-- In All Tags, a folded parent tag now counts each bundle once, as its filter
-  does. It used to add up its children's counts, so a bundle with two child
-  tags was counted twice.
-- Choosing another place in the sidebar now clears the tag and rating filters.
-  A filter left over from the last place made the next collection look empty.
-  An empty filtered view now says that the filters hide its bundles and offers
-  **Clear Filters**.
-- **Save changes** and **Discard draft** now stay at the bottom edge of the
-  inspector. In a short window they used to be out of sight below the cover and
-  notes.
-- Sidebar rows no longer show through below **Settings** when the sidebar
-  scrolls.
-- Restore consistent WAL-format registry backups from read-only backup mounts
-  using an independently validated private copy. Refuse incomplete backups with
-  SQLite companions and preserve the original snapshot and rollback database.
-- Commit library write-permission changes before returning success, so the next
-  source request observes both enabling and revocation immediately.
-
-- Keep empty-library Refresh from requesting an undefined bundle. Serve portable
-  thumbnails through the library media adapter.
-
-- **Arrow keys walk the File Browser.** They previously reached the shell rather
-  than the listing, which only drew a focus ring. In the Bundle Browser they now
-  walk the folder cards and the grid as one sequence instead of moving the
-  bundle selection while a collection was selected, and <kbd>Esc</kbd> clears
-  whichever selection is live. An open viewer and the File Browser each keep the
-  arrows for themselves.
-- **Arrow keys move in the direction they point.** Up and Down now step a row —
-  in a card or justified grid that is the tile above or below, keeping the
-  column, and across the folder cards and the grid beneath them as one plane.
-  Left and Right still step one place along, which is what wraps a row. They
-  previously all meant "previous/next item", so in a grid Down moved sideways.
-- **The toolbar gives way instead of overflowing.** Narrowing the window (or
-  widening a panel) used to collapse the zoom slider to nothing and draw the
-  right-hand controls over the inspector. Each surface's column is now a query
-  container, and its toolbar sheds what it cannot fit in a fixed order — item
-  count, then the zoom slider, then, at the narrowest, the surface title and the
-  File Browser's Add Files Here (still on the File menu and the sidebar's ⋯
-  menu). Every control with no other home stays on the row down to the smallest
-  window the app allows.
-- **The zoom slider sits ahead of the buttons** rather than between the layout
-  group and the inspector toggle, so the right-hand controls read as one run.
-- **A narrower sort menu.** It was sized for its checkbox's sentence rather than
-  its options, which left most of the pane empty.
-- **No focus ring around the file listing.** Clicking a row focuses the scroll
-  container — it has to, so <kbd>F2</kbd> and <kbd>Delete</kbd> reach it — and
-  the next key press made WebKit paint a ring around the whole listing, which
-  read as the window frame lighting up while arrowing through files. The
-  selected row is the focus indicator there.
-- **The sidebar toggle lives in the sidebar.** It sits in the sidebar's own top
-  strip while the sidebar is open — against the panel's inner edge, where a
-  panel's own collapse control belongs — and moves into the toolbar only when
-  there is no sidebar to put it in. That strip is now a full toolbar-height row, so the
-  toggle, the Back/Forward pair and the window's traffic lights all sit on one
-  line; the macOS window controls are positioned to match. Neither panel toggle
-  carries a pressed highlight any more — the panel beside it already answers
-  that question.
-- **The grouping dialog fits its plan.** It was a fixed 88vh box, so a
-  three-row suggestion sat in a full-height window with two thirds of it empty
-  below the buttons. It now sizes to its content between a floor and the same
-  cap; a plan long enough to reach the cap still scrolls its list under a
-  footer that does not move.
-- **The sidebar toggle clears the traffic lights.** With the sidebar hidden in
-  the desktop shell, the centre column starts at the window edge and its first
-  toolbar ran under the macOS window buttons — directly under the control that
-  brings the sidebar back. That corner is now reserved whenever the sidebar is
-  hidden, as the sidebar itself reserves it when shown.
-- **A failed "Connect to <holder>" says so.** Following a lease redirect from
-  the ownership notice swallowed every failure, so the button simply did
-  nothing when pressed. It now reports the reason and shows the attempt in
-  flight. In a development build the "did not respond" message also names the
-  likeliest cause: the shell is served from the Vite dev server, so a server
-  that does not allow that origin refuses the request exactly as if it were
-  down (`CAIRNDEX_CORS_EXTRA_ORIGINS`); a packaged build is unaffected.
-- **Renaming a file confirms when you click away.** From the inspector title and
-  from the inline row editor. A blur handler alone missed the case that matters:
-  a mousedown on a draggable row is `preventDefault`ed by the drag-select
-  handling, so focus never left the field and the new name was silently dropped.
+- Arrow keys walk the File Browser listing instead of reaching the shell, and in a grid
+  Up and Down move a row, keeping the column, across folder cards and bundles as one
+  plane. <kbd>Esc</kbd> clears whichever selection is live.
+- Renaming a file from the inspector title or the inline row editor confirms the new
+  name when you click away. A click on a draggable row used to drop it.
+- Clicking a File Browser row or the bundle grid no longer draws a focus ring around the
+  whole listing; the selected row or card shows focus.
+- With the sidebar hidden, the first toolbar no longer runs under the macOS window
+  buttons.
+- A failed **Connect to <holder>** reports why instead of doing nothing; a development
+  build also names the likely cause (`CAIRNDEX_CORS_EXTRA_ORIGINS`).
+- API writes are committed before the success response. Creating a library could return
+  before it was visible, so an immediate Open tried to register it again.
+- Library write-permission changes take effect for the next file request.
+- A live private backup is no longer refused when SQLite removes a temporary WAL,
+  shared-memory or journal file during it.
+- Registry backups in WAL format restore from read-only backup mounts.
+- Recovery from a snapshot taken right after an Update is no longer blocked as if newer
+  private work would be lost, and the recovery command's `prepare` refuses while a
+  server still holds the library.
+- Jobs created in the same millisecond keep their arrival order.
+- In All Tags, a folded parent tag counts each bundle once, as its filter does.
+- Choosing another place in the sidebar clears the tag and rating filters, and an empty
+  filtered view offers **Clear Filters**.
+- Sidebar rows no longer show through below **Settings** when the sidebar scrolls.
 
 ### Security
 
-- **The publication gate rejects build output and undeclared vendored trees.** It
-  already pinned every binary by hash; it now also refuses any path under a build,
-  dependency or cache directory (`target/`, `node_modules/`, `dist/`, `.venv/`,
-  `__pycache__/`, …) or with a compiled-output extension, at any depth and regardless
-  of ignore rules, and refuses a copy of a third-party source tree unless it is
-  declared in `.github/privacy-allowlist.json` with a purpose and a provenance. Two
-  volume tripwires catch bulk adds: more than 400 paths in one scan, or more than 8 MiB
-  of new content, counting each path once at its largest new version, so a file edited
-  in every commit of a long branch is not counted once per commit (incremental scans
-  only — a whole-history audit is the repository, not a bulk add). Policy failures print a sentence chosen from a closed table plus a count,
-  so the printed text is never built from a scanned object; private-content findings
-  stay withheld as before. Written after `git add -A` staged 1,876 files of a Cargo `target/` directory
-  (caught only because that output happened to contain a private literal) and 438 KB of
-  a patched dependency rode into a feature branch unnoticed.
-
-- **Dependabot privacy checks.** The publication gate recognizes Dependabot's
-  exact public GitHub service sign-off without treating it as owner data. Other
-  email addresses in commit messages remain blocked.
+- **Dependency updates for published advisories.** Rust: `quinn-proto` 0.11.19 and
+  `quinn-udp` 0.5.16 (RUSTSEC-2026-0523, RUSTSEC-2026-0524, RUSTSEC-2026-0538), rustls
+  0.23.46 (four TLS advisories, including a ServerHello downgrade and secrets in `Debug`
+  output), rustls-webpki, webpki-roots, Tokio and event-listener 5.4.2; the yanked
+  chacha20 0.10.1 is replaced by 0.10.2. Python: Pillow 13.0.0, certifi, setuptools,
+  AnyIO and Mako 1.4.3 (GHSA-5639-2j2p-m4mx). Web development tools: Undici 7.30.1, Zod
+  4.6.7, source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q) and brace-expansion.
+- **Library passphrases and device pairing codes skip the metadata edit queue,** which
+  stores request bodies in localStorage.
+- **File paths come from server records, not request text.** Cache paths for thumbnails,
+  previews, contact sheets and storyboards, the trash folder a restore removes, stopped
+  conversion swap checks and picker-upload recovery are resolved from database values
+  and server constants, and the shuffle seed is a bound SQL parameter. Behavior does not
+  change: each request value already had to match a record, a fixed list or a range.
+- **The publication privacy gate refuses build output, undeclared vendored trees and
+  bulk adds.** It refuses any path under a build, dependency or cache directory
+  (`target/`, `node_modules/`, `dist/`, `.venv/`, `__pycache__/`, …) or with a
+  compiled-output extension, at any depth, and a third-party source tree unless
+  `.github/privacy-allowlist.json` declares it with a purpose and a provenance. An
+  incremental scan fails above 400 paths or 8 MiB of new content, counting each path
+  once at its largest new version. Policy failures print a sentence from a closed table
+  and a count, never text built from a scanned object. The gate fails closed when Git
+  ignores `rev-list --objects -z`, recognizes Dependabot's public sign-off, and no
+  longer flags an owner-approved false positive in a public codesign field name; private
+  values stay protected.
 
 ### Internal
 
-- **Current CI and attestation actions.** GitHub-hosted workflows use the current
-  setup, cache, dependency-review, Buildx, and SBOM actions. Release and image
-  publication now use the unified `actions/attest` v4 interface for both SLSA
-  provenance and SBOM attestations instead of deprecated wrapper actions.
+- **CI.** One CI result job gates `main`, with job scopes for documentation and backend
+  tests, slow-test reporting and memory-backed bulk fixtures; source-operation and
+  backup safety tests stay on disk. CI fails when the committed `openapi.json` or
+  `schema.d.ts` no longer matches the server, and `gen:api` pins its generator version.
+  CodeQL no longer analyzes test code. Workflows use the current setup, cache,
+  dependency-review, Buildx and SBOM actions and the unified `actions/attest` v4 for
+  provenance and SBOM attestations.
+- **Dependency updates.** GitHub Actions, the desktop Tauri crates and CLI, and the web
+  runtime and development dependencies, including Vitest 5, React 19.3, Vite 8.3 and
+  Playwright 1.64. The desktop keymap test pins muda 0.20. Dependabot no longer proposes
+  major `@types/node` versions beyond the Node 22 runtime.
+- **Distribution.** Development bundles share checksum-verified media tools from an
+  isolated cache, and production bundles copy them. CI covers launcher behavior and
+  Keychain identity continuity, and signing diagnostics report fixed error categories.
+- **Docker smoke and backup-restore scripts** test portable format three, including
+  recovery of a damaged private store.
+- **Test reliability.** Browser and backend tests wait for real completion signals
+  (saves, receipts, scans, worker passes) instead of timing, and keep background workers
+  out of tests that drive work themselves.
+- **Documentation.** The [restoration audit](docs/restoration-audit.md) records which
+  v0.2.1 behaviors portable libraries restored and the accepted differences;
+  `docs/STATUS.md` keeps to current state, and SQLite durability measurements live in
+  the development guide.
 
 ## [0.2.1] — 2026-08-31
 

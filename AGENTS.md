@@ -383,7 +383,9 @@ Required documentation targets include, as applicable:
 - `CHANGELOG.md`
 - generated OpenAPI/frontend API artifacts when backend contracts change
 
-Maintain `CHANGELOG.md` using an `Unreleased` section with Added, Changed, Fixed, Removed, Security, and Internal. Update it for every meaningful user-visible, API-visible, migration-visible, operational, or architectural change.
+Maintain `CHANGELOG.md` using an `Unreleased` section with Added, Changed, Fixed, Removed, Security, and Internal, each heading once. Update it for every meaningful user-visible, API-visible, migration-visible, operational, or architectural change.
+
+Write entries for someone reading the next release's notes: one entry per feature or fix, describing the result compared with the last release. When later work changes a feature that is still unreleased, edit that feature's entry rather than adding another; a fix to unreleased work is not a `Fixed` entry. Name the API-, migration- and operation-visible effects (capability fields, endpoints, settings) in the entry they belong to. Leave commit-level detail, test repairs and status bookkeeping to Git history and `docs/STATUS.md`.
 
 Do not say “docs later” unless the PR explicitly records a narrow docs-debt item and the owner accepts it. PR summaries must include a `Documentation updated` section listing changed docs, or explain why no docs were affected.
 
