@@ -86,6 +86,8 @@ import { InspectorToggle, SidebarToggle } from './PanelToggles'
 import { PanelResizer } from './PanelResizer'
 import { RefreshButton } from './RefreshButton'
 import { useDesktopMenu } from '../desktop/useDesktopMenu'
+import { OrganizeUndoContext, useOrganizeUndoStack } from './organizeUndo'
+import { useUndoShortcut } from './undoShortcut'
 import type { MenuEntry } from './useContextMenu'
 
 export function CatalogOrdinaryBrowser(props: {
@@ -277,11 +279,14 @@ export function CatalogOrdinaryBrowser(props: {
     onRegisterCollectionNavigation?.(openCollection)
     return () => onRegisterCollectionNavigation?.(null)
   }, [onRegisterCollectionNavigation, openCollection])
+  // ⌘Z undoes organizing only while the bundle grid is the window's focus
+  const undo = useOrganizeUndoStack(props.library, setNotice)
   const collections = useCatalogCollections(props.library, {
     selection,
     onSelect: openPlace,
     onNotice: setNotice,
     dragItem,
+    undo,
   })
   const place = useMemo(
     () => ({ mode, selection, scope: fileScope, path }),
@@ -355,6 +360,12 @@ export function CatalogOrdinaryBrowser(props: {
   }, [deepLink, onDeepLinkHandled, onSelect])
   const libraryName = props.libraries.find((item) => item.id === props.library)?.name ?? 'Library'
   const tasks = useSourceTasks(props.library, setNotice, status?.source_original === true)
+  // One ⌘Z for both: the newest change, whichever kind. Organizing changes are
+  // undone only where the bundles are on screen.
+  useUndoShortcut(() => [
+    mode === 'collection' && !props.viewerOpen ? undo.newest() : null,
+    tasks.newestUndo(),
+  ])
   const leaving = useMemo(() => leavingPaths(tasks.tasks), [tasks.tasks])
   const arriving = useMemo(() => arrivingFolders(tasks.tasks), [tasks.tasks])
   // Write mode in Libraries is the one switch; each action below is its own operation
@@ -560,52 +571,54 @@ export function CatalogOrdinaryBrowser(props: {
             />
           )}
           <div hidden={mode !== 'collection'} className="catalog-bundle-surface">
-            <CatalogBundleBrowser
-              {...props}
-              hostFiles={hostFiles}
-              onHostPath={setBundleHostPath}
-              onLocateFile={(relative) => navigateFiles(relative)}
-              onRenameFile={rename}
-              onSourceAction={sourceAction}
-              onOpenDirectory={(relative) => navigateFiles(relative, true)}
-              onBundleDrag={
-                bundleMoves ? (ids) => updateDragItem(ids && { kind: 'bundles', ids }) : undefined
-              }
-              onNewCollection={(parentId) => setNewCollection({ parentId })}
-              collections={collections}
-              showSubContents={showSubContents}
-              onShowSubContents={setShowSubContents}
-              onOpenCollection={openCollection}
-              onFilterTag={filterFromChip}
-              onDropContext={onDropContext}
-              onDropFilesOnBundle={
-                sourceEnabled && manualBundling
-                  ? (files, bundle) =>
-                      setIncoming({
-                        files,
-                        target: {
-                          kind: 'bundle',
-                          bundle: bundle.id,
-                          title: bundle.title,
-                          folder: bundle.folder ?? lastFolders[props.library] ?? '',
-                        },
-                      })
-                  : undefined
-              }
-              onRenameCollection={(id) => setRenameCollection({ id })}
-              dragItem={dragItem}
-              onDragItem={updateDragItem}
-              bundleMovesEnabled={bundleMoves}
-              onNotice={setNotice}
-              headerLeading={headerLeading}
-              headerTrailing={headerTrailing}
-              onScreen={mode === 'collection'}
-              locateRequest={locateRequest}
-              locateFile={locateFile}
-              selection={selection}
-              filters={filters}
-              onFilters={setFilters}
-            />
+            <OrganizeUndoContext value={undo}>
+              <CatalogBundleBrowser
+                {...props}
+                hostFiles={hostFiles}
+                onHostPath={setBundleHostPath}
+                onLocateFile={(relative) => navigateFiles(relative)}
+                onRenameFile={rename}
+                onSourceAction={sourceAction}
+                onOpenDirectory={(relative) => navigateFiles(relative, true)}
+                onBundleDrag={
+                  bundleMoves ? (ids) => updateDragItem(ids && { kind: 'bundles', ids }) : undefined
+                }
+                onNewCollection={(parentId) => setNewCollection({ parentId })}
+                collections={collections}
+                showSubContents={showSubContents}
+                onShowSubContents={setShowSubContents}
+                onOpenCollection={openCollection}
+                onFilterTag={filterFromChip}
+                onDropContext={onDropContext}
+                onDropFilesOnBundle={
+                  sourceEnabled && manualBundling
+                    ? (files, bundle) =>
+                        setIncoming({
+                          files,
+                          target: {
+                            kind: 'bundle',
+                            bundle: bundle.id,
+                            title: bundle.title,
+                            folder: bundle.folder ?? lastFolders[props.library] ?? '',
+                          },
+                        })
+                    : undefined
+                }
+                onRenameCollection={(id) => setRenameCollection({ id })}
+                dragItem={dragItem}
+                onDragItem={updateDragItem}
+                bundleMovesEnabled={bundleMoves}
+                onNotice={setNotice}
+                headerLeading={headerLeading}
+                headerTrailing={headerTrailing}
+                onScreen={mode === 'collection'}
+                locateRequest={locateRequest}
+                locateFile={locateFile}
+                selection={selection}
+                filters={filters}
+                onFilters={setFilters}
+              />
+            </OrganizeUndoContext>
           </div>
           {mode === 'tags' &&
             (tagManagement ? (

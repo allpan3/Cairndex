@@ -71,6 +71,21 @@ export function selectionRange(
   return new Set([...base, ...ids.slice(Math.min(start, end), Math.max(start, end) + 1)])
 }
 
+/**
+ * Where a selection moves on to when `removed` leave the listing, as Eagle's does
+ * after a move: the first item after `from` that stays, else the nearest before it.
+ */
+export function nextRemaining(
+  ids: string[],
+  from: string,
+  removed: ReadonlySet<string>,
+): string | null {
+  const at = ids.indexOf(from)
+  if (at < 0) return null
+  const stays = (id: string) => !removed.has(id)
+  return ids.slice(at + 1).find(stays) ?? ids.slice(0, at).findLast(stays) ?? null
+}
+
 // Clicking listing content establishes keyboard ownership without moving a text caret
 export function focusListing(event: React.MouseEvent<HTMLElement>): void {
   const target = event.target instanceof Element ? event.target : null
