@@ -66,7 +66,7 @@ test('a dragged zoom scales the grid and lays it out once around the selected ca
     await page.mouse.move(startX + 20, track.y + track.height / 2, { steps: 5 })
     // Mid-drag the cards are scaled, not laid out again: same slot widths, a
     // transformed grid, and the selected card held where it was
-    await expect(grid).toHaveClass(/browser--zooming/)
+    await expect(page.locator('.browser')).toHaveClass(/browser--zooming/)
     const slot = card.locator('xpath=..')
     // Numerically: engines round the serialized width differently (268.667px)
     const slotWidth = await slot.evaluate((element) => parseFloat(element.style.width))
@@ -75,7 +75,7 @@ test('a dragged zoom scales the grid and lays it out once around the selected ca
     expect(during.width).toBeGreaterThan(before.width)
     expect(Math.abs(during.y + during.height / 2 - (before.y + before.height / 2))).toBeLessThan(2)
     await page.mouse.up()
-    await expect(grid).not.toHaveClass(/browser--zooming/)
+    await expect(page.locator('.browser')).not.toHaveClass(/browser--zooming/)
     // One real layout: larger cards, the selected one still where it was
     await expect.poll(async () => (await card.boundingBox())!.width).toBeGreaterThan(before.width)
     const after = (await card.boundingBox())!
@@ -94,7 +94,7 @@ test('a dragged zoom scales the grid and lays it out once around the selected ca
     await page.mouse.move(listX, track.y + track.height / 2)
     await page.mouse.down()
     await page.mouse.move(listX + 12, track.y + track.height / 2, { steps: 5 })
-    await expect(grid).not.toHaveClass(/browser--zooming/)
+    await expect(page.locator('.browser')).not.toHaveClass(/browser--zooming/)
     await expect
       .poll(async () => (await row.boundingBox())!.height)
       .toBeGreaterThan(listBefore.height)
@@ -423,10 +423,15 @@ test('view options update cards and sorting without closing @fullstack', async (
   try {
     const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
     await expect(grid.locator('.card__meta').first()).toBeVisible()
+    const row = grid.locator('.browser__cardslot').first().locator('xpath=..')
+    const previousHeight = await row.evaluate((element) => element.getBoundingClientRect().height)
     await page.getByRole('button', { name: 'View options', exact: true }).click()
     const options = page.getByRole('dialog', { name: 'View options' })
     await options.getByRole('checkbox', { name: 'Card details' }).uncheck()
     await expect(grid.locator('.card__meta')).toHaveCount(0)
+    await expect
+      .poll(() => row.evaluate((element) => element.getBoundingClientRect().height))
+      .toBeLessThan(previousHeight)
     await expect(
       grid.getByRole('option', { name: 'Synthetic bundle 1 雪', exact: true }),
     ).toBeVisible()

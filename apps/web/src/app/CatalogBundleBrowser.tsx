@@ -798,7 +798,7 @@ export function CatalogBundleBrowser({
             disabled:
               blocked ||
               clipboard.busy ||
-              targets.length > 100 ||
+              !together(targets.length) ||
               !copiedCatalogTags(library).length,
             shortcut: getHostPlatform().kind === 'desktop' ? '⌘⇧V / Ctrl+Shift+V' : undefined,
             onClick: () => void clipboard.paste(targets),
@@ -1227,74 +1227,74 @@ export function CatalogBundleBrowser({
                     : null,
                 })
               })
-              }
-              onBundleDragStart={onBundleDrag}
-              onBundleDragEnd={onBundleDrag && (() => onBundleDrag(null))}
-              isLoading={browse.isPending}
-              isError={browse.isError}
-              error={browse.error}
-              hasNextPage={browse.hasNextPage}
-              isFetchingNextPage={browse.isFetchingNextPage}
-              fetchNextPage={() => void browse.fetchNextPage()}
-              searchQuery={query}
-              onClearSearch={() => setSearch('')}
-              onRetry={() => void browse.refetch()}
-              emptyState={
-                anyAdHocActive(filters) ? (
-                  <>
-                    <div>No bundles here match the filters.</div>
-                    <button className="btn" onClick={() => onFilters(emptyAdHocFilters())}>
-                      Clear Filters
+            }
+            onBundleDragStart={onBundleDrag}
+            onBundleDragEnd={onBundleDrag && (() => onBundleDrag(null))}
+            isLoading={browse.isPending}
+            isError={browse.isError}
+            error={browse.error}
+            hasNextPage={browse.hasNextPage}
+            isFetchingNextPage={browse.isFetchingNextPage}
+            fetchNextPage={() => void browse.fetchNextPage()}
+            searchQuery={query}
+            onClearSearch={() => setSearch('')}
+            onRetry={() => void browse.refetch()}
+            emptyState={
+              anyAdHocActive(filters) ? (
+                <>
+                  <div>No bundles here match the filters.</div>
+                  <button className="btn" onClick={() => onFilters(emptyAdHocFilters())}>
+                    Clear Filters
+                  </button>
+                </>
+              ) : selection.collectionId && folders.length > 0 && !showSubContents ? (
+                <>
+                  <div>No bundles directly in this collection.</div>
+                  <button className="btn" onClick={() => onShowSubContents(true)}>
+                    Show subcollection contents
+                  </button>
+                </>
+              ) : selection.collectionId ? (
+                <>
+                  <div>This collection is empty.</div>
+                  <div>Add bundles to it from the grid or file view.</div>
+                  {onBrowseAll && (
+                    <button className="btn" onClick={onBrowseAll}>
+                      Browse all bundles
                     </button>
-                  </>
-                ) : selection.collectionId && folders.length > 0 && !showSubContents ? (
-                  <>
-                    <div>No bundles directly in this collection.</div>
-                    <button className="btn" onClick={() => onShowSubContents(true)}>
-                      Show subcollection contents
+                  )}
+                </>
+              ) : (
+                <>
+                  <div>
+                    {selection.view === 'all' && !selection.smartCollectionId
+                      ? 'Nothing here yet.'
+                      : 'No bundles in this view.'}
+                  </div>
+                  {update ? (
+                    <button
+                      className="btn"
+                      disabled={update.disabled || update.running}
+                      onClick={update.onClick}
+                    >
+                      {update.running ? 'Updating library…' : 'Update library'}
                     </button>
-                  </>
-                ) : selection.collectionId ? (
-                  <>
-                    <div>This collection is empty.</div>
-                    <div>Add bundles to it from the grid or file view.</div>
-                    {onBrowseAll && (
-                      <button className="btn" onClick={onBrowseAll}>
-                        Browse all bundles
+                  ) : (
+                    bundling && (
+                      <button className="btn" onClick={() => setCreatingBundle(true)}>
+                        Create Bundle…
                       </button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      {selection.view === 'all' && !selection.smartCollectionId
-                        ? 'Nothing here yet.'
-                        : 'No bundles in this view.'}
-                    </div>
-                    {update ? (
-                      <button
-                        className="btn"
-                        disabled={update.disabled || update.running}
-                        onClick={update.onClick}
-                      >
-                        {update.running ? 'Updating library…' : 'Update library'}
-                      </button>
-                    ) : (
-                      bundling && (
-                        <button className="btn" onClick={() => setCreatingBundle(true)}>
-                          Create Bundle…
-                        </button>
-                      )
-                    )}
-                    {onBrowseAll && (selection.view !== 'all' || selection.smartCollectionId) && (
-                      <button className="btn" onClick={onBrowseAll}>
-                        Browse all bundles
-                      </button>
-                    )}
-                  </>
-                )
-              }
-            />
+                    )
+                  )}
+                  {onBrowseAll && (selection.view !== 'all' || selection.smartCollectionId) && (
+                    <button className="btn" onClick={onBrowseAll}>
+                      Browse all bundles
+                    </button>
+                  )}
+                </>
+              )
+            }
+          />
         </div>
         {albumId && (
           <CatalogBundleAlbum
