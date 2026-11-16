@@ -94,6 +94,7 @@ interface BrowserProps {
   // When set, an empty result is shown as "no matches" for this query rather
   // than the generic "nothing here yet" state.
   searchQuery?: string
+  onClearSearch?: () => void
   // Overrides the generic empty-state body (e.g. a collection whose bundles all
   // live in subcollections). Ignored while a search is active.
   emptyState?: React.ReactNode
@@ -679,6 +680,9 @@ export function Browser(props: BrowserProps) {
                   <>
                     <div>No matches for “{props.searchQuery}”.</div>
                     <div>Try a different title, filename, tag, or collection.</div>
+                    {props.onClearSearch && (
+                      <button className="btn" onClick={props.onClearSearch}>Clear search</button>
+                    )}
                   </>
                 ) : (
                   (props.emptyState ?? (

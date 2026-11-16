@@ -334,6 +334,9 @@ Current browsing surfaces:
 - Search breadcrumbs retain the current scope and show the server result count.
   The File type chip compiles to the existing extension predicate; filtering
   combines with search and Smart Collections before paging.
+- Empty browse states call existing scoped actions: clear search, include
+  descendants, browse All, Update or create a bundle. File Browser offers
+  New Folder only through its existing write-mode gate, otherwise refresh.
 - View options groups layout, zoom, sort and card details in one anchored
   panel. Changes apply live; hiding card details also removes their row height
   from virtualized layout and marquee geometry.

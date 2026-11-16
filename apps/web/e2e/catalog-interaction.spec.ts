@@ -483,3 +483,24 @@ test('search breadcrumbs and type filters use the complete server result @fullst
     await library.close()
   }
 })
+
+test('empty results offer actions that restore browsing @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const library = await openLibrary(page, 6)
+  try {
+    const search = page.getByRole('searchbox', { name: 'Search', exact: true })
+    await search.fill('no-synthetic-matches')
+    await page.getByRole('button', { name: 'Clear search', exact: true }).click()
+    await expect(search).toHaveValue('')
+    const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
+    await expect(grid.getByRole('option')).toHaveCount(6)
+    await page
+      .getByRole('treeitem', { name: /Synthetic root/ })
+      .first()
+      .click()
+    await page.getByRole('button', { name: 'Show subcollection contents', exact: true }).click()
+    await expect(grid.getByRole('option')).toHaveCount(1)
+  } finally {
+    await library.close()
+  }
+})

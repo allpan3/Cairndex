@@ -1903,9 +1903,31 @@ function FileList({
         {isLoading ? (
           <div className="empty">Loading…</div>
         ) : isError && listed === 0 ? null : listed === 0 ? (
-          !write.creatingFolder && <div className="empty">{emptyText}</div>
+          !write.creatingFolder && (
+            <div className="empty">
+              {emptyText}
+              {search ? (
+                <button className="btn" onClick={() => setSearch('')}>
+                  Clear search
+                </button>
+              ) : canCreateFolder ? (
+                <button className="btn" disabled={stale} onClick={startNewFolder}>
+                  Create folder
+                </button>
+              ) : (
+                <button className="btn" onClick={onRetry}>
+                  Refresh files
+                </button>
+              )}
+            </div>
+          )
         ) : visible.length === 0 && !listing ? (
-          <div className="empty">No files match “{search}”.</div>
+          <div className="empty">
+            No files match “{search}”.{' '}
+            <button className="btn" onClick={() => setSearch('')}>
+              Clear search
+            </button>
+          </div>
         ) : (
           <>
             <div

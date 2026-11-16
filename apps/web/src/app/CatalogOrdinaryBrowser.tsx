@@ -574,6 +574,7 @@ export function CatalogOrdinaryBrowser(props: {
             <OrganizeUndoContext value={undo}>
               <CatalogBundleBrowser
                 {...props}
+                onBrowseAll={() => openPlace({ view: 'all', collectionId: null })}
                 hostFiles={hostFiles}
                 onHostPath={setBundleHostPath}
                 onLocateFile={(relative) => navigateFiles(relative)}

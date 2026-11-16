@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Empty browse states offer a relevant action: clear search or filters, show
+  subcollection contents, browse all bundles or update the library. Empty File
+  Browser folders offer Create folder when permitted, otherwise Refresh files.
+
 - Search results show their browse scope and complete result count. A File
   type filter accepts an extension or common format and filters all matches
   on the server, together with tags, ratings and Smart Collections.
