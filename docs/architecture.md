@@ -326,6 +326,8 @@ Current browsing surfaces:
   membership change runs, `plannedChange` reads which bundles it will alter
   (one `selection_version` 2 read per destination, halving mixed groups), and
   Undo reverses exactly those through the same guarded bulk membership commit.
+  The synthetic [quick preview](screenshots/quick-preview.png) and
+  [Undo message](screenshots/organize-undo.png) captures show both.
 - **File Browser:** read-only filesystem browser over the active library root,
   separate from Bundle Browser selection and bundle inspection.
 
