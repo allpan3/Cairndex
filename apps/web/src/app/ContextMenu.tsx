@@ -94,10 +94,11 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
       e.stopPropagation()
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      if (document.activeElement?.closest('[data-submenu]')) return
+      if (e.key !== 'Escape' && e.key !== 'Tab') return
+      if (e.key === 'Escape' && document.activeElement?.closest('[data-submenu]')) return
       state.returnFocus?.focus({ preventScroll: true })
       onClose()
+      e.preventDefault()
       e.stopPropagation()
     }
     window.addEventListener('mousedown', onDown, true)
@@ -214,6 +215,14 @@ function MenuRows({
     }
     panel.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
   }, [anchor])
+  const openChild = (label: string, anchor: HTMLButtonElement) => {
+    setChild({ label, anchor })
+    // Hover may already have opened it before the click focuses the parent.
+    anchor.parentElement
+      ?.querySelector('[data-submenu]')
+      ?.querySelector<HTMLButtonElement>('button:not(:disabled)')
+      ?.focus({ preventScroll: true })
+  }
   const back = () => {
     onBack?.()
     anchor?.focus({ preventScroll: true })
@@ -243,14 +252,11 @@ function MenuRows({
           const item = items.find((item) => item?.label === enabled[index]?.dataset.label)
           if (item?.children && !item.disabled) {
             event.preventDefault()
-            setChild({ label: item.label, anchor: enabled[index]! })
+            openChild(item.label, enabled[index]!)
           }
         } else if (anchor && ['ArrowLeft', 'Escape'].includes(event.key)) {
           event.preventDefault()
           back()
-        } else if (event.key === 'Tab') {
-          event.preventDefault()
-          enabled[(index + (event.shiftKey ? -1 : 1) + enabled.length) % enabled.length]?.focus()
         }
       }}
     >
@@ -279,13 +285,7 @@ function MenuRows({
               aria-haspopup={item.children ? 'menu' : undefined}
               aria-expanded={item.children ? child?.label === item.label : undefined}
               onClick={(event) =>
-                item.children
-                  ? setChild(
-                      child?.label === item.label
-                        ? null
-                        : { label: item.label, anchor: event.currentTarget },
-                    )
-                  : onActivate(item)
+                item.children ? openChild(item.label, event.currentTarget) : onActivate(item)
               }
             >
               <span className="context-menu__icon" aria-hidden="true">

@@ -281,3 +281,11 @@ test('submenus support keyboard entry, disabled skipping and return to the paren
   expect(copy).toHaveBeenCalledOnce()
   expect(close).toHaveBeenCalledOnce()
 })
+
+test('clicking a parent already opened by hover keeps its submenu open', () => {
+  renderMenu([{ label: 'Copy', children: [{ label: 'Copy Title', onClick: vi.fn() }] }])
+  const parent = screen.getByRole('menuitem', { name: 'Copy' })
+  fireEvent.mouseEnter(parent)
+  fireEvent.click(parent)
+  expect(screen.getByRole('menuitem', { name: 'Copy Title' })).toHaveFocus()
+})

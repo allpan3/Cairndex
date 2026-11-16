@@ -83,7 +83,7 @@ export function TagPickerPanel({
   const panel = useRef<HTMLDivElement>(null)
   const searchInput = useRef<HTMLInputElement>(null)
   const [mode, setMode] = useState<'all' | 'recent' | 'selected'>('all')
-  const { data: tags = [] } = useTags()
+  const { data: tags = [], isPending: loading } = useTags()
   const { data: counts = {} } = useTagCounts()
   const { data: groups = [] } = useTagGroups()
   const { data: memberships = {} } = useTagGroupMemberships()
@@ -127,7 +127,7 @@ export function TagPickerPanel({
   }
 
   const toggle = (id: string) => {
-    if (!disabled) {
+    if (!disabled && !loading) {
       remember(id)
       onToggle(id, !assigned.has(id))
     }
@@ -137,7 +137,7 @@ export function TagPickerPanel({
   // afterwards and the picker stays open, so the next tag can be typed straight
   // away instead of reopening (owner, 2026-07-27).
   const handleCreate = (name: string) => {
-    if (disabled) return
+    if (disabled || loading) return
     createTag.mutate(
       { path: name, existing: tags },
       {
@@ -174,7 +174,7 @@ export function TagPickerPanel({
       handleCreate(trimmedSearch)
       return
     }
-    if (!assigned.has(enterTarget.id) && !disabled) {
+    if (!assigned.has(enterTarget.id) && !disabled && !loading) {
       remember(enterTarget.id)
       onToggle(enterTarget.id, true)
     }
@@ -225,7 +225,9 @@ export function TagPickerPanel({
     if (rows.length > 0) sections.push({ key: '__others', title: 'Others', rows })
   }
 
-  const shownSections = sections.filter((section) => mode === 'all' || section.key === `__${mode}`)
+  const shownSections = sections.filter((section) =>
+    mode === 'all' ? section.key !== '__recent' : section.key === `__${mode}`,
+  )
 
   const renderRow = ({ item, depth, hasChildren, label }: TagRow) => {
     const on = assigned.has(item.id)
@@ -368,7 +370,8 @@ export function TagPickerPanel({
           </button>
         </div>
       }
-      {shownSections.length === 0 && trimmedSearch === '' && (
+      {loading && <div className="pick-group">Loading tags…</div>}
+      {!loading && shownSections.length === 0 && trimmedSearch === '' && (
         <div className="pick-group">No matching tags</div>
       )}
       {shownSections.map((section) => {
@@ -391,7 +394,7 @@ export function TagPickerPanel({
         <button
           data-tag-choice=""
           className={`pick-row pick-row--create${enterTarget === 'create' ? ' pick-row--target' : ''}`}
-          disabled={disabled || createTag.isPending}
+          disabled={disabled || loading || createTag.isPending}
           onClick={() => handleCreate(trimmedSearch)}
         >
           <span className="pick-row__create-icon" aria-hidden="true">

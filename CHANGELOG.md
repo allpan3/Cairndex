@@ -286,6 +286,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Shared menus preserve grouping-review focus and Tab dismissal. Hidden card
+  details retain accessible titles, and tag picking waits for loaded choices.
+
 - Arrow keys walk the File Browser listing instead of reaching the shell, and in a grid
   Up and Down move a row, keeping the column, across folder cards and bundles as one
   plane. <kbd>Esc</kbd> clears whichever selection is live.

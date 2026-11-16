@@ -52,7 +52,11 @@ test('a cairndex:// link opens its portable bundle and Copy URI names it @fullst
     const card = page.getByRole('option').filter({ hasText: 'Synthetic playback' })
     await expect(card).toHaveAttribute('aria-selected', 'true')
     await card.click({ button: 'right' })
-    await page.getByRole('menu').getByRole('menuitem', { name: 'Copy URI' }).click()
+    await page.getByRole('menuitem', { name: 'Copy', exact: true }).hover()
+    await page
+      .getByRole('menu', { name: 'Copy', exact: true })
+      .getByRole('menuitem', { name: 'Copy URI' })
+      .click()
     await expect(page.getByText('Bundle URI copied.')).toBeVisible()
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       `cairndex://bundle/bundle-000001?library=${library.id}`,
