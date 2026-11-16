@@ -131,7 +131,8 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await page.close()
     const keyboardPage = await context.newPage()
     await proxyApi(keyboardPage, backend.baseUrl)
-    // Select-all applies to loaded pages. Hold later pages to fix the tested boundary.
+    // Select All takes every matching bundle through the key reads, so holding the
+    // later browse pages must not shrink it to the 50 loaded rows
     const nextPage = new Promise<void>((resolve) => {
       releaseNextPage = resolve
     })
@@ -156,7 +157,7 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await expect(keyboardBundles.locator('[aria-selected="true"]')).toHaveCount(0)
     await keyboardBundles.focus()
     await keyboardPage.keyboard.press('ControlOrMeta+a')
-    await expect(keyboardBulk.getByRole('heading', { name: '50 bundles selected' })).toBeVisible()
+    await expect(keyboardBulk.getByRole('heading', { name: '65 bundles selected' })).toBeVisible()
     releaseNextPage?.()
     await keyboardPage.getByRole('searchbox', { name: 'Search', exact: true }).fill('64')
     await expect(keyboardBulk).toHaveCount(0)
