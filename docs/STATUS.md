@@ -187,18 +187,22 @@ acceptance remains open.
 
 ## Eagle interaction polish
 
-Branch `feat/eagle-interaction-polish`, based on `main` after
-[PR #133](https://github.com/allpan3/Cairndex/pull/133) merged, is local and
-unpushed. It carries owner-approved interaction changes, one commit each: a
+Branch `feat/eagle-interaction-polish`, rebased onto `main` after
+[PR #137](https://github.com/allpan3/Cairndex/pull/137) merged, is
+[PR #141](https://github.com/allpan3/Cairndex/pull/141). Its two screenshots
+are declared first in [PR #140](https://github.com/allpan3/Cairndex/pull/140),
+which must merge before #141's trusted privacy check can pass. It carries
+owner-approved interaction changes, one commit each: a
 zoom slider that lays the grid out once per drag, covers that fade in over a
 neutral placeholder, a Space quick preview, Undo for organizing (toast
 button and ⌘Z), and a bundle drag image of the dragged covers. The owner declined per-cover colour placeholders
 (2026-11-16): one shared loading placeholder serves every cover instead, so the
 private store does not change. Undo is in-session only and keeps
-no history across reloads. In Safari on macOS (WebKit, as the desktop shell
-uses), the page receives ⌘Z before the Edit ▸ Undo menu item; the packaged
-desktop app was not rebuilt to confirm it there. The same Safari check showed
-the cover drag image rendered, not blank. The branch does not include the windowed-Unbundled / one-scroll-area
+no history across reloads. One ⌘Z serves both this Undo and #137's file-operation
+Undo: it takes back the newest change of either kind first. In Safari and in the packaged macOS app, the page
+receives ⌘Z before the Edit ▸ Undo menu item, and the cover drag image renders.
+Choosing Edit ▸ Undo with the pointer still runs only WebKit's text undo; routing
+that menu item to organizing Undo is a follow-up. The branch does not include the windowed-Unbundled / one-scroll-area
 stack; `Browser.tsx` and `CatalogBundleBrowser.tsx` will need a careful rebase
 over it.
 
@@ -233,6 +237,7 @@ includes a full Linux backend run and focused macOS source-operation checks.
 | Installed New Folder follow-up | Linux 2,061 memory plus 77 disk backend cases; macOS 91 source-operation cases; both-platform backend static and full frontend gates with 1,439 units, seven browser cases per platform; packaged New Folder/Undo smoke, four frozen integrations, app-only build, signature/distribution and installed desktop/web checks |
 | Installed inline naming follow-up | macOS full frontend gate with 1,439 units and four source/Rename browser cases; synthetic screenshot inspected; app-only build, sidecar smoke, signature/distribution and installed desktop/web checks. Backend, Rust, Linux and frozen-integration evidence retained for unchanged source areas |
 | Installed source-access recovery | Linux 2,063 memory plus 81 disk backend cases; macOS 90 source/API/exchange/Keychain cases; backend static checks on both platforms; sidecar smoke, four frozen integrations, app-only build, signature/distribution and installed desktop/web checks. Frontend and Rust evidence retained for unchanged sources |
+| Eagle interaction polish | On the tree rebased onto `main` after #137: macOS full frontend gate with 1,523 units and production build, and the eight interaction and inspector browser cases, two inspector cases only on rerun under concurrent VM load (one also fails there with `main`'s inspector code). Before the rebase: all 77 browser cases, four only on rerun after load timeouts; manual WebKit check in Safari; app-only macOS package checked by hand with a synthetic library (zoom, Space preview, drag image, toast Undo and ⌘Z). The rebased app-only package is built, signature- and distribution-checked and smoke-checked. No Linux qualification |
 
 The album/conflict round corrected an effect that returned the browser’s scroll
 Promise as React cleanup. The failed browser attempt remains retained. Final
