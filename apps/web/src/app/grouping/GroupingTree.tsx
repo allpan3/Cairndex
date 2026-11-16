@@ -86,37 +86,6 @@ export function GroupingTree({
       target.focus()
     }
   })
-  // The shared menu takes no focus, and this modal keeps Tab inside itself, so
-  // the menu's first item takes focus, arrows move between items, and Tab
-  // closes it.
-  useLayoutEffect(() => {
-    if (menu.state)
-      document
-        .querySelector<HTMLElement>('.context-menu [role="menuitem"]:not(:disabled)')
-        ?.focus({ preventScroll: true })
-  }, [menu.state])
-  function menuKey(event: KeyboardEvent<HTMLDivElement>) {
-    const list = (event.target as HTMLElement).closest('.context-menu')
-    if (!list) return
-    if (event.key === 'Tab') {
-      event.preventDefault()
-      menu.state?.returnFocus?.focus({ preventScroll: true })
-      menu.close()
-      return
-    }
-    const items = Array.from(list.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)'))
-    const at = items.indexOf(event.target as HTMLElement)
-    const moves: Record<string, number> = {
-      ArrowDown: at + 1,
-      ArrowUp: at - 1,
-      Home: 0,
-      End: items.length - 1,
-    }
-    const next = moves[event.key]
-    if (next === undefined || items.length === 0) return
-    event.preventDefault()
-    items.at(next % items.length)?.focus({ preventScroll: true })
-  }
   // The row that speaks for a folder carries its Narrow/Widen. Rows in the
   // separated tree claim their folders first: an addition's pair would regroup
   // suggestions drawn in the other section.
@@ -549,8 +518,6 @@ export function GroupingTree({
       aria-label="Grouping suggestions"
       onDrop={() => tree.setFileDragging(false)}
       onDragEnd={() => tree.setFileDragging(false)}
-      // The menu renders in a portal but its key events arrive here
-      onKeyDown={menuKey}
       style={{ height: `min(54vh, ${Math.max(120, virtual.getTotalSize())}px)` }}
     >
       {rows.length === 0 && (

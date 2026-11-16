@@ -427,6 +427,9 @@ test('view options update cards and sorting without closing @fullstack', async (
     const options = page.getByRole('dialog', { name: 'View options' })
     await options.getByRole('checkbox', { name: 'Card details' }).uncheck()
     await expect(grid.locator('.card__meta')).toHaveCount(0)
+    await expect(
+      grid.getByRole('option', { name: 'Synthetic bundle 1 雪', exact: true }),
+    ).toBeVisible()
     await options.getByRole('button', { name: 'Title', exact: true }).click()
     await expect(options.getByRole('button', { name: 'Title', exact: true })).toHaveAttribute(
       'aria-pressed',

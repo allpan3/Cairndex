@@ -119,6 +119,8 @@ export function BundleCard({
       // the dropped file (owner report, 2026-07-27).
       {...dropProps}
       role="option"
+      aria-label={!showMeta ? (item.title ?? 'Untitled') : undefined}
+      title={!showMeta ? (item.title ?? 'Untitled') : undefined}
       aria-selected={selected}
       data-bundle-id={item.id}
       data-file-drop={fileDropOver || undefined}

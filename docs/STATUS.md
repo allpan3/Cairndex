@@ -216,7 +216,8 @@ server-side file-extension filter. Empty states offer existing browsing, Update
 or permitted folder actions. Preview navigation and its counter share a bottom
 bar. Interface transitions use 150 ms ease-out and respect Reduce Motion.
 Rating submenus, repeat-last-organizing and collapsible inspector sections remain
-outside this polish scope.
+outside this polish scope. Shared menu focus now also serves grouping review;
+Tab dismisses the menu, and hidden card details retain accessible titles.
 
 ## Qualification and evidence
 
