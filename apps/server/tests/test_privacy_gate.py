@@ -265,6 +265,36 @@ def test_volume_tripwires_do_not_apply_to_history_audits():
     )
 
 
+# A file edited in every commit of a long branch is one file, not one per commit
+def test_byte_budget_counts_each_path_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(privacy_gate, "MAX_ADDED_BYTES", 8 * 1024)
+    repo = initialized_repo(tmp_path)
+    (repo / "readme.md").write_text("synthetic\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "initial synthetic fixture")
+    base = git(repo, "rev-parse", "HEAD")
+
+    def budget_findings() -> list[str]:
+        findings, _, _ = privacy_gate.scan_range(
+            repo, "HEAD", base, False, privacy_gate.load_allowlist(), []
+        )
+        return [item for item in findings if "byte-budget" in item]
+
+    # Four 3 KiB versions of one file: 12 KiB of blobs, but 3 KiB of content
+    for index in range(4):
+        (repo / "notes.md").write_text(f"version {index}\n" * 300, encoding="utf-8")
+        git(repo, "add", "notes.md")
+        git(repo, "commit", "-qm", f"edit {index}")
+    assert budget_findings() == []
+
+    # Four new 3 KiB files are 12 KiB of content
+    for index in range(4):
+        (repo / f"page{index}.md").write_text(f"page {index}\n" * 400, encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "add pages")
+    assert budget_findings() != []
+
+
 # Name the rule that fired while still withholding private detail
 def test_policy_findings_are_printed_and_private_ones_are_not(capsys):
     status = privacy_gate.report(

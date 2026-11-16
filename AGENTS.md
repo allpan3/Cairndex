@@ -178,10 +178,11 @@ Before **every push** and before creating or updating a pull request:
    component) is a decision with a maintenance cost and a licensing tail: declare it in
    `.github/privacy-allowlist.json` under `vendored_trees`, with a purpose and a
    provenance, or it fails the gate. Two volume tripwires back this up: more than 400
-   paths in one scan, or more than 8 MiB of new blobs, fails as a bulk add — stage what
+   paths in one scan, or more than 8 MiB of new content, fails as a bulk add — stage what
    you chose file by file rather than reaching for `git add -A`. Volume is judged on
-   what one change adds, so a whole-history audit is exempt from those two; the path
-   rules apply there as everywhere.
+   what one change adds, so a path edited in many commits counts once, at its largest
+   new version, and a whole-history audit is exempt from those two; the path rules
+   apply there as everywhere.
 
    These four rules are **enforced**, not advisory: `infra/privacy_gate.py` checks them
    on every staged commit, every push, and every pull request, and prints which rule
