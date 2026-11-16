@@ -62,7 +62,11 @@ print(root)
     await page.goto('/')
     await expect(page.getByRole('listbox', { name: 'Bundles', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'More library actions', exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Scan new files', exact: true }).click()
+    // The item stays disabled until the window has read the library's scan state,
+    // which can take longer than a click's own wait on a loaded runner
+    const scan = page.getByRole('menuitem', { name: 'Scan new files', exact: true })
+    await expect(scan).toBeEnabled({ timeout: 60_000 })
+    await scan.click()
     await expect
       .poll(async () => (await read('/discovery/status')).state, { timeout: 60_000 })
       .toBe('succeeded')
