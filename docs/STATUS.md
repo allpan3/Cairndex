@@ -209,10 +209,11 @@ over it.
 The follow-up polish uses Eagle 4.0 as its interaction reference. Bundle menus
 now expose Copy and Tags submenus with icons and keyboard navigation; the owner
 excluded Add to Collection from the menu. The remaining approved polish covers
-selection thumbnails, search/type filtering, motion,
+search/type filtering, motion,
 empty-state actions. Preview navigation and its counter now share a bottom bar. Tag picking now includes
 recent/selected filters, parent paths and arrow-key navigation. View options
-combines layout, size, sort and persistent card details in a live panel.
+combines layout, size, sort and persistent card details in a live panel. The
+multi-bundle inspector shows up to three selected covers.
 
 ## Qualification and evidence
 

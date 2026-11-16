@@ -9546,3 +9546,31 @@ button.pick-row:disabled {
 .view-options .sortctl__scope input {
   width: auto;
 }
+
+.bundle-cover-stack {
+  position: relative;
+  height: 138px;
+  margin: 12px 0;
+}
+.bundle-cover-stack__card {
+  position: absolute;
+  left: calc(50% - 48px);
+  top: 10px;
+  width: 96px;
+  height: 112px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 2px solid var(--surface);
+  border-radius: 6px;
+  background: var(--bg-2);
+  box-shadow: 0 3px 12px #0005;
+}
+.bundle-cover-stack__card .cover-image {
+  object-fit: cover;
+}
+.bundle-cover-stack__card > .icon {
+  width: 28px;
+  height: 28px;
+  color: var(--text-muted);
+}

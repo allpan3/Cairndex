@@ -10,6 +10,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- The multi-bundle inspector shows a small stack of selected covers, with
+  placeholders for unavailable covers and at most three thumbnail loads.
+
 - View options combines layout, item size, sort and card details in one
   anchored panel. Changes update the grid live and keep the panel open; the
   card-details preference survives reloads.

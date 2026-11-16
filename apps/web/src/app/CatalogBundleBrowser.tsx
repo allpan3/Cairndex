@@ -1297,6 +1297,7 @@ export function CatalogBundleBrowser({
           library={library}
           editor={editor}
           ids={sortedIds}
+          covers={items.filter((item) => selectedIds.has(item.id)).slice(0, 3)}
           fileCount={
             selectedIds.size > 0 && selectedCards.length === selectedIds.size
               ? selectedCards.reduce((total, item) => total + item.file_count, 0)

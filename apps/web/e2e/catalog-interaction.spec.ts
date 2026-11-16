@@ -319,6 +319,9 @@ test('a bundle drag shows the dragged covers, or the label pill without one @ful
       page.evaluate(() => (window as unknown as { dragImage: unknown }).dragImage)
     await card(1).click()
     await card(2).click({ modifiers: ['ControlOrMeta'] })
+    const stack = page.getByRole('img', { name: 'Selected bundle covers' })
+    await expect(stack).toBeVisible()
+    await expect(stack.locator('.bundle-cover-stack__card')).toHaveCount(2)
     await card(1).dragTo(row(/Synthetic child/))
     expect(await dragImage()).toEqual({ painted: [true], label: '2 bundles' })
     // The cover itself stays inert: the card, not the image, starts the drag
