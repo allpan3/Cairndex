@@ -29,6 +29,24 @@ test('the library menu lists its entries and runs the chosen one', () => {
   expect(screen.queryByRole('menu')).not.toBeInTheDocument()
 })
 
+test('an open library menu enables an action that becomes possible', () => {
+  const scan = vi.fn()
+  const actions = (disabled: boolean) => (
+    <CatalogLibraryActions
+      items={[
+        { label: 'Add Files…', onClick: vi.fn() },
+        { label: 'Scan new files', disabled, onClick: scan },
+      ]}
+    />
+  )
+  const { rerender } = render(actions(true))
+  fireEvent.click(screen.getByRole('button', { name: 'More library actions' }))
+  expect(screen.getByRole('menuitem', { name: 'Scan new files' })).toBeDisabled()
+  rerender(actions(false))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Scan new files' }))
+  expect(scan).toHaveBeenCalledOnce()
+})
+
 function discovery(overrides: Partial<ReplicaDiscoveryState>): ReplicaDiscoveryState {
   return {
     run: { isPending: false, error: null, data: { id: 'run-1', state: 'idle' } },

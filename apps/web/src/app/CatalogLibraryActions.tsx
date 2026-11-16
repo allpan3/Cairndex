@@ -44,7 +44,9 @@ export function CatalogLibraryActions({
           {update ? '⋯' : 'Library actions ⋯'}
         </button>
       </div>
-      <ContextMenu state={menu.state} onClose={menu.close} />
+      {/* An open menu shows the current items, so an action that becomes possible
+          while it is open (Scan new files once the scan state is read) is enabled */}
+      <ContextMenu state={menu.state && { ...menu.state, items }} onClose={menu.close} />
     </>
   )
 }

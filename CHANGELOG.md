@@ -475,6 +475,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- The library's ⋯ menu enables **Scan new files** as soon as a scan can start, even
+  when the menu was opened before the library's scan state was read.
 - Changes to more than 100 bundles in a portable library work again: title, rating,
   tags, collections, pasted tags, a drop on a collection and Delete Bundles (metadata
   only). The server applies them in batches of 100, each its own saved change, with
