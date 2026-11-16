@@ -10,20 +10,23 @@ import { apiPost, proxyApi, startBackend, stopBackend } from './realBackend'
 test.use({ actionTimeout: 15_000 })
 const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
 
-/** A disposable converted library of `bundles` synthetic bundles, served by its own backend. */
-async function openLibrary(page: Page, bundles: number) {
+// Synthetic libraries: many media-less bundles, or a few with playable media
+const FIXTURES = {
+  bundles:
+    'from pathlib import Path; import sys; from cairndex.devtools.catalog_fixture import create_disposable; from cairndex.replicas.catalog.conversion import prepare_disposable; print(prepare_disposable(create_disposable(parent=Path(sys.argv[1]),bundles=int(sys.argv[2]))).package)',
+  playable:
+    'from pathlib import Path; import sys; from cairndex.devtools.replica_media_fixture import create_playable; print(create_playable(parent=Path(sys.argv[1]),duration=int(sys.argv[2])))',
+}
+
+/** A disposable converted library, served by its own backend. */
+async function openLibrary(page: Page, size: number, fixture: keyof typeof FIXTURES = 'bundles') {
   const scratch = await mkdtemp(join(tmpdir(), 'cairndex-interaction-e2e-'))
   const root = execFileSync(
     'uv',
-    [
-      'run',
-      'python',
-      '-c',
-      'from pathlib import Path; import sys; from cairndex.devtools.catalog_fixture import create_disposable; from cairndex.replicas.catalog.conversion import prepare_disposable; print(prepare_disposable(create_disposable(parent=Path(sys.argv[1]),bundles=int(sys.argv[2]))).package)',
-      scratch,
-      String(bundles),
-    ],
-    { cwd: serverDir },
+    ['run', 'python', '-c', FIXTURES[fixture], scratch, String(size)],
+    {
+      cwd: serverDir,
+    },
   )
     .toString()
     .trim()
@@ -101,6 +104,33 @@ test('a dragged zoom scales the grid and lays it out once around the selected ca
     ).toBeLessThan(2)
     await page.mouse.up()
     expect(Number(await slider.inputValue())).toBeGreaterThan(value)
+  } finally {
+    await library.close()
+  }
+})
+
+test('covers fade in as inert images over the card placeholder @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const library = await openLibrary(page, 6, 'playable')
+  try {
+    const card = page
+      .getByRole('listbox', { name: 'Bundles', exact: true })
+      .getByRole('option')
+      .filter({ hasText: 'Synthetic playback' })
+    const cover = card.locator('img.cover-image')
+    await expect(cover).toHaveClass(/cover-image--shown/, { timeout: 30_000 })
+    expect(
+      await cover.evaluate((image) => (image as HTMLImageElement).naturalWidth),
+    ).toBeGreaterThan(0)
+    // The card owns every gesture; the cover never starts a native image drag
+    expect(
+      await cover.evaluate((image) => {
+        const style = getComputedStyle(image)
+        return [style.pointerEvents, style.getPropertyValue('-webkit-user-drag')]
+      }),
+    ).toEqual(['none', 'none'])
+    // Shown starts the fade; it ends fully opaque
+    await expect(cover).toHaveCSS('opacity', '1')
   } finally {
     await library.close()
   }

@@ -5,6 +5,7 @@ import type { BundleSort, SortOrder } from '../api/client'
 import { thumbnailUrl } from '../api/client'
 import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard, type BundleCardItem } from './BundleCard'
+import { CoverImage } from './CoverImage'
 import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { computeRows, type PlacedCard, type Row } from './layout'
 import type { DropTarget } from './dnd'
@@ -838,14 +839,9 @@ function ListRow({
       data-bundle-id={item.id}
       {...dragProps}
     >
-      <div
-        className="list-row__thumb"
-        style={
-          item.has_cover
-            ? { backgroundImage: `url(${thumbnailUrl(item.id, item.cover_key)})` }
-            : undefined
-        }
-      />
+      <div className="list-row__thumb">
+        {item.has_cover && <CoverImage src={thumbnailUrl(item.id, item.cover_key)} />}
+      </div>
       <div className="list-row__title">{item.title ?? 'Untitled'}</div>
       <span className="list-cell">{formatDimensions(item.width, item.height)}</span>
       <span className="list-cell">{item.extension ?? '—'}</span>
