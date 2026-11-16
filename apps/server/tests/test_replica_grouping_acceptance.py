@@ -266,7 +266,12 @@ def test_grouping_api_pages_private_edits_and_rejects_ambiguous_scope(replicas, 
     frontier = store.frontier()
     opened = raw_client.post(base + "/workspaces/" + run)
     assert opened.status_code == 202
-    assert service.pending(library)
+    # The app's own worker runs beside this test and may already have built the
+    # draft. Once pending() sees no queued work, the draft cannot be queued again.
+    assert (
+        service.pending(library)
+        or raw_client.get(base + "/workspaces/" + run).json()["state"] == "ready"
+    )
     for _ in range(1000):
         service.exchange(library)
         status = raw_client.get(base + "/workspaces/" + run).json()
@@ -298,7 +303,10 @@ def test_grouping_api_pages_private_edits_and_rejects_ambiguous_scope(replicas, 
         },
     )
     assert response.status_code == 202
-    assert service.pending(library)
+    assert (
+        service.pending(library)
+        or raw_client.get(base + "/commands/api-select-none").json()["state"] != "queued"
+    )
     for _ in range(100):
         service.exchange(library)
         command = raw_client.get(base + "/commands/api-select-none").json()
