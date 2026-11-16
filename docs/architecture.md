@@ -349,6 +349,10 @@ same sprite path without mounting video. The hover path never calls the
 playback-decision or HLS-session APIs. Leave, guarded interactions, and
 virtualized unmount pause the element, remove its source, and reload it.
 
+Tag pickers retain at most 12 recently chosen tag IDs in session storage per
+server and library, never tag names. Recent and Selected filters share the same
+hierarchical rows; arrow keys move between visible choices and the search field.
+
 Local list/picker search uses the shared `app/pinyin.ts` matcher. It preserves
 case-insensitive literal substring matching and adds contiguous full-pinyin,
 initial-letter, partial, mixed, and polyphonic matching for Chinese names. This

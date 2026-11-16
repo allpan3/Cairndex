@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useContext, useRef, useState } from 'react'
+import { CatalogQueryContext } from '../api/catalogQuery'
+import { getConnectionScopeKey, requestScopeVersion } from '../api/requestScope'
 
 import type { TagRead } from '../api/client'
 import {
@@ -53,6 +55,34 @@ export function TagPickerPanel({
   /** A tag the panel just made, for the caller to assign. */
   onCreated: (tag: TagRead) => void
 }) {
+  const library = useContext(CatalogQueryContext)
+  const recentKey = JSON.stringify([
+    'cairndex-recent-tags',
+    getConnectionScopeKey() ?? requestScopeVersion(false),
+    library,
+  ])
+  const [recent, setRecent] = useState<string[]>(() => {
+    try {
+      const value: unknown = JSON.parse(sessionStorage.getItem(recentKey) ?? '[]')
+      return Array.isArray(value)
+        ? value.filter((id): id is string => typeof id === 'string').slice(0, 12)
+        : []
+    } catch {
+      return []
+    }
+  })
+  const remember = (id: string) => {
+    const next = [id, ...recent.filter((previous) => previous !== id)].slice(0, 12)
+    setRecent(next)
+    try {
+      sessionStorage.setItem(recentKey, JSON.stringify(next))
+    } catch {
+      /* Session storage is optional. */
+    }
+  }
+  const panel = useRef<HTMLDivElement>(null)
+  const searchInput = useRef<HTMLInputElement>(null)
+  const [mode, setMode] = useState<'all' | 'recent' | 'selected'>('all')
   const { data: tags = [] } = useTags()
   const { data: counts = {} } = useTagCounts()
   const { data: groups = [] } = useTagGroups()
@@ -97,7 +127,10 @@ export function TagPickerPanel({
   }
 
   const toggle = (id: string) => {
-    if (!disabled) onToggle(id, !assigned.has(id))
+    if (!disabled) {
+      remember(id)
+      onToggle(id, !assigned.has(id))
+    }
   }
 
   // "Create <search>": make a new tag and assign it immediately. The field clears
@@ -109,6 +142,7 @@ export function TagPickerPanel({
       { path: name, existing: tags },
       {
         onSuccess: (created) => {
+          remember(created.id)
           onCreated(created)
           setSearch('')
         },
@@ -140,7 +174,10 @@ export function TagPickerPanel({
       handleCreate(trimmedSearch)
       return
     }
-    if (!assigned.has(enterTarget.id) && !disabled) onToggle(enterTarget.id, true)
+    if (!assigned.has(enterTarget.id) && !disabled) {
+      remember(enterTarget.id)
+      onToggle(enterTarget.id, true)
+    }
     setSearch('')
   }
 
@@ -165,6 +202,15 @@ export function TagPickerPanel({
   if (selectedRows.length > 0)
     sections.push({ key: '__selected', title: 'Selected', rows: selectedRows })
 
+  const recentRows = recent.flatMap((id) => {
+    const item = byId.get(id)
+    return item && match(item) && (filterMember === null || filterMember.has(id))
+      ? [{ item, depth: 0, hasChildren: false, label: pathOf(item) }]
+      : []
+  })
+  if (recentRows.length)
+    sections.push({ key: '__recent', title: 'Recently Used', rows: recentRows })
+
   // One section per group (respecting the filter row), as a foldable tree.
   for (const g of groups) {
     if (groupFilter !== null && groupFilter !== g.id) continue
@@ -178,6 +224,8 @@ export function TagPickerPanel({
     const rows = rowsForSection(tags.filter((t) => !groupedIds.has(t.id)))
     if (rows.length > 0) sections.push({ key: '__others', title: 'Others', rows })
   }
+
+  const shownSections = sections.filter((section) => mode === 'all' || section.key === `__${mode}`)
 
   const renderRow = ({ item, depth, hasChildren, label }: TagRow) => {
     const on = assigned.has(item.id)
@@ -194,6 +242,7 @@ export function TagPickerPanel({
             and Tab reaches every one without a roving focus */}
         <button
           className="pick-row__pick"
+          data-tag-choice=""
           aria-pressed={on ? true : some ? 'mixed' : false}
           disabled={disabled}
           onClick={() => toggle(item.id)}
@@ -202,7 +251,14 @@ export function TagPickerPanel({
           <span className={`pick-row__box${on ? ' pick-row__box--on' : ''}`} aria-hidden="true">
             {on ? '✓' : some ? '–' : ''}
           </span>
-          <span className="pick-row__name">{label ?? item.name}</span>
+          <span className="pick-row__name">
+            {label ?? item.name}
+            {!label && item.parent_id && (
+              <small className="pick-row__parent">
+                {pathOf(item).split('/').slice(0, -1).join('/')}
+              </small>
+            )}
+          </span>
           <span className="pick-row__count">{counts[item.id] ?? 0}</span>
         </button>
         {hasChildren ? (
@@ -221,8 +277,36 @@ export function TagPickerPanel({
   }
 
   return (
-    <>
+    <div
+      ref={panel}
+      className="tag-picker-panel"
+      onKeyDown={(event) => {
+        if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return
+        const choices = [
+          ...(panel.current?.querySelectorAll<HTMLButtonElement>(
+            '[data-tag-choice]:not(:disabled)',
+          ) ?? []),
+        ]
+        if (!choices.length) return
+        const index = choices.indexOf(event.target as HTMLButtonElement)
+        if (event.target !== searchInput.current && index < 0) return
+        event.preventDefault()
+        event.stopPropagation()
+        const next =
+          index < 0
+            ? event.key === 'ArrowDown'
+              ? 0
+              : choices.length - 1
+            : index + (event.key === 'ArrowDown' ? 1 : -1)
+        if (next < 0 || next >= choices.length) searchInput.current?.focus()
+        else {
+          choices[next]?.focus({ preventScroll: true })
+          choices[next]?.scrollIntoView?.({ block: 'nearest' })
+        }
+      }}
+    >
       <input
+        ref={searchInput}
         className="edit picker__search"
         placeholder="Search tags…"
         value={search}
@@ -235,20 +319,40 @@ export function TagPickerPanel({
         autoFocus
         aria-label="Search tags"
       />
-      {groups.length > 0 && (
+      {
         <div className={`pick-filter${filterExpanded ? ' pick-filter--expanded' : ''}`}>
           <div className="pick-filter__chips">
             <button
-              className={`add-btn${groupFilter === null ? ' is-active' : ''}`}
-              onClick={() => setGroupFilter(null)}
+              className={`add-btn${mode === 'all' && groupFilter === null ? ' is-active' : ''}`}
+              aria-pressed={mode === 'all' && groupFilter === null}
+              onClick={() => {
+                setMode('all')
+                setGroupFilter(null)
+              }}
             >
               All
             </button>
+            {(['recent', 'selected'] as const).map((value) => (
+              <button
+                key={value}
+                className={`add-btn${mode === value ? ' is-active' : ''}`}
+                aria-pressed={mode === value}
+                onClick={() => {
+                  setMode(value)
+                  setGroupFilter(null)
+                }}
+              >
+                {value === 'recent' ? 'Recently Used' : 'Selected'}
+              </button>
+            ))}
             {groups.map((g) => (
               <button
                 key={g.id}
                 className={`add-btn${groupFilter === g.id ? ' is-active' : ''}`}
-                onClick={() => setGroupFilter(g.id)}
+                onClick={() => {
+                  setMode('all')
+                  setGroupFilter(g.id)
+                }}
               >
                 {g.name}
               </button>
@@ -263,11 +367,11 @@ export function TagPickerPanel({
             {filterExpanded ? '▴' : '▾'}
           </button>
         </div>
-      )}
-      {sections.length === 0 && trimmedSearch === '' && (
+      }
+      {shownSections.length === 0 && trimmedSearch === '' && (
         <div className="pick-group">No matching tags</div>
       )}
-      {sections.map((section) => {
+      {shownSections.map((section) => {
         const sectionCollapsed = collapsedSections.has(section.key)
         return (
           <section className="pick-section" key={section.key}>
@@ -285,6 +389,7 @@ export function TagPickerPanel({
       })}
       {trimmedSearch !== '' && !hasExactMatch && (
         <button
+          data-tag-choice=""
           className={`pick-row pick-row--create${enterTarget === 'create' ? ' pick-row--target' : ''}`}
           disabled={disabled || createTag.isPending}
           onClick={() => handleCreate(trimmedSearch)}
@@ -296,6 +401,7 @@ export function TagPickerPanel({
         </button>
       )}
       {createTag.error && <p className="modal__error">{createTag.error.message}</p>}
-    </>
+      <div className="picker__keys">↑↓ move · ↵ select · Esc close</div>
+    </div>
   )
 }
