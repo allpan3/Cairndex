@@ -191,12 +191,13 @@ Branch `feat/eagle-interaction-polish`, based on `main` after
 [PR #133](https://github.com/allpan3/Cairndex/pull/133) merged, is local and
 unpushed. It carries owner-approved interaction changes, one commit each: a
 zoom slider that lays the grid out once per drag, covers that fade in over a
-neutral placeholder, a Space quick preview, and Undo for organizing (toast
-button and ⌘Z). Cover main-colour placeholders change the private store
+neutral placeholder, a Space quick preview, Undo for organizing (toast
+button and ⌘Z), and a bundle drag image of the dragged covers. Cover main-colour placeholders change the private store
 and wait for owner review of their design. Undo is in-session only and keeps
 no history across reloads. In Safari on macOS (WebKit, as the desktop shell
 uses), the page receives ⌘Z before the Edit ▸ Undo menu item; the packaged
-desktop app was not rebuilt to confirm it there. The branch does not include the windowed-Unbundled / one-scroll-area
+desktop app was not rebuilt to confirm it there. The same Safari check showed
+the cover drag image rendered, not blank. The branch does not include the windowed-Unbundled / one-scroll-area
 stack; `Browser.tsx` and `CatalogBundleBrowser.tsx` will need a careful rebase
 over it.
 
