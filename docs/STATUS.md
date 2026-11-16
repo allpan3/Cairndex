@@ -207,14 +207,16 @@ stack; `Browser.tsx` and `CatalogBundleBrowser.tsx` will need a careful rebase
 over it.
 
 The follow-up polish uses Eagle 4.0 as its interaction reference. Bundle menus
-now expose Copy and Tags submenus with icons and keyboard navigation; the owner
-excluded Add to Collection from the menu. The remaining approved polish covers
-shared motion timing. Preview navigation and its counter now share a bottom bar. Tag picking now includes
-recent/selected filters, parent paths and arrow-key navigation. View options
-combines layout, size, sort and persistent card details in a live panel. The
-multi-bundle inspector shows up to three selected covers. Search results have a
-scope breadcrumb and complete count, with a server-side file-extension filter.
-Empty states now offer existing browsing, Update or permitted folder actions.
+have Copy and Tags submenus with icons and keyboard navigation; Add to Collection
+is excluded as requested. Tag picking includes recent/selected filters, parent
+paths and arrow-key navigation. View options combines layout, size, sort and
+persistent card details in a live panel. The multi-bundle inspector shows up to
+three selected covers. Search has a scope breadcrumb, complete count and a
+server-side file-extension filter. Empty states offer existing browsing, Update
+or permitted folder actions. Preview navigation and its counter share a bottom
+bar. Interface transitions use 150 ms ease-out and respect Reduce Motion.
+Rating submenus, repeat-last-organizing and collapsible inspector sections remain
+outside this polish scope.
 
 ## Qualification and evidence
 

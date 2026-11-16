@@ -365,6 +365,11 @@ Tag pickers retain at most 12 recently chosen tag IDs in session storage per
 server and library, never tag names. Recent and Selected filters share the same
 hierarchical rows; arrow keys move between visible choices and the search field.
 
+Interface transitions share `--motion-duration` (150 ms) and `--motion-easing`
+(ease-out). Reduce Motion sets the duration to zero and stops progress sweeps;
+feedback delays and normal loading-indicator cycle lengths remain independent.
+The moment video’s 60 ms frame handoff remains brief and also stops under Reduce Motion.
+
 Local list/picker search uses the shared `app/pinyin.ts` matcher. It preserves
 case-insensitive literal substring matching and adds contiguous full-pinyin,
 initial-letter, partial, mixed, and polyphonic matching for Chinese names. This
