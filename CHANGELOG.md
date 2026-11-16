@@ -134,6 +134,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Security
 
+- Update the desktop app's QUIC crates (`quinn-proto` 0.11.19, `quinn-udp` 0.5.16)
+  for RUSTSEC-2026-0523, RUSTSEC-2026-0524 and RUSTSEC-2026-0538, which let a peer
+  exhaust memory or keep a receive loop busy.
+
 - Correct an owner-approved privacy-gate false positive for literal substrings
   inside the exact public codesign field name. Field values, longer identifiers,
   private names and secret detection remain protected.
