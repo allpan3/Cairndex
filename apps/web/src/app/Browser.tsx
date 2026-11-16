@@ -11,6 +11,7 @@ import type { DropTarget } from './dnd'
 import { DRAG_BUNDLES, sameTarget, seamFor } from './dnd'
 import { focusListing, selectionTargets } from './selection'
 import { rowStep } from './spatialNav'
+import { cardCentre, zoomAnchor } from './zoomAnchor'
 import { SortHeaderCell } from './SortHeader'
 import type { LayoutMode } from './types'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
@@ -21,6 +22,21 @@ const H_PADDING = 12
 export interface BrowserNavigation {
   step: (from: string | null, direction: 'up' | 'down') => string | null
   focus: (id: string) => void
+  /**
+   * Show a zoom being dragged without laying the grid out again: cards and
+   * justified tiles scale around the item a zoom keeps in place, and the next
+   * `zoom` prop lays them out once. Null ends the preview. List rows have no
+   * cheaper stand-in than their real height, so a list lays itself out live.
+   */
+  previewZoom?: (zoom: number | null) => void
+}
+
+/** A zoom preview in progress: the zoom it scales from and the item it holds still. */
+interface ZoomPreview {
+  base: number
+  /** `screenY`: the anchor's centre in the window, which the zoom keeps */
+  anchor: { id: string; screenY: number } | null
+  ending: boolean
 }
 
 interface BrowserProps {
@@ -251,6 +267,13 @@ export function Browser(props: BrowserProps) {
     if (listingRef.current) ro.observe(listingRef.current)
     return () => ro.disconnect()
   }, [props.contentsHidden])
+  // A dragged zoom: the list's live row height, extra rows rendered while cards
+  // shrink, and a render request when the drag ends (see previewZoom)
+  const [listZoom, setListZoom] = useState<number | null>(null)
+  const [zoomOverscan, setZoomOverscan] = useState(0)
+  const [zoomSettled, setZoomSettled] = useState(0)
+  const zoomPreview = useRef<ZoomPreview | null>(null)
+  const shownZoom = layout === 'list' && listZoom !== null ? listZoom : zoom
 
   useLayoutEffect(() => {
     if (!scrollEl) return
@@ -261,7 +284,10 @@ export function Browser(props: BrowserProps) {
     return () => ro.disconnect()
   }, [scrollEl])
 
-  const rows = useMemo(() => computeRows(items, layout, width, zoom), [items, layout, width, zoom])
+  const rows = useMemo(
+    () => computeRows(items, layout, width, shownZoom),
+    [items, layout, width, shownZoom],
+  )
 
   // Cumulative top offset of each row in content space — mirrors what the
   // virtualizer derives from estimateSize, so marquee math stays in sync with
@@ -359,9 +385,128 @@ export function Browser(props: BrowserProps) {
     count: props.contentsHidden ? 0 : rows.length,
     getScrollElement: () => scrollEl,
     estimateSize: (i) => rows[i]?.height ?? 100,
-    overscan: 6,
+    overscan: 6 + zoomOverscan,
     scrollMargin,
   })
+
+  // Cards stand in the top of their row; the rest of its height is the gap below
+  const cardGap = layout === 'list' ? 0 : 10
+  // Where the grid starts inside the scrolled content, so zoom anchoring holds
+  // whatever sits above the grid (the list's header, for one)
+  const gridTop = () => {
+    const wrapper = wrapperRef.current
+    if (!wrapper || !scrollEl) return 0
+    return (
+      wrapper.getBoundingClientRect().top -
+      scrollEl.getBoundingClientRect().top +
+      scrollEl.scrollTop
+    )
+  }
+  // The item a zoom holds still, and where it sat in the window. Measured in
+  // the window rather than the scroll area, because what sits above the grid
+  // (the collections strip) can resize with the same zoom.
+  const anchorFor = (inRows: Row[], tops: number[], scrollTop: number, viewTop: number) => {
+    if (!scrollEl || scrollEl.clientHeight === 0) return null
+    const top = gridTop()
+    const view = { top: scrollTop - top, bottom: scrollTop - top + scrollEl.clientHeight, width }
+    const id = zoomAnchor(inRows, tops, view, props.activeId ?? null)
+    const centre = id ? cardCentre(inRows, tops, id, cardGap) : null
+    return id && centre ? { id, screenY: viewTop + top + centre.y - scrollTop, centre } : null
+  }
+  // The layout last shown, so a zoom change can find its anchor where it was
+  const shown = useRef<{
+    zoom: number
+    layout: LayoutMode
+    width: number
+    rows: Row[]
+    rowTops: number[]
+    scrollTop: number
+    viewTop: number
+  } | null>(null)
+  // One layout per zoom: keep the anchor where it was on screen, and drop a
+  // finished preview's scaling in the same frame the real layout appears
+  useLayoutEffect(() => {
+    const before = shown.current
+    const preview = zoomPreview.current
+    const wrapper = wrapperRef.current
+    const ending = preview?.ending ?? false
+    if (ending) {
+      zoomPreview.current = null
+      if (wrapper) {
+        wrapper.style.transform = ''
+        wrapper.style.transformOrigin = ''
+      }
+      scrollEl?.classList.remove('browser--zooming')
+      setZoomOverscan(0)
+      setListZoom(null)
+    }
+    shown.current = {
+      zoom: shownZoom,
+      layout,
+      width,
+      rows,
+      rowTops,
+      scrollTop: scrollEl?.scrollTop ?? 0,
+      viewTop: scrollEl?.getBoundingClientRect().top ?? 0,
+    }
+    if (!before || !scrollEl || !wrapper || before.layout !== layout || before.width !== width)
+      return
+    if (before.zoom === shownZoom && !ending) return
+    const anchor =
+      preview?.anchor ?? anchorFor(before.rows, before.rowTops, before.scrollTop, before.viewTop)
+    const centre = anchor ? cardCentre(rows, rowTops, anchor.id, cardGap) : null
+    if (!anchor || !centre) return
+    // Row sizes are cached until measured; the scroll below needs the new total
+    virtualizer.measure()
+    wrapper.style.height = `${virtualizer.getTotalSize()}px`
+    const viewTop = scrollEl.getBoundingClientRect().top
+    scrollEl.scrollTop = Math.max(0, gridTop() + centre.y - (anchor.screenY - viewTop))
+    shown.current.scrollTop = scrollEl.scrollTop
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs per layout; helpers read it
+  }, [shownZoom, layout, width, rows, rowTops, zoomSettled])
+
+  const previewZoom = (next: number | null) => {
+    const wrapper = wrapperRef.current
+    if (next === null) {
+      if (zoomPreview.current) {
+        zoomPreview.current.ending = true
+        setZoomSettled((count) => count + 1)
+      }
+      return
+    }
+    if (!wrapper || !scrollEl) return
+    if (!zoomPreview.current) {
+      const anchor = anchorFor(
+        rows,
+        rowTops,
+        scrollEl.scrollTop,
+        scrollEl.getBoundingClientRect().top,
+      )
+      zoomPreview.current = {
+        base: shownZoom,
+        anchor: anchor && { id: anchor.id, screenY: anchor.screenY },
+        ending: false,
+      }
+      if (layout !== 'list') {
+        if (anchor) wrapper.style.transformOrigin = `${anchor.centre.x}px ${anchor.centre.y}px`
+        scrollEl.classList.add('browser--zooming')
+      }
+    }
+    if (layout === 'list') {
+      setListZoom(next)
+      return
+    }
+    const scale = next / zoomPreview.current.base
+    wrapper.style.transform = scale === 1 ? '' : `scale(${scale})`
+    // Shrinking cards bring rows into view that the virtualizer has not
+    // rendered; render enough of them, growing only, until the drag ends
+    if (scale < 1 && rows.length) {
+      const height = scrollEl.clientHeight
+      const shortest = Math.min(...rows.slice(0, 50).map((row) => row.height))
+      const extra = Math.min(60, Math.ceil((height / scale - height) / shortest))
+      setZoomOverscan((current) => Math.max(current, extra))
+    }
+  }
 
   useImperativeHandle(props.navigationRef, () => ({
     step: (from, direction) =>
@@ -385,6 +530,7 @@ export function Browser(props: BrowserProps) {
       if (index >= 0) virtualizer.scrollToIndex(index, { align: 'auto' })
       listingRef.current?.focus({ preventScroll: true })
     },
+    previewZoom,
   }))
 
   // Mark the focused option after virtual rows mount, independent of its selected range
@@ -401,7 +547,7 @@ export function Browser(props: BrowserProps) {
   // change, otherwise list rows wouldn't grow/shrink with the slider.
   useEffect(() => {
     virtualizer.measure()
-  }, [zoom, layout, width, virtualizer])
+  }, [shownZoom, layout, width, virtualizer])
 
   // Load the next page when the user scrolls near the end.
   const virtualItems = virtualizer.getVirtualItems()
@@ -472,6 +618,9 @@ export function Browser(props: BrowserProps) {
       ref={setScrollEl}
       onMouseDown={onBackgroundMouseDown}
       onMouseMove={onContainerMouseMove}
+      onScroll={() => {
+        if (shown.current && scrollEl) shown.current.scrollTop = scrollEl.scrollTop
+      }}
     >
       <div ref={contentRef} className="browser__content">
         {props.header}

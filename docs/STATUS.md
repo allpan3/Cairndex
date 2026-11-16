@@ -185,6 +185,17 @@ files, modes, sizes and modification times. Credentials were untouched. Rollback
 and local receipts are retained under `20261106-open-bundle-drop`. Owner
 acceptance remains open.
 
+## Eagle interaction polish
+
+Branch `feat/eagle-interaction-polish`, based on `main` after
+[PR #133](https://github.com/allpan3/Cairndex/pull/133) merged, is local and
+unpushed. It carries owner-approved interaction changes, one commit each: a
+zoom slider that lays the grid out once per drag. Cover main-colour
+placeholders change the private store and wait for owner review of their
+design. The branch does not include the windowed-Unbundled / one-scroll-area
+stack; `Browser.tsx` and `CatalogBundleBrowser.tsx` will need a careful rebase
+over it.
+
 ## Qualification and evidence
 
 These results qualify the named snapshots. The latest New Folder installation

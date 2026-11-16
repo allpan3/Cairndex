@@ -9,6 +9,7 @@ import { RatingFilterControl } from './RatingFilterControl'
 import { SelectionCount } from './SelectionCount'
 import type { SelectAllProgress } from '../api/catalogSelectAll'
 import { SortControl } from './SortControl'
+import { ZoomSlider } from './ZoomSlider'
 import { TagFilterControl } from './TagFilterControl'
 import { BUNDLE_SORTS, type BrowsePrefs, type LayoutMode } from './types'
 
@@ -43,6 +44,9 @@ interface ToolbarProps {
   // from the global-or-per-collection scope).
   prefs: BrowsePrefs
   onPrefs: (prefs: BrowsePrefs) => void
+  /** A zoom being dragged, then null as the drag ends; the zoom itself
+   *  changes once, on release (see ZoomSlider). */
+  onZoomPreview?: (zoom: number | null) => void
   sort: BundleSort
   order: SortOrder
   onSort: (sort: BundleSort, order: SortOrder) => void
@@ -81,6 +85,7 @@ export function Toolbar({
   onSearch,
   prefs,
   onPrefs,
+  onZoomPreview,
   sort,
   order,
   onSort,
@@ -166,14 +171,12 @@ export function Toolbar({
             height — so the controls beside it don't shift when the layout
             changes. */}
         <div className="zoom">
-          <input
-            type="range"
+          <ZoomSlider
+            value={prefs.zoom}
             min={ZOOM_MIN}
             max={ZOOM_MAX}
-            step={10}
-            value={prefs.zoom}
-            onChange={(e) => onPrefs({ ...prefs, zoom: Number(e.target.value) })}
-            aria-label="Zoom"
+            onPreview={onZoomPreview}
+            onCommit={(zoom) => onPrefs({ ...prefs, zoom })}
           />
         </div>
 
@@ -217,6 +220,7 @@ export function Toolbar({
           min={ZOOM_MIN}
           max={ZOOM_MAX}
           onZoom={(zoom) => onPrefs({ ...prefs, zoom })}
+          onZoomPreview={onZoomPreview}
         />
         {trailing}
       </div>

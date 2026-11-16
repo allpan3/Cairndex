@@ -1154,6 +1154,16 @@ button {
      vibrate between two sizes. */
   scrollbar-gutter: stable;
 }
+/* A dragged zoom scales the laid-out grid instead of laying it out again
+   (Browser's previewZoom). Grown cards must not add a sideways scrollbar for
+   the moment they overhang, and no card answers the pointer until the real
+   layout lands. */
+.browser--zooming {
+  overflow-x: hidden;
+}
+.browser--zooming .browser__cardslot {
+  pointer-events: none;
+}
 .browser--dragging {
   user-select: none;
 }

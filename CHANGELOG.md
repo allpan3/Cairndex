@@ -163,6 +163,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Zoom without stutter.** Dragging the item-size slider now scales the laid-out
+  cards and tiles and lays the grid out once, on release, instead of on every
+  step. The selected item, or the item nearest the middle of the view, stays
+  where it was on screen; ⌘+/⌘− keep it in place too. List rows still take their
+  real height as the slider moves, which is cheap.
 - **Select All selects every match, and Unbundled scrolls the whole queue.** In a
   portable library, Select All (⌘A) selects every bundle the view matches, not only the
   loaded pages; the toolbar shows “Selecting N of M…” while it reads them, and Escape

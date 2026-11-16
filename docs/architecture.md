@@ -316,6 +316,10 @@ Current browsing surfaces:
 - **Bundle Browser:** virtualized bundle browser with grid/list/justified
   layouts, sidebar system views, Smart Collections, collections, tags, toolbar
   controls, selection, batch editing, and an in-bundle album/viewer.
+  A dragged zoom scales the laid-out grid with a CSS transform and lays it out
+  once on release (`Browser`'s `previewZoom`), because a column-count change
+  remounts every visible card. Each zoom keeps the selected item, or the one
+  nearest the middle of the view, at the same window position.
 - **File Browser:** read-only filesystem browser over the active library root,
   separate from Bundle Browser selection and bundle inspection.
 

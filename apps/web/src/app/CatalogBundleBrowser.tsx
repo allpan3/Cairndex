@@ -998,6 +998,7 @@ export function CatalogBundleBrowser({
           onSearch={setSearch}
           prefs={prefs}
           onPrefs={setPrefs}
+          onZoomPreview={(zoom) => navigation.current?.previewZoom?.(zoom)}
           sort={activeSort}
           order={activeOrder}
           onSort={changeSort}

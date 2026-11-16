@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useModalDialog } from './useModalDialog'
+import { ZoomSlider } from './ZoomSlider'
 
 interface ViewOptionsProps<T extends string> {
   layout: T
@@ -11,6 +12,7 @@ interface ViewOptionsProps<T extends string> {
   min: number
   max: number
   onZoom: (zoom: number) => void
+  onZoomPreview?: (zoom: number | null) => void
   onAddFiles?: () => void
   addFilesDisabled?: boolean
 }
@@ -52,6 +54,7 @@ function ViewOptionsDialog<T extends string>({
   min,
   max,
   onZoom,
+  onZoomPreview,
   onAddFiles,
   addFilesDisabled,
   onClose,
@@ -85,13 +88,13 @@ function ViewOptionsDialog<T extends string>({
         </label>
         <label className="view-options__field">
           Item size
-          <input
-            type="range"
+          <ZoomSlider
+            value={zoom}
             min={min}
             max={max}
-            step={10}
-            value={zoom}
-            onChange={(event) => onZoom(Number(event.target.value))}
+            label="Item size"
+            onPreview={onZoomPreview}
+            onCommit={onZoom}
           />
         </label>
         {onAddFiles && (
