@@ -163,6 +163,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Covers fade in.** Bundle card and list covers are images decoded off the
+  main thread that fade in over the card's placeholder in 140 ms, instead of
+  CSS backgrounds that popped in. A cover already loaded appears at once, a
+  failed one keeps the placeholder, and reduced motion turns the fade off.
+  Covers stay inert, so grabbing one still drags the card.
 - **Zoom without stutter.** Dragging the item-size slider now scales the laid-out
   cards and tiles and lays the grid out once, on release, instead of on every
   step. The selected item, or the item nearest the middle of the view, stays

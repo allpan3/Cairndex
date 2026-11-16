@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import type { BundleSummary } from '../api/client'
 import { fileThumbnailUrl, thumbnailUrl } from '../api/client'
 import { formatDimensions, formatDuration } from '../lib/format'
+import { CoverImage } from './CoverImage'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
 import { useBundleFileDropTarget, type BundleFileDropHandler } from './useBundleFileDropTarget'
@@ -123,17 +124,12 @@ export function BundleCard({
       data-file-drop={fileDropOver || undefined}
       data-file-drop-bundle={onDropFiles ? item.id : undefined}
     >
-      <HoverPreview
-        source={previewSource}
-        disabled={previewDisabled}
-        className="card__thumb"
-        style={
-          item.has_cover
-            ? { backgroundImage: `url(${thumbnailUrl(item.id, item.cover_key)})` }
-            : undefined
-        }
-      >
-        {!item.has_cover && <div className="card__placeholder">▦</div>}
+      <HoverPreview source={previewSource} disabled={previewDisabled} className="card__thumb">
+        {item.has_cover ? (
+          <CoverImage src={thumbnailUrl(item.id, item.cover_key)} />
+        ) : (
+          <div className="card__placeholder">▦</div>
+        )}
         {item.has_missing && <span className="card__badge card__badge--missing">missing</span>}
         {!item.has_missing && item.extension && (
           <span className="card__badge">{item.extension}</span>
