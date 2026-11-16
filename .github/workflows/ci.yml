@@ -176,6 +176,8 @@ jobs:
         run: npm run format:check
       - name: TypeScript
         run: npm run typecheck
+      - name: Generated API client matches openapi.json
+        run: npm run gen:api && git diff --exit-code -- src/api/schema.d.ts
       - name: Unit tests
         run: npm run test
       - name: Desktop development launcher tests

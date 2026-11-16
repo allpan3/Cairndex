@@ -177,6 +177,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Internal
 
+- CI fails when the committed `openapi.json` or `schema.d.ts` no longer matches the
+  server, and `gen:api` pins its generator version so the output is reproducible.
+
 - Keep project status focused on current state and qualification limits; retain
   SQLite durability measurements in the development guide and superseded status
   in Git history.
