@@ -319,6 +319,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Select All selects every match, and Unbundled scrolls the whole queue.** In a
+  portable library, Select All (⌘A) selects every bundle the view matches, not only
+  the loaded pages; the toolbar shows “Selecting N of M…” while it reads them, and
+  Escape stops it. Bulk changes and Delete Bundles act on the whole selection and
+  state its full count. Unbundled is one scrolling list of the whole queue instead of
+  pages behind **Load more**, and only the files on screen are fetched and checked on
+  disk. Select All and Shift ranges include files not shown yet. Create Bundle and Add
+  to Bundle take up to 100 files, and Copy, Move and Trash up to 1,000. The server
+  pages a query's keys, up to 1,000 at a time, through `POST
+  /replica/catalog/bundles/browse/ids` and `POST /replica/catalog/files/unbundled/ids`
+  (`selection_version: 6`); older servers keep loaded-only Select All.
 - **Faster file operations.** Copying a file into the library writes it once instead
   of copying and hashing it twice (ADR-0042), which halves copy time on a test share,
   and uploads are written in 4 MiB blocks. Same-volume Rename, Move and Trash move the
@@ -464,6 +475,21 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Changes to more than 100 bundles in a portable library work again: title, rating,
+  tags, collections, pasted tags, a drop on a collection and Delete Bundles (metadata
+  only). The server applies them in batches of 100, each its own saved change, with
+  progress and Cancel. A bundle changed elsewhere since it was read is left as it was,
+  and **Select Unchanged** selects those bundles for review.
+- Portable filters for Size, Has missing file and Has cover match what this device has
+  observed and what the card shows. Files this device has not observed still leave the
+  answer unknown.
+- File Browser cards preview a video on hover again, as in v0.2.1, once this device
+  has inspected the file. Nothing is probed while browsing.
+- Unbundled sorts by name, type, size, Date Added and Date Modified across the whole
+  queue, not only the files already loaded.
+- Collections and bundles in the portable Bundle Browser scroll as one surface. A
+  selection band crosses from one to the other and selects only in the section where
+  it started, and clicking empty space no longer draws a focus frame.
 - Restore Set Frame as Video Cover and Reset Video Cover to Default in the portable
   viewer, as in v0.2.1. The offset is saved as the file's `cover_time` through a
   catalog save job.
