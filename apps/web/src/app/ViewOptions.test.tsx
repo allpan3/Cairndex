@@ -22,3 +22,32 @@ test('pointer-opened options return focus to the opener without browser click fo
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   await waitFor(() => expect(opener).toHaveFocus())
 })
+
+test('view controls update live without closing their panel', () => {
+  const layout = vi.fn()
+  const details = vi.fn()
+  render(
+    <ViewOptions
+      layout="grid"
+      layouts={[
+        { value: 'grid', label: 'Card' },
+        { value: 'list', label: 'List' },
+      ]}
+      onLayout={layout}
+      zoom={200}
+      min={140}
+      max={640}
+      onZoom={vi.fn()}
+      showDetails
+      onShowDetails={details}
+      sortControls={<button>Title sort</button>}
+    />,
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'View options' }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'Layout' }), { target: { value: 'list' } })
+  expect(layout).toHaveBeenCalledWith('list')
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Card details' }))
+  expect(details).toHaveBeenCalledWith(false)
+  expect(screen.getByRole('dialog', { name: 'View options' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Title sort' })).toBeVisible()
+})

@@ -811,7 +811,12 @@ test('portable Manual sort reorders by drag and cleans up the order @fullstack',
       grid.locator('[data-bundle-id]').evaluateAll((cards) => cards.map((card) => card.id))
     const card = (id: string) => grid.locator(`[data-bundle-id="${id}"]`)
     // All Bundles opens in Manual order, as in v0.2.1
-    await expect(page.getByRole('button', { name: 'Sort', exact: true })).toHaveText('Manual')
+    await page.getByRole('button', { name: 'View options', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Manual', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await page.keyboard.press('Escape')
     await expect
       .poll(shown)
       .toEqual(

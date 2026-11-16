@@ -73,7 +73,7 @@ test('local opening history and observed sizes restore Recent and complete sorts
     expect((await browse('date_opened')).items[0].date_opened).toBe(opened)
     await page.getByRole('button', { name: 'Back to library', exact: true }).click()
     await page.getByRole('button', { name: /^Recent( \d+)?$/ }).click()
-    await page.getByRole('button', { name: 'Sort', exact: true }).click()
+    await page.getByRole('button', { name: 'View options', exact: true }).click()
     await page.getByRole('button', { name: 'Date Opened', exact: true }).click()
     await page.getByRole('button', { name: /Descending ↓/ }).click()
     await page.keyboard.press('Escape')
@@ -83,15 +83,18 @@ test('local opening history and observed sizes restore Recent and complete sorts
     )
     await page.reload()
     await page.getByRole('button', { name: /^Recent( \d+)?$/ }).click()
-    await expect(page.getByRole('button', { name: 'Sort', exact: true })).toContainText(
-      'Date Opened',
+    await page.getByRole('button', { name: 'View options', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Date Opened', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
     )
+    await page.keyboard.press('Escape')
     await page.locator('[data-bundle-id="bundle-000002"]').click()
     await inspector
       .getByRole('textbox', { name: 'Title', exact: true })
       .fill('Synthetic edited bundle')
     await expect(inspector.getByText('Saved', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: 'Sort', exact: true }).click()
+    await page.getByRole('button', { name: 'View options', exact: true }).click()
     await page.getByRole('button', { name: 'Date Modified', exact: true }).click()
     await page.keyboard.press('Escape')
     await expect(cards.getByRole('option').first()).toHaveAttribute(
@@ -108,7 +111,7 @@ test('local opening history and observed sizes restore Recent and complete sorts
       )
       .toBeGreaterThan(0)
     await page.getByRole('button', { name: /^All( \d+)?$/ }).click()
-    await page.getByRole('button', { name: 'Sort', exact: true }).click()
+    await page.getByRole('button', { name: 'View options', exact: true }).click()
     await page.getByRole('button', { name: 'Size', exact: true }).click()
     await page.getByRole('button', { name: /Descending ↓/ }).click()
     await page.keyboard.press('Escape')
@@ -145,7 +148,7 @@ test('local opening history and observed sizes restore Recent and complete sorts
       })
     })
     await page.reload()
-    await page.getByRole('button', { name: 'Sort', exact: true }).click()
+    await page.getByRole('button', { name: 'View options', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Size', exact: true })).toHaveCount(0)
   } finally {
     try {

@@ -1129,6 +1129,7 @@ export function CatalogBundleBrowser({
         {smart.error && <p role="alert">Saved conditions are unavailable.</p>}
         <div hidden={Boolean(albumId)} className="catalog-album-browser-return">
           <Browser
+            showCardDetails={prefs.showCardDetails ?? true}
             header={
               folders.length > 0 && (
                 <CollectionHeader

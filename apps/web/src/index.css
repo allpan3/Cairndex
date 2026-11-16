@@ -9531,3 +9531,18 @@ button.pick-row:disabled {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
+
+.toolbar__view-options--full {
+  display: inline-flex;
+}
+.picker__panel.view-options {
+  width: min(320px, calc(100vw - 16px));
+  padding: 12px;
+}
+.view-options .modal__head h2 {
+  margin: 0;
+  font-size: 14px;
+}
+.view-options .sortctl__scope input {
+  width: auto;
+}

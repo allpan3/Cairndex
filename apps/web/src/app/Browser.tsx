@@ -41,6 +41,7 @@ interface ZoomPreview {
 }
 
 interface BrowserProps {
+  showCardDetails?: boolean
   unavailableSize?: boolean
   singleSelection?: boolean
 
@@ -143,6 +144,7 @@ function offsetWithin(outer: HTMLElement | null, inner: HTMLElement | null) {
 
 export function Browser(props: BrowserProps) {
   const {
+    showCardDetails = true,
     items,
     layout,
     zoom,
@@ -290,8 +292,8 @@ export function Browser(props: BrowserProps) {
   }, [scrollEl])
 
   const rows = useMemo(
-    () => computeRows(items, layout, width, shownZoom),
-    [items, layout, width, shownZoom],
+    () => computeRows(items, layout, width, shownZoom, showCardDetails),
+    [items, layout, width, shownZoom, showCardDetails],
   )
 
   // Cumulative top offset of each row in content space — mirrors what the
@@ -744,7 +746,7 @@ export function Browser(props: BrowserProps) {
                               <BundleCard
                                 item={c.item}
                                 selected={selectedIds.has(c.item.id)}
-                                showMeta={layout === 'grid'}
+                                showMeta={layout === 'grid' && showCardDetails}
                                 onSelect={onSelect}
                                 onOpen={onOpen}
                                 onContextMenu={onContextMenu}
