@@ -275,11 +275,10 @@ is not an owner-NAS or full-UI Update benchmark.
   The same branch adds the windowed Unbundled and Select All work: Unbundled is
   a windowed list sized from the server's total that fetches and stats only the
   pages on screen, and Select All takes every matching bundle or queued file
-  through paged key reads (`selection_version: 6`). Before the rebase, the
-  backend and frontend gates and the Playwright suite passed in the Cairndex
-  macOS VM with synthetic data, except a bulk-review reload case in
-  `catalog-selection.spec.ts` that also failed on its base branch. Hosted CI is
-  the full gate for the rebased branch.
+  through paged key reads (`selection_version: 6`). The backend and
+  frontend gates pass. Hosted CI runs the full-stack suite; its first run found
+  that `catalog-selection.spec.ts` still expected the older loaded-only Select
+  All, and the test now expects every match.
   Limits: Size is not in the ordinary condition editor; Select All refuses
   views above 100,000 items; each Select All page re-sorts the whole view on
   the server; a selection of many thousand bundles reads its inspector state
