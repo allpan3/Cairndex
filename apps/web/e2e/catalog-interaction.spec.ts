@@ -135,3 +135,73 @@ test('covers fade in as inert images over the card placeholder @fullstack', asyn
     await library.close()
   }
 })
+
+test('Space looks at bundles in place, steps through the results and opens the viewer @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const library = await openLibrary(page, 6, 'playable')
+  // A look reads and streams, but never moves a bundle's current file
+  const cursorWrites: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'PUT' && request.url().includes('/cursor'))
+      cursorWrites.push(request.url())
+  })
+  try {
+    const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
+    await grid.getByRole('option').filter({ hasText: 'Untitled' }).click()
+    await page.keyboard.press(' ')
+    const preview = page.getByRole('dialog', { name: 'Quick preview' })
+    await expect(preview.getByLabel('Position in results')).toHaveText('1 / 3')
+    await page.keyboard.press('ArrowRight')
+    await expect(preview.getByLabel('Position in results')).toHaveText('2 / 3')
+    await expect(preview).toContainText('Synthetic playback')
+    // The selection follows the preview, and a video plays at once
+    await expect(
+      grid.getByRole('option').filter({ hasText: 'Synthetic playback' }),
+    ).toHaveAttribute('aria-selected', 'true')
+    const video = preview.locator('video')
+    await expect
+      .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
+      .toBeGreaterThan(0)
+    // Space belongs to the preview, not the video's own controls
+    await video.focus()
+    await page.keyboard.press(' ')
+    await expect(preview).toHaveCount(0)
+    await expect(
+      grid.getByRole('option').filter({ hasText: 'Synthetic playback' }),
+    ).toHaveAttribute('aria-selected', 'true')
+    expect(cursorWrites).toEqual([])
+    // Enter opens the full viewer on the previewed bundle
+    await page.keyboard.press(' ')
+    await expect(preview).toBeVisible()
+    await page.keyboard.press('Enter')
+    await expect(preview).toHaveCount(0)
+    await expect(page.locator('.media-viewer')).toBeVisible()
+  } finally {
+    await library.close()
+  }
+})
+
+test('the preview counts the whole result and pages in more as it steps @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const library = await openLibrary(page, 65)
+  try {
+    const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
+    await grid.getByRole('option').first().click()
+    // End selects the last loaded bundle: the first page holds 50
+    await page.keyboard.press('End')
+    await page.keyboard.press(' ')
+    const preview = page.getByRole('dialog', { name: 'Quick preview' })
+    await expect(preview.getByLabel('Position in results')).toHaveText('50 / 65')
+    await page.keyboard.press('ArrowRight')
+    await expect(preview.getByLabel('Position in results')).toHaveText('51 / 65')
+    await page.keyboard.press('Escape')
+    await expect(preview).toHaveCount(0)
+    await expect(grid.getByRole('option', { selected: true })).toHaveCount(1)
+  } finally {
+    await library.close()
+  }
+})

@@ -10,6 +10,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Space for a quick preview.** In the Bundle Browser, Space shows the selected
+  bundle's current file inside the window: an image at viewing size, or a video
+  that starts playing at once. The arrow keys step through the results, the
+  selection follows, and an *n / total* counter counts the complete result, not
+  just the loaded page; stepping loads further pages. Space or Escape closes it
+  and Enter opens the full viewer. A preview is not an opening: it moves no
+  bundle cursor and records no Date Opened. A file the browser cannot play
+  directly offers the viewer instead.
+
 - **Portable libraries (library format three).** A library keeps its metadata history in
   its own folder. Working databases, drafts, jobs, access settings and caches are
   private to each server ([ADR-0035](docs/adr/0035-portable-library-format.md)).
