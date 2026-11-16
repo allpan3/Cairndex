@@ -281,3 +281,54 @@ test('organizing offers Undo on its message and with ⌘Z, and the selection mov
     await library.close()
   }
 })
+
+test('a bundle drag shows the dragged covers, or the label pill without one @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const library = await openLibrary(page, 6, 'playable')
+  try {
+    const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
+    const card = (index: number) => grid.locator(`[data-bundle-id="bundle-00000${index}"]`)
+    const row = (name: RegExp) => page.getByRole('treeitem', { name }).first()
+    await expect(card(1).locator('img.cover-image')).toHaveClass(/cover-image--shown/, {
+      timeout: 30_000,
+    })
+    // What the engine is handed: the covers drawn, and the label beneath them
+    await page.evaluate(() => {
+      const original = DataTransfer.prototype.setDragImage
+      DataTransfer.prototype.setDragImage = function (image, x, y) {
+        const covers = [...image.querySelectorAll('canvas')]
+        Object.assign(window, {
+          dragImage: {
+            painted: covers.map((canvas) =>
+              canvas
+                .getContext('2d')!
+                .getImageData(0, 0, canvas.width, canvas.height)
+                .data.some((value, index) => index % 4 === 3 && value > 0),
+            ),
+            label: image.querySelector('.drag-badge__pill')?.textContent,
+          },
+        })
+        original.call(this, image, x, y)
+      }
+    })
+    const dragImage = () =>
+      page.evaluate(() => (window as unknown as { dragImage: unknown }).dragImage)
+    await card(1).click()
+    await card(2).click({ modifiers: ['ControlOrMeta'] })
+    await card(1).dragTo(row(/Synthetic child/))
+    expect(await dragImage()).toEqual({ painted: [true], label: '2 bundles' })
+    // The cover itself stays inert: the card, not the image, starts the drag
+    expect(
+      await card(1)
+        .locator('img.cover-image')
+        .evaluate((image) => getComputedStyle(image).getPropertyValue('-webkit-user-drag')),
+    ).toBe('none')
+    await card(2).click()
+    await card(2).dragTo(row(/Synthetic root/))
+    expect(await dragImage()).toEqual({ painted: [], label: 'Synthetic bundle 2 雪' })
+  } finally {
+    await library.close()
+  }
+})

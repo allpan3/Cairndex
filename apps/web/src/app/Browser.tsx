@@ -6,7 +6,7 @@ import { thumbnailUrl } from '../api/client'
 import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard, type BundleCardItem } from './BundleCard'
 import { CoverImage } from './CoverImage'
-import { dragBadgeLabel, setDragBadge } from './dragBadge'
+import { dragBadgeLabel, draggedCovers, setCoversDragImage } from './dragBadge'
 import { computeRows, type PlacedCard, type Row } from './layout'
 import type { DropTarget } from './dnd'
 import { DRAG_BUNDLES, sameTarget, seamFor } from './dnd'
@@ -230,7 +230,11 @@ export function Browser(props: BrowserProps) {
         setDragId(id)
         setDropSlot(null) // the previous drag's gap indicator must not flash back
         const title = items.find((i) => i.id === id)?.title ?? 'Bundle'
-        setDragBadge(e, dragBadgeLabel(targets.length, title, 'bundle'))
+        setCoversDragImage(
+          e,
+          dragBadgeLabel(targets.length, title, 'bundle'),
+          draggedCovers(scrollEl, id, targets),
+        )
         onBundleDragStart?.(targets)
       },
       onDragEnd: (e: React.DragEvent) => {

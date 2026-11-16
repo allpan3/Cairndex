@@ -184,6 +184,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Dragging bundles shows their covers.** A bundle drag now shows the covers
+  of up to three dragged cards, stacked with the grabbed card in front, above
+  the usual title or count label. Only covers already on screen take part; a
+  drag without one keeps the label pill.
 - **Covers fade in.** Bundle card and list covers are images decoded off the
   main thread that fade in over the card's placeholder in 140 ms, instead of
   CSS backgrounds that popped in. A cover already loaded appears at once, a
