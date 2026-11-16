@@ -127,6 +127,13 @@ export async function proxyApi(page: Page, apiBaseUrl: string) {
       }
       await route.fulfill({ status: response.status, headers, body })
     } catch (error) {
+      // Teardown stops the backend while the page may still be polling. The page
+      // sees a refused connection, as it would without the proxy; a backend that
+      // dies during a test still fails it through the page's own assertions.
+      if ((error as { cause?: { code?: string } }).cause?.code === 'ECONNREFUSED') {
+        await route.abort('connectionrefused').catch(() => undefined)
+        return
+      }
       // Media replacement can cancel a routed range while its upstream read is still settling
       if (
         !page.isClosed() &&
