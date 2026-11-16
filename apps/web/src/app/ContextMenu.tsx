@@ -34,7 +34,8 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
     // the shell cleared the bundle selection underneath it — the marquee acts on
     // mousedown/mouseup, so stopping the click alone is too late (owner,
     // 2026-07-27). Captured, so nothing beneath ever sees it.
-    const inside = (target: EventTarget | null) => ref.current?.contains(target as Node) ?? false
+    const inside = (target: EventTarget | null) =>
+      target instanceof Node && (ref.current?.contains(target) ?? false)
     const onDown = (e: MouseEvent) => {
       if (inside(e.target)) return
       onClose()
@@ -94,6 +95,7 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      if (document.activeElement?.closest('[data-submenu]')) return
       state.returnFocus?.focus({ preventScroll: true })
       onClose()
       e.stopPropagation()
@@ -110,9 +112,12 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
     // away made that button dismiss its own menu (found by the moments e2e,
     // 2026-08-29), and every rail row deep enough to need scrolling had the same
     // fragility.
+    const onScroll = (event: Event) => {
+      if (!inside(event.target)) onClose()
+    }
     let armed = 0
     const arm = () => {
-      window.addEventListener('scroll', onClose, true)
+      window.addEventListener('scroll', onScroll, true)
       window.addEventListener('resize', onClose)
     }
     armed = requestAnimationFrame(arm)
@@ -122,7 +127,7 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
       window.removeEventListener('mouseup', onAway, true)
       window.removeEventListener('click', onAway, true)
       window.removeEventListener('keydown', onKey, true)
-      window.removeEventListener('scroll', onClose, true)
+      window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onClose)
     }
   }, [state, onClose])
@@ -133,30 +138,18 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
     <div
       className="context-menu"
       ref={ref}
-      role="menu"
       // Hidden until measured so it never flashes off-screen at the cursor.
       style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: 0 }}
     >
-      {state.items.map((item, i) =>
-        item === null ? (
-          <div key={`sep-${i}`} className="context-menu__sep" role="separator" />
-        ) : (
-          <button
-            key={item.label}
-            className={`context-menu__item${item.danger ? ' context-menu__item--danger' : ''}`}
-            role="menuitem"
-            disabled={item.disabled}
-            onClick={() => {
-              state.returnFocus?.focus({ preventScroll: true })
-              onClose()
-              item.onClick()
-            }}
-          >
-            {item.label}
-            {item.detail && <span className="context-menu__detail">{item.detail}</span>}
-          </button>
-        ),
-      )}
+      <MenuRows
+        key={`${state.x}:${state.y}`}
+        items={state.items}
+        onActivate={(item) => {
+          state.returnFocus?.focus({ preventScroll: true })
+          onClose()
+          item.onClick?.()
+        }}
+      />
     </div>,
     document.body,
   )
@@ -184,5 +177,137 @@ export function TargetContextMenu<T>(props: {
       state={state && target !== undefined ? { ...state, items: props.entries(target) } : state}
       onClose={props.onClose}
     />
+  )
+}
+
+/** Each level owns its focus and its child; closing a child returns to its parent row. */
+function MenuRows({
+  items,
+  onActivate,
+  anchor,
+  onBack,
+  label,
+}: {
+  items: MenuEntry[]
+  onActivate: (item: NonNullable<MenuEntry>) => void
+  anchor?: HTMLButtonElement
+  onBack?: () => void
+  label?: string
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [child, setChild] = useState<{ label: string; anchor: HTMLButtonElement } | null>(null)
+  const buttons = useRef(new Map<string, HTMLButtonElement>())
+  const [pos, setPos] = useState({ left: -9999, top: 0 })
+  useLayoutEffect(() => {
+    const panel = ref.current
+    if (!panel) return
+    if (anchor) {
+      const rect = anchor.getBoundingClientRect()
+      const width = panel.offsetWidth
+      setPos({
+        left: Math.max(
+          8,
+          rect.right + width + 8 <= window.innerWidth ? rect.right : rect.left - width,
+        ),
+        top: Math.max(8, Math.min(rect.top, window.innerHeight - panel.offsetHeight - 8)),
+      })
+    }
+    panel.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
+  }, [anchor])
+  const back = () => {
+    onBack?.()
+    anchor?.focus({ preventScroll: true })
+  }
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      aria-label={label}
+      data-submenu={anchor ? '' : undefined}
+      className={anchor ? 'context-menu context-menu__submenu' : 'context-menu__rows'}
+      style={anchor ? pos : undefined}
+      onKeyDown={(event) => {
+        event.stopPropagation()
+        const enabled = [...buttons.current.values()].filter((button) => !button.disabled)
+        const index = enabled.indexOf(document.activeElement as HTMLButtonElement)
+        if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+          event.preventDefault()
+          const next =
+            event.key === 'Home'
+              ? 0
+              : event.key === 'End'
+                ? enabled.length - 1
+                : (index + (event.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length
+          enabled[next]?.focus({ preventScroll: true })
+        } else if (event.key === 'ArrowRight') {
+          const item = items.find((item) => item?.label === enabled[index]?.dataset.label)
+          if (item?.children && !item.disabled) {
+            event.preventDefault()
+            setChild({ label: item.label, anchor: enabled[index]! })
+          }
+        } else if (anchor && ['ArrowLeft', 'Escape'].includes(event.key)) {
+          event.preventDefault()
+          back()
+        } else if (event.key === 'Tab') {
+          event.preventDefault()
+          enabled[(index + (event.shiftKey ? -1 : 1) + enabled.length) % enabled.length]?.focus()
+        }
+      }}
+    >
+      {items.map((item, index) =>
+        item === null ? (
+          <div key={`sep-${index}`} className="context-menu__sep" role="separator" />
+        ) : (
+          <div
+            key={item.label}
+            onMouseEnter={() => {
+              if (!item.disabled) {
+                const anchor = buttons.current.get(item.label)
+                setChild(item.children && anchor ? { label: item.label, anchor } : null)
+              }
+            }}
+          >
+            <button
+              ref={(element) => {
+                if (element) buttons.current.set(item.label, element)
+                else buttons.current.delete(item.label)
+              }}
+              className={`context-menu__item${item.danger ? ' context-menu__item--danger' : ''}`}
+              role="menuitem"
+              data-label={item.label}
+              disabled={item.disabled}
+              aria-haspopup={item.children ? 'menu' : undefined}
+              aria-expanded={item.children ? child?.label === item.label : undefined}
+              onClick={(event) =>
+                item.children
+                  ? setChild(
+                      child?.label === item.label
+                        ? null
+                        : { label: item.label, anchor: event.currentTarget },
+                    )
+                  : onActivate(item)
+              }
+            >
+              <span className="context-menu__icon" aria-hidden="true">
+                {item.icon}
+              </span>
+              <span className="context-menu__label">{item.label}</span>
+              {item.detail && <span className="context-menu__detail">{item.detail}</span>}
+              {item.shortcut && <kbd aria-hidden="true">{item.shortcut}</kbd>}
+              {item.children && <span aria-hidden="true">›</span>}
+            </button>
+            {item.children && child?.label === item.label && (
+              <MenuRows
+                items={item.children}
+                onActivate={onActivate}
+                anchor={child.anchor}
+                label={item.label}
+                onBack={() => setChild(null)}
+              />
+            )}
+          </div>
+        ),
+      )}
+    </div>
   )
 }

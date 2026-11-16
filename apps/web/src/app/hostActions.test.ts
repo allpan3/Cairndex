@@ -17,7 +17,7 @@ test('a host that can act offers both entries, open first', () => {
   const entries = hostFileMenuEntries(LABELS, { onOpenFile, onRevealFile }, 'Set07/clip1.mp4')
 
   expect(entries.map((entry) => entry?.label)).toEqual(['Open in Default App', 'Reveal in Finder'])
-  entries[1]?.onClick()
+  entries[1]?.onClick?.()
   expect(onRevealFile).toHaveBeenCalledWith('Set07/clip1.mp4')
 })
 

@@ -328,6 +328,9 @@ Current browsing surfaces:
   Undo reverses exactly those through the same guarded bulk membership commit.
   The synthetic [quick preview](screenshots/quick-preview.png) and
   [Undo message](screenshots/organize-undo.png) captures show both.
+- Context menus share keyboard navigation and viewport-clamped submenus. Bundle
+  Copy actions read the selected bundle; tag pastes reuse guarded membership
+  changes and organizing Undo. Text fields retain their own shortcuts.
 - **File Browser:** read-only filesystem browser over the active library root,
   separate from Bundle Browser selection and bundle inspection.
 

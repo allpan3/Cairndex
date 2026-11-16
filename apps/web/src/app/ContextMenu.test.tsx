@@ -250,3 +250,34 @@ test('a double-click after an intervening click still opens', () => {
 
   expect(onOpen).toHaveBeenCalledOnce()
 })
+
+test('submenus support keyboard entry, disabled skipping and return to the parent', async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const copy = vi.fn()
+  const close = renderMenu([
+    { label: 'Unavailable', disabled: true, onClick: vi.fn() },
+    {
+      label: 'Copy',
+      children: [
+        { label: 'Copy Title', onClick: copy, shortcut: 'C' },
+        { label: 'Unavailable child', disabled: true, onClick: vi.fn() },
+        { label: 'Copy File Name', onClick: vi.fn() },
+      ],
+    },
+  ])
+  const parent = screen.getByRole('menuitem', { name: 'Copy' })
+  expect(parent).toHaveFocus()
+  fireEvent.keyDown(parent, { key: 'ArrowRight' })
+  const title = screen.getByRole('menuitem', { name: 'Copy Title' })
+  expect(title).toHaveFocus()
+  fireEvent.keyDown(title, { key: 'ArrowDown' })
+  const file = screen.getByRole('menuitem', { name: 'Copy File Name' })
+  expect(file).toHaveFocus()
+  fireEvent.keyDown(file, { key: 'Escape' })
+  expect(parent).toHaveFocus()
+  expect(close).not.toHaveBeenCalled()
+  fireEvent.keyDown(parent, { key: 'ArrowRight' })
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Copy Title' }))
+  expect(copy).toHaveBeenCalledOnce()
+  expect(close).toHaveBeenCalledOnce()
+})

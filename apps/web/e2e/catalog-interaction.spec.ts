@@ -332,3 +332,42 @@ test('a bundle drag shows the dragged covers, or the label pill without one @ful
     await library.close()
   }
 })
+
+test('bundle Copy and Tags submenus work with keyboard and pointer @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: async (value: string) => {
+          document.documentElement.dataset.copiedText = value
+        },
+      },
+    })
+  })
+  const library = await openLibrary(page, 6)
+  try {
+    const card = page
+      .getByRole('listbox', { name: 'Bundles', exact: true })
+      .getByRole('option')
+      .filter({ hasText: 'Synthetic bundle 1 雪' })
+    await card.click({ button: 'right' })
+    const copy = page.getByRole('menuitem', { name: 'Copy', exact: true })
+    await copy.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(page.getByRole('menuitem', { name: 'Copy Title' })).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(page.locator('html')).toHaveAttribute('data-copied-text', /Synthetic bundle/)
+    await expect(page.getByRole('menu')).toHaveCount(0)
+    await card.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Tags', exact: true }).hover()
+    await expect(page.getByRole('menuitem', { name: 'Copy Tags' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('menuitem', { name: 'Tags', exact: true })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('menu')).toHaveCount(0)
+  } finally {
+    await library.close()
+  }
+})

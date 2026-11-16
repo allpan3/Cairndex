@@ -57,7 +57,7 @@ test('a file that is gone offers Forget in place of Remove from Bundle', () => {
   })
 
   expect(entries.map((entry) => entry?.label ?? null)).toEqual(['Forget Missing File'])
-  entries[0]?.onClick()
+  entries[0]?.onClick?.()
   expect(onForgetMissing).toHaveBeenCalledWith([missing])
 })
 
