@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Tag pickers show Recently Used and Selected filters, nested tag paths,
+  arrow-key movement and a key-help footer. The last 12 choices stay in this
+  browser session, scoped to their server and library.
+
 - Bundle context menus have icons, keyboard navigation, and Copy and Tags
   submenus. Copy offers the title, current file name and desktop URI; Tags
   reuses guarded Copy/Paste and Undo. Tag shortcuts leave text inputs alone.

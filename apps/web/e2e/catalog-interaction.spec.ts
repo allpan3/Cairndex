@@ -371,3 +371,39 @@ test('bundle Copy and Tags submenus work with keyboard and pointer @fullstack', 
     await library.close()
   }
 })
+
+test('tag picking uses arrows and recalls recent choices @fullstack', async ({ page }) => {
+  test.setTimeout(120_000)
+  const library = await openLibrary(page, 6)
+  try {
+    await page
+      .getByRole('listbox', { name: 'Bundles', exact: true })
+      .getByRole('option')
+      .filter({ hasText: 'Synthetic bundle 1 雪' })
+      .click()
+    const tags = page
+      .getByRole('complementary', { name: 'Bundle inspector' })
+      .locator('[data-section="tags"]')
+    await tags.getByRole('button', { name: '+ Tag', exact: true }).click()
+    const picker = page.getByRole('dialog', { name: 'Choose tags' })
+    await picker.getByRole('textbox', { name: 'Search tags' }).fill('Synthetic child')
+    await expect(
+      picker.locator('.pick-row__pick').filter({ hasText: 'Synthetic child' }).first(),
+    ).toBeEnabled()
+    await page.keyboard.press('ArrowDown')
+    await expect(picker.locator('[data-tag-choice]').first()).toBeFocused()
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Escape')
+    await expect(
+      tags.getByRole('button', { name: 'Remove Synthetic child', exact: true }),
+    ).toBeEnabled()
+    await tags.getByRole('button', { name: '+ Tag', exact: true }).click()
+    await picker.getByRole('button', { name: 'Recently Used', exact: true }).click()
+    await expect(picker.locator('[data-tag-choice]')).toHaveCount(1)
+    await expect(picker.locator('[data-tag-choice]')).toContainText('Synthetic child')
+    await page.keyboard.press('Escape')
+    await expect(picker).toHaveCount(0)
+  } finally {
+    await library.close()
+  }
+})
