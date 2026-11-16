@@ -8,6 +8,7 @@ import {
   selectionKey,
 } from '../api/catalogBulk'
 import { rename, setBulkMembership, setMembership } from '../api/catalogOrganize'
+import { plannedChange } from '../api/catalogUndo'
 import { captureRequestScope } from '../api/requestScope'
 import type { components } from '../api/schema'
 import { CatalogChipPicker, type ChipChoice } from './CatalogChipPicker'
@@ -17,6 +18,7 @@ import { useContextMenu, type MenuEntry } from './useContextMenu'
 import { PromptDialog } from './PromptDialog'
 import { copiedCatalogTags } from '../api/catalogTagClipboard'
 import { useCatalogTagClipboard } from './useCatalogTagClipboard'
+import { membershipText, useOrganizeUndo } from './organizeUndo'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import { CollectionPickerPanel } from './CollectionPickerPanel'
 import { TagPickerPanel } from './TagPickerPanel'
@@ -71,6 +73,7 @@ export function CatalogBundleMemberships({
   const [menuChip, setMenuChip] = useState<string | null>(null)
   const menu = useContextMenu()
   const clipboard = useCatalogTagClipboard(library)
+  const undo = useOrganizeUndo()
   const selectionVersion = useReplicaStatus(library).data?.selection_version ?? 0
   const canPaste = selectionVersion >= 2
   // Version 4 lists only shared destinations; before it, a page of any is filtered
@@ -188,10 +191,19 @@ export function CatalogBundleMemberships({
     const read = [...chips, ...choices].find((item) => item.id === choice.id)
     if (read) change(() => save(read, assign))
   }
-  const save = (read: ChipChoice & { observed: Observed }, assign: boolean) =>
-    single
+  // In the browser, with one-destination reads (version 2), a change first reads
+  // what it will alter, so the browser's message can offer its Undo
+  const save = async (read: ChipChoice & { observed: Observed }, assign: boolean) => {
+    const current = captureRequestScope()
+    const recorded = undo && tree
+    const plan = recorded ? await plannedChange(library, ids, family, read.id, assign) : null
+    await (single
       ? setMembership(library, single, family, read, assign)
-      : setBulkMembership(library, ids, family, read, assign)
+      : setBulkMembership(library, ids, family, read, assign))
+    if (!recorded) return
+    current()
+    undo.record(membershipText(family, read.name, assign, ids.length), [plan])
+  }
   // A tree pick reads the one destination with its current bases, as a drag onto a
   // sidebar collection does
   function pickTree(id: string, assign: boolean) {

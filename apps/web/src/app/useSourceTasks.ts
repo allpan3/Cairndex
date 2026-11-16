@@ -11,6 +11,7 @@ import {
 } from '../api/sourceOperations'
 import type { CatalogNotice } from './CatalogToast'
 import { noun, type SourceTask, type TaskItem, type TaskItemState } from './sourceTasks'
+import { undoStamp, type Undoable } from './undoShortcut'
 
 // The server's collision refusal (`source_plan.py`); its job stops as interrupted
 export const isCollision = (job: Pick<SourceJob, 'error'>) =>
@@ -107,7 +108,7 @@ export function useSourceTasks(
   const queue = useRef(Promise.resolve())
   const names = useRef(new Map<string, { destination: string; completion: Promise<void> }>())
   // ⌘Z undoes the latest finished operation; any later operation replaces it
-  const latest = useRef<SourceTask | null>(null)
+  const latest = useRef<{ task: SourceTask; at: number } | null>(null)
   const newest = useRef('')
   // The result message whose Undo names the latest operation, so the next
   // operation can take that Undo back as it takes back ⌘Z
@@ -277,7 +278,7 @@ export function useSourceTasks(
         task.undoable &&
         done.some((state) => !state.skipped) &&
         (task.finish.kind === 'none' || done.every((state) => state.skipped || state.created))
-      if (undoable && newest.current === id) latest.current = task
+      if (undoable && newest.current === id) latest.current = { task, at: undoStamp() }
       const notice = {
         text: summary,
         action: undoable ? { label: 'Undo', run: () => undo(task) } : undefined,
@@ -429,32 +430,6 @@ export function useSourceTasks(
   useEffect(() => {
     undoLatest.current = undo
   })
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const task = latest.current
-      if (
-        !task ||
-        event.defaultPrevented ||
-        event.shiftKey ||
-        event.altKey ||
-        !(event.metaKey || event.ctrlKey) ||
-        event.key.toLowerCase() !== 'z'
-      )
-        return
-      // Text fields keep their own undo, and a dialog's question comes first
-      const target = event.target instanceof Element ? event.target : null
-      if (
-        target?.closest('input, textarea, select, [contenteditable="true"]') ||
-        document.querySelector('[aria-modal="true"]')
-      )
-        return
-      event.preventDefault()
-      undoLatest.current(task)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
   async function finishName(id: string) {
     await queue.current
     const stopped = find(id)
@@ -478,6 +453,11 @@ export function useSourceTasks(
   return {
     tasks: list,
     start,
+    /** The latest finished operation for the shared ⌘Z (useUndoShortcut), until another starts */
+    newestUndo(): Undoable | null {
+      const entry = latest.current
+      return entry ? { at: entry.at, run: () => undoLatest.current(entry.task) } : null
+    },
     async name(task: NewTask): Promise<void> {
       const request = task.items[0]!.request
       const path = request.source || request.destination || ''

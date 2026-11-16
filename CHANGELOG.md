@@ -10,6 +10,18 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Undo for organizing.** Adding bundles to a collection or moving them into
+  one, removing them from the open collection, changing a tag or collection in
+  the inspector, and pasting tags now report the change with an Undo button.
+  ⌘Z (Ctrl+Z) in the Bundle Browser undoes the latest of these, then the one
+  before it, in order with file operations: one ⌘Z always takes back the newest
+  change of either kind. A text field, dialog or menu keeps its own ⌘Z. Undo reverses only
+  the bundles the change altered: bundles that already had a tag keep it. It
+  is an ordinary guarded change, so an edit made since on another device is
+  refused rather than overwritten. Changes to more than 100 bundles offer no
+  Undo. When bundles leave the open collection, the selection moves to the next
+  card.
+
 - **Space for a quick preview.** In the Bundle Browser, Space shows the selected
   bundle's current file inside the window: an image at viewing size, or a video
   that starts playing at once. The arrow keys step through the results, the

@@ -1,6 +1,11 @@
 import { expect, test, vi } from 'vitest'
 
-import { dropRightClickSelection, isMultiSelection, selectionTargets } from './selection'
+import {
+  dropRightClickSelection,
+  isMultiSelection,
+  nextRemaining,
+  selectionTargets,
+} from './selection'
 
 test('acts on just the clicked item when it is not part of a multi-selection', () => {
   expect(selectionTargets('a', new Set())).toEqual(['a'])
@@ -48,4 +53,12 @@ test('a right-click inside a text field keeps its selection', () => {
 
   expect(removeAllRanges).not.toHaveBeenCalled()
   vi.restoreAllMocks()
+})
+
+test('after a move the selection goes on to the next item that stays, else back', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e']
+  expect(nextRemaining(ids, 'b', new Set(['b', 'c']))).toBe('d')
+  expect(nextRemaining(ids, 'e', new Set(['d', 'e']))).toBe('c')
+  expect(nextRemaining(ids, 'a', new Set(ids))).toBeNull()
+  expect(nextRemaining(ids, 'gone', new Set(['a']))).toBeNull()
 })

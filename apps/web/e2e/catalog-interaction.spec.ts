@@ -205,3 +205,79 @@ test('the preview counts the whole result and pages in more as it steps @fullsta
     await library.close()
   }
 })
+
+test('organizing offers Undo on its message and with ⌘Z, and the selection moves on @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(150_000)
+  await page.setViewportSize({ width: 1400, height: 900 })
+  const library = await openLibrary(page, 6)
+  try {
+    const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
+    const card = (index: number) => grid.locator(`[data-bundle-id="bundle-00000${index}"]`)
+    const row = (name: RegExp) => page.getByRole('treeitem', { name }).first()
+    const toast = page.locator('.mb-toast')
+    const items = (count: number) => page.getByText(`${count} items`, { exact: true })
+    const addThree = async () => {
+      await card(1).click()
+      await card(2).click({ modifiers: ['ControlOrMeta'] })
+      await card(3).click({ modifiers: ['ControlOrMeta'] })
+      await card(1).dragTo(row(/Synthetic child/))
+      await expect(toast).toContainText('Added 3 bundles to “Synthetic child”.')
+    }
+
+    // A drop's message undoes exactly what it added
+    await addThree()
+    await toast.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(toast).toContainText('Undone: Added 3 bundles to “Synthetic child”.')
+    await row(/Synthetic child/).click()
+    await expect(items(1)).toBeVisible()
+
+    // Removed from the open collection, the card leaves and the selection moves on
+    await page.locator('.nav-item').filter({ hasText: /^All/ }).first().click()
+    await addThree()
+    await row(/Synthetic child/).click()
+    await expect(items(4)).toBeVisible()
+    const order = await grid
+      .locator('[data-bundle-id]')
+      .evaluateAll((cards) => cards.map((element) => element.getAttribute('data-bundle-id')))
+    const removed = order.indexOf('bundle-000002')
+    const next = order[removed + 1] ?? order[removed - 1]!
+    await card(2).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Remove from This Collection' }).click()
+    await expect(toast).toContainText('Removed 1 bundle from “Synthetic child”.')
+    await expect(items(3)).toBeVisible()
+    await expect(grid.locator(`[data-bundle-id="${next}"]`)).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    // ⌘Z puts it back; a text field keeps its own ⌘Z first
+    const search = page.getByRole('searchbox', { name: 'Search', exact: true })
+    await search.focus()
+    await page.keyboard.press('ControlOrMeta+z')
+    // A negative: give a wrongly taken undo time to report before checking
+    await page.waitForTimeout(500)
+    await expect(toast).toContainText('Removed 1 bundle from “Synthetic child”.')
+    await grid.locator(`[data-bundle-id="${next}"]`).click()
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect(toast).toContainText('Undone: Removed 1 bundle from “Synthetic child”.')
+    await expect(items(4)).toBeVisible()
+
+    // An inspector tag change offers Undo too
+    const tags = page
+      .getByRole('complementary', { name: 'Bundle inspector' })
+      .locator('[data-section="tags"]')
+    await tags.getByRole('button', { name: '+ Tag', exact: true }).click()
+    const picker = page.getByRole('dialog', { name: 'Choose tags' })
+    await picker.getByRole('textbox', { name: 'Search tags' }).fill('Synthetic root')
+    await picker.getByRole('button', { name: /Synthetic root/ }).click()
+    await page.keyboard.press('Escape')
+    const chip = tags.getByRole('button', { name: 'Remove Synthetic root', exact: true })
+    await expect(chip).toBeEnabled()
+    await expect(toast).toContainText('Added “Synthetic root” to 1 bundle.')
+    await toast.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(chip).toHaveCount(0)
+  } finally {
+    await library.close()
+  }
+})

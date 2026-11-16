@@ -110,8 +110,9 @@ exchange lock. Metadata commits still validate their causal bases. **×** stops 
 already being applied finishes, and **Continue** resumes the rest. A task that ends
 cleanly leaves a message with **Undo** at the foot of the window. **⌘Z** undoes
 the latest such operation too, after the message has gone, until another
-operation starts; text fields and open dialogs keep ⌘Z for themselves, and an
-operation is undone once. There is no Redo. Undo is one new
+operation starts; text fields, open dialogs and menus keep ⌘Z for themselves, and an
+operation is undone once. The same ⌘Z undoes organizing changes in the Bundle
+Browser, so it always takes back the newest change of either kind first. There is no Redo. Undo is one new
 journaled operation per changed item. A plain copy, move, rename or trash has an
 exact inverse. Copies that were then bundled cannot use it, because bundling
 changed their metadata after they landed, so their Undo moves them to the Trash

@@ -486,15 +486,10 @@ test.each([true, false])(
   },
 )
 
-test('⌘Z undoes the latest finished operation once, outside text fields', async () => {
+test('⌘Z gets the latest finished operation, once', async () => {
   const posted = server()
   const { hook, notices } = mount(true)
-  const press = (target: EventTarget = document.body) =>
-    act(() => {
-      target.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }))
-    })
-  press()
-  expect(posted).toHaveLength(0)
+  expect(hook.result.current.newestUndo()).toBeNull()
   act(() => {
     hook.result.current.start({
       title: 'Renaming',
@@ -515,15 +510,14 @@ test('⌘Z undoes the latest finished operation once, outside text fields', asyn
     })
   })
   await waitFor(() => expect(notices).toHaveLength(1))
-  const field = document.body.appendChild(document.createElement('input'))
-  press(field)
-  field.remove()
   expect(posted).toHaveLength(1)
-  press()
+  const latest = hook.result.current.newestUndo()!
+  act(() => latest.run())
   await waitFor(() => expect(notices).toHaveLength(2))
   expect(posted[1]).toMatchObject({ action: 'return', prior: 'rename-clip' })
-  // A second ⌘Z does not repeat that Undo, and the first notice no longer offers it
-  press()
+  // That Undo is not offered again, by ⌘Z or by the first notice
+  expect(hook.result.current.newestUndo()).toBeNull()
+  act(() => latest.run())
   expect(notices[0]!.action).toBeUndefined()
   expect(posted).toHaveLength(2)
 })

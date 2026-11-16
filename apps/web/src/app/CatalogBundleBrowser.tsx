@@ -27,7 +27,12 @@ import {
   emptyAdHocFilters,
 } from './adHocFilters'
 import { CatalogMultiBundleInspector } from './CatalogMultiBundleInspector'
-import { selectionRange, selectionTargets, type SelectionModifiers } from './selection'
+import {
+  nextRemaining,
+  selectionRange,
+  selectionTargets,
+  type SelectionModifiers,
+} from './selection'
 import { CatalogBundleAlbum } from './CatalogBundleAlbum'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
 import { CatalogBundleMoments } from './CatalogBundleMoments'
@@ -40,7 +45,6 @@ import {
   deleteBundles,
   reorderBundles,
   setCollectionCover,
-  setCollectionMembership,
 } from '../api/catalogOrganize'
 import { captureRequestScope } from '../api/requestScope'
 import { draftKey } from '../api/replicas'
@@ -476,6 +480,17 @@ export function CatalogBundleBrowser({
       navigation.current?.focus(id)
     },
   })
+  // Bundles moved out of the open collection leave its grid; the selection moves
+  // on to the next card that stays, so the keyboard keeps its place
+  useEffect(() => {
+    if (!active || !leaving.has(active)) return
+    const order = browse.data?.pages.flatMap((page) => page.items.map((item) => item.id)) ?? []
+    const next = nextRemaining(order, active, leaving)
+    if (!next) return
+    select(next, { shiftKey: false, metaKey: false, ctrlKey: false })
+    navigation.current?.focus(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs as bundles leave
+  }, [leaving])
   const clipboard = useCatalogTagClipboard(library, onNotice)
   useEffect(() => {
     if (
@@ -752,13 +767,7 @@ export function CatalogBundleBrowser({
             ? 'Remove from This Collection'
             : `Remove ${targets.length.toLocaleString()} from This Collection`,
           disabled: blocked || !together(targets.length),
-          onClick: () =>
-            organize(
-              () => setCollectionMembership(library, targets, collection, false),
-              one
-                ? 'Removed from this collection.'
-                : `Removed ${targets.length.toLocaleString()} from this collection.`,
-            ),
+          onClick: () => collections.removeBundlesFromOpen(targets),
         })
     }
     items.push(null, { label: 'Review metadata and conflicts', onClick: onReview })
