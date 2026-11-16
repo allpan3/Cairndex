@@ -40,6 +40,8 @@ test('catalog selection retains exact bulk reviews across navigation, response l
     await first.click()
     const single = page.getByRole('complementary', { name: 'Bundle inspector' })
     await single.getByRole('textbox', { name: 'Note', exact: true }).fill('Private single draft')
+    // The note saves itself; the selection below reads the bases that save made
+    await expect(single.getByRole('status').filter({ hasText: /^Saved$/ })).toBeVisible()
     await second.click({ modifiers: ['ControlOrMeta'] })
     const bulk = page.getByRole('complementary', { name: 'Selected bundles inspector' })
     await expect(bulk.getByRole('heading', { name: '2 bundles selected' })).toBeVisible()
@@ -143,6 +145,8 @@ test('catalog selection retains exact bulk reviews across navigation, response l
       name: 'Selected bundles inspector',
     })
     await keyboardPage.getByRole('button', { name: 'List', exact: true }).click()
+    // Keys pressed before the rows render would select nothing
+    await expect(keyboardBundles.getByRole('option').first()).toBeVisible()
     await keyboardBundles.focus()
     await keyboardPage.keyboard.press('Home')
     await keyboardPage.keyboard.press('Shift+ArrowDown')
