@@ -10,6 +10,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Quick preview places Previous, the result counter and Next together below
+  the media. Tab stays inside the preview and Enter activates focused buttons.
+
 - Tag pickers show Recently Used and Selected filters, nested tag paths,
   arrow-key movement and a key-help footer. The last 12 choices stay in this
   browser session, scoped to their server and library.

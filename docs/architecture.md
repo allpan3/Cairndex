@@ -321,7 +321,8 @@ Current browsing surfaces:
   remounts every visible card. Each zoom keeps the selected item, or the one
   nearest the middle of the view, at the same window position. Space opens
   `QuickPreview` over the window: it reads the bundle's playlist and streams its
-  current file directly, without the viewer's cursor and history writes.
+  current file directly, without the viewer's cursor and history writes. Its
+  bottom bar groups Previous, the counter and Next; focus stays in the preview.
   Organizing changes record their reverse in `useOrganizeUndoStack`: before a
   membership change runs, `plannedChange` reads which bundles it will alter
   (one `selection_version` 2 read per destination, halving mixed groups), and

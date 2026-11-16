@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
+import { useModalDialog } from './useModalDialog'
 import { thumbnailUrl } from '../api/client'
 import { replicaRequest } from '../api/replicas'
 import type { components } from '../api/schema'
@@ -37,6 +38,7 @@ export function QuickPreview({
   onOpen: () => void
   onClose: () => void
 }) {
+  const { ref } = useModalDialog(onClose)
   // Read once per bundle: a step back reuses what an earlier look read
   const playlist = useQuery({
     queryKey: ['quick-preview', library, item.id],
@@ -71,6 +73,12 @@ export function QuickPreview({
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (
+        event.key === 'Enter' &&
+        event.target instanceof Element &&
+        event.target.closest('button')
+      )
+        return
       const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key]
       if (step === undefined && ![' ', 'Escape', 'Enter'].includes(event.key)) return
       event.preventDefault()
@@ -102,6 +110,7 @@ export function QuickPreview({
     (failed !== null && failed === (videoSource ?? image))
   return (
     <div
+      ref={ref}
       className="quick-preview"
       role="dialog"
       aria-modal="true"
@@ -112,9 +121,6 @@ export function QuickPreview({
     >
       <div className="quick-preview__bar">
         <span className="quick-preview__title">{item.title ?? 'Untitled'}</span>
-        <span className="quick-preview__count" aria-label="Position in results">
-          {position + 1} / {total}
-        </span>
         <button className="btn btn--sm" onClick={onOpen}>
           Open
         </button>
@@ -162,22 +168,27 @@ export function QuickPreview({
           </p>
         )}
       </div>
-      <button
-        className="quick-preview__step quick-preview__step--back"
-        aria-label="Previous"
-        disabled={position === 0}
-        onClick={() => onStep(-1)}
-      >
-        ‹
-      </button>
-      <button
-        className="quick-preview__step quick-preview__step--next"
-        aria-label="Next"
-        disabled={position >= total - 1}
-        onClick={() => onStep(1)}
-      >
-        ›
-      </button>
+      <div className="quick-preview__navigation" aria-label="Preview navigation">
+        <button
+          className="quick-preview__step"
+          aria-label="Previous"
+          disabled={position === 0}
+          onClick={() => onStep(-1)}
+        >
+          ‹
+        </button>
+        <span className="quick-preview__count" aria-label="Position in results">
+          {position + 1} / {total}
+        </span>
+        <button
+          className="quick-preview__step"
+          aria-label="Next"
+          disabled={position >= total - 1}
+          onClick={() => onStep(1)}
+        >
+          ›
+        </button>
+      </div>
     </div>
   )
 }

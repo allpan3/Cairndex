@@ -210,7 +210,7 @@ The follow-up polish uses Eagle 4.0 as its interaction reference. Bundle menus
 now expose Copy and Tags submenus with icons and keyboard navigation; the owner
 excluded Add to Collection from the menu. The remaining approved polish covers
 view options, selection thumbnails, search/type filtering, motion,
-empty-state actions and bottom preview navigation. Tag picking now includes
+empty-state actions. Preview navigation and its counter now share a bottom bar. Tag picking now includes
 recent/selected filters, parent paths and arrow-key navigation.
 
 ## Qualification and evidence

@@ -9443,7 +9443,7 @@ button.pick-row:disabled {
   position: relative;
   flex: 1;
   min-height: 0;
-  margin: 0 64px 32px;
+  margin: 0 24px 12px;
 }
 .quick-preview__media {
   position: absolute;
@@ -9468,12 +9468,16 @@ button.pick-row:disabled {
   color: var(--text-strong);
   font-size: 13px;
 }
+.quick-preview__navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 0 16px 16px;
+}
 .quick-preview__step {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
   width: 40px;
-  height: 64px;
+  height: 36px;
   border: 0;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
@@ -9484,12 +9488,6 @@ button.pick-row:disabled {
 .quick-preview__step:disabled {
   opacity: 0.3;
   cursor: default;
-}
-.quick-preview__step--back {
-  left: 12px;
-}
-.quick-preview__step--next {
-  right: 12px;
 }
 
 .context-menu__rows,
