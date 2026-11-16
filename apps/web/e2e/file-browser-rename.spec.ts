@@ -28,6 +28,8 @@ test('write mode enables file and folder renames that apply on Enter @fullstack'
     )
     await page.getByRole('button', { name: 'Create library', exact: true }).click()
     expect((await created).status()).toBe(201)
+    // The initial scan's result shares the one message slot with the rename's
+    await expect(page.getByText(/Initial scan complete/)).toBeVisible({ timeout: 60_000 })
     await page.getByRole('tab', { name: 'Files', exact: true }).click()
     const files = page.getByRole('grid', { name: 'Files', exact: true })
     const folder = files.getByRole('row').filter({ hasText: 'Folder' })
