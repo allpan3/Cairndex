@@ -10,6 +10,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Bundle context menus have icons, keyboard navigation, and Copy and Tags
+  submenus. Copy offers the title, current file name and desktop URI; Tags
+  reuses guarded Copy/Paste and Undo. Tag shortcuts leave text inputs alone.
+
 - **Undo for organizing.** Adding bundles to a collection or moving them into
   one, removing them from the open collection, changing a tag or collection in
   the inspector, and pasting tags now report the change with an Undo button.

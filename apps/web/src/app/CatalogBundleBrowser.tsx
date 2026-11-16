@@ -65,6 +65,17 @@ import { changeableTogether } from '../api/catalogBulk'
 import { readBundleIds, SelectAllAborted, type SelectAllProgress } from '../api/catalogSelectAll'
 import { SELECT_BUNDLES_EVENT } from './catalogBulkNotice'
 import { navTargetsFrom, rowStep } from './spatialNav'
+import {
+  IconPlay,
+  IconLayers,
+  IconTag,
+  IconFile,
+  IconFolder,
+  IconImage,
+  IconTrash,
+  IconAlert,
+  IconCopy,
+} from './icons'
 import { QuickPreview } from './QuickPreview'
 import { useQuickPreview } from './useQuickPreview'
 
@@ -503,12 +514,14 @@ export function CatalogBundleBrowser({
       return
     const keydown = (event: KeyboardEvent) => {
       if (
+        (event.target instanceof Element &&
+          Boolean(event.target.closest('input, textarea, select, [contenteditable]'))) ||
         !(event.metaKey || event.ctrlKey) ||
         !event.shiftKey ||
         document.querySelector('[aria-modal="true"], [role="menu"]')
       )
         return
-      if (event.key.toLowerCase() === 'c' && active) {
+      if (event.key.toLowerCase() === 'c' && active && selectedIds.size === 1) {
         event.preventDefault()
         void clipboard.copy(active)
       } else if (
@@ -723,46 +736,99 @@ export function CatalogBundleBrowser({
     // A Control-click opens this menu on macOS, so it must not toggle the selection
     if (one) select(id, { shiftKey: false, metaKey: false, ctrlKey: false })
     const collection = selection.collectionId
-    const items: MenuEntry[] = [{ label: 'Play / View', onClick: () => onOpen(id), disabled: !one }]
+    const title = items.find((card) => card.id === id)?.title ?? 'Untitled'
+    const entries: MenuEntry[] = [
+      { icon: <IconPlay />, label: 'Play / View', onClick: () => onOpen(id), disabled: !one },
+    ]
     if (albumEnabled)
-      items.push({ label: 'Open Bundle', onClick: () => openAlbum(id), disabled: !one })
-    // A browser has no handler for the scheme, so only the desktop app copies one
-    if (one && getHostPlatform().kind === 'desktop')
-      items.push({
-        label: 'Copy URI',
-        onClick: () =>
-          void copyText(buildDeepLinkUri('bundle', id, library)).then((copied) =>
-            onNotice(
-              copied
-                ? { text: 'Bundle URI copied.' }
-                : { text: 'Could not copy the URI.', alert: true },
-            ),
-          ),
+      entries.push({
+        icon: <IconLayers />,
+        label: 'Open Bundle',
+        onClick: () => openAlbum(id),
+        disabled: !one,
+      })
+    const copy = (text: string, label: string) => {
+      void copyText(text).then((copied) =>
+        onNotice(
+          copied
+            ? { text: `${label} copied.` }
+            : { text: `Could not copy ${label.toLowerCase()}.`, alert: true },
+        ),
+      )
+    }
+    if (one) {
+      entries.push({
+        label: 'Copy',
+        icon: <IconCopy />,
+        children: [
+          ...(getHostPlatform().kind === 'desktop'
+            ? [
+                {
+                  label: 'Copy URI',
+                  onClick: () => copy(buildDeepLinkUri('bundle', id, library), 'Bundle URI'),
+                },
+              ]
+            : []),
+          { label: 'Copy Title', onClick: () => copy(title, 'Title') },
+          {
+            label: 'Copy File Name',
+            onClick: () =>
+              hostAction(id, (paths) => copy(paths[0]!.split('/').pop()!, 'File name')),
+          },
+        ],
+      })
+    }
+    if ((status?.selection_version ?? 0) >= 2)
+      entries.push({
+        label: 'Tags',
+        icon: <IconTag />,
+        children: [
+          {
+            label: 'Copy Tags',
+            disabled: !one || clipboard.busy,
+            shortcut: getHostPlatform().kind === 'desktop' ? '⌘⇧C / Ctrl+Shift+C' : undefined,
+            onClick: () => void clipboard.copy(id),
+          },
+          {
+            label: 'Paste Tags',
+            disabled:
+              blocked ||
+              clipboard.busy ||
+              targets.length > 100 ||
+              !copiedCatalogTags(library).length,
+            shortcut: getHostPlatform().kind === 'desktop' ? '⌘⇧V / Ctrl+Shift+V' : undefined,
+            onClick: () => void clipboard.paste(targets),
+          },
+        ],
       })
     if (one && onLocateFile)
-      items.push(null, {
+      entries.push(null, {
+        icon: <IconFolder />,
         label: 'Locate in File Browser',
         onClick: () => hostAction(id, (paths) => onLocateFile(paths[0]!)),
       })
     if (one && hostFiles?.onOpenFile)
-      items.push({
+      entries.push({
+        icon: <IconFile />,
         label: hostFiles.labels.openFile,
         onClick: () => hostAction(id, (paths) => hostFiles.onOpenFile!(paths[0]!)),
       })
     if (one && hostFiles?.onRevealFile)
-      items.push({
+      entries.push({
+        icon: <IconFolder />,
         label: hostFiles.labels.revealFile,
         onClick: () => hostAction(id, (paths) => hostFiles.onRevealFile!(paths[0]!)),
       })
     if (collection) {
-      items.push(null, {
+      entries.push(null, {
+        icon: <IconImage />,
         label: 'Set as Collection Cover',
         disabled: !one || blocked,
         onClick: () =>
           organize(() => setCollectionCover(library, collection, id), 'Collection cover set.'),
       })
       if ((status?.selection_version ?? 0) >= 2)
-        items.push({
+        entries.push({
           label: one
             ? 'Remove from This Collection'
             : `Remove ${targets.length.toLocaleString()} from This Collection`,
@@ -770,15 +836,20 @@ export function CatalogBundleBrowser({
           onClick: () => collections.removeBundlesFromOpen(targets),
         })
     }
-    items.push(null, { label: 'Review metadata and conflicts', onClick: onReview })
+    entries.push(null, {
+      icon: <IconAlert />,
+      label: 'Review metadata and conflicts',
+      onClick: onReview,
+    })
     if ((status?.browse_version ?? 0) >= 5)
-      items.push(null, {
+      entries.push(null, {
+        icon: <IconTrash />,
         label: one ? 'Delete Bundle' : `Delete ${targets.length.toLocaleString()} Bundles`,
         danger: true,
         disabled: blocked || !together(targets.length),
         onClick: () => setDeleting(targets),
       })
-    menu.open(event, items)
+    menu.open(event, entries)
   }
   // v0.2.1's folder card menu; a card inside a multi-selection acts for all of it
   function folderMenu(id: string, event: React.MouseEvent) {

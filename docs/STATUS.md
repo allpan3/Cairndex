@@ -206,6 +206,12 @@ that menu item to organizing Undo is a follow-up. The branch does not include th
 stack; `Browser.tsx` and `CatalogBundleBrowser.tsx` will need a careful rebase
 over it.
 
+The follow-up polish uses Eagle 4.0 as its interaction reference. Bundle menus
+now expose Copy and Tags submenus with icons and keyboard navigation; the owner
+excluded Add to Collection from the menu. The remaining approved polish covers
+tag picking, view options, selection thumbnails, search/type filtering, motion,
+empty-state actions and bottom preview navigation.
+
 ## Qualification and evidence
 
 These results qualify the named snapshots. The latest New Folder installation

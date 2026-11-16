@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { currentDisplayedBasis } from '../api/editBasis'
 
 import { dropRightClickSelection } from './selection'
@@ -6,7 +6,10 @@ import { dropRightClickSelection } from './selection'
 /** One row in a right-click menu. A `null` entry renders a separator. */
 export interface MenuItem {
   label: string
-  onClick: () => void
+  onClick?: () => void
+  icon?: ReactNode
+  shortcut?: string
+  children?: MenuEntry[]
   /** Render in the destructive (red) style, e.g. delete actions. */
   danger?: boolean
   disabled?: boolean

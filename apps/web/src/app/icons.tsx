@@ -444,3 +444,10 @@ export const IconLayoutList = () => (
     <line x1="11" y1="16.5" x2="21" y2="16.5" />
   </Svg>
 )
+
+export const IconCopy = () => (
+  <Svg>
+    <rect x="8" y="8" width="12" height="12" rx="2" />
+    <path d="M16 8V4H4v12h4" />
+  </Svg>
+)
