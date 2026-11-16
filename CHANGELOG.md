@@ -190,8 +190,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   drag without one keeps the label pill.
 - **Covers fade in.** Bundle card and list covers are images decoded off the
   main thread that fade in over the card's placeholder in 140 ms, instead of
-  CSS backgrounds that popped in. A cover already loaded appears at once, a
-  failed one keeps the placeholder, and reduced motion turns the fade off.
+  CSS backgrounds that popped in. Until it arrives, every cover frame shows the
+  same soft gradient, with a slow sweep once a cover takes longer than 300 ms.
+  A cover already loaded appears at once, a failed one keeps the still
+  placeholder, and reduced motion turns the fade and the sweep off.
   Covers stay inert, so grabbing one still drags the card.
 - **Zoom without stutter.** Dragging the item-size slider now scales the laid-out
   cards and tiles and lays the grid out once, on release, instead of on every

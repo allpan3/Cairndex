@@ -192,8 +192,9 @@ Branch `feat/eagle-interaction-polish`, based on `main` after
 unpushed. It carries owner-approved interaction changes, one commit each: a
 zoom slider that lays the grid out once per drag, covers that fade in over a
 neutral placeholder, a Space quick preview, Undo for organizing (toast
-button and ⌘Z), and a bundle drag image of the dragged covers. Cover main-colour placeholders change the private store
-and wait for owner review of their design. Undo is in-session only and keeps
+button and ⌘Z), and a bundle drag image of the dragged covers. The owner declined per-cover colour placeholders
+(2026-11-16): one shared loading placeholder serves every cover instead, so the
+private store does not change. Undo is in-session only and keeps
 no history across reloads. In Safari on macOS (WebKit, as the desktop shell
 uses), the page receives ⌘Z before the Edit ▸ Undo menu item; the packaged
 desktop app was not rebuilt to confirm it there. The same Safari check showed
