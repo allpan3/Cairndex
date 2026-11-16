@@ -110,7 +110,10 @@ POLICY_RULES = {
         f"more than {MAX_SCANNED_PATHS} paths in one scan; stage what you chose "
         "file by file rather than reaching for `git add -A`"
     ),
-    "byte-budget": f"more than {MAX_ADDED_BYTES // 1024} KiB of new blobs in one scan",
+    "byte-budget": (
+        f"more than {MAX_ADDED_BYTES // 1024} KiB of new content in one scan, "
+        "counting each path once at its largest new version"
+    ),
 }
 
 _PLACEHOLDER_USERS = {
@@ -598,7 +601,12 @@ def scan_range(
     commits, objects = _range_objects(repo_root, head, base, all_history)
     findings: list[str] = []
     blob_count = 0
-    added_bytes = 0
+    # Each path counts once, at its largest new version. The budget asks how much
+    # content a change adds, and a file edited in many commits is still one file:
+    # summing every version made a 49-commit stack that adds 5 MiB count as 35 MiB,
+    # because each commit adds a whole new copy of the changelog or the generated
+    # API schema. A blob reachable from no path still counts, under its own id.
+    largest_version: dict[str, int] = {}
     published_paths: set[str] = set()
     for oid, object_type, data in _cat_objects(repo_root, list(objects)):
         paths = objects[oid]
@@ -611,7 +619,8 @@ def scan_range(
             findings.extend(scan_commit(data, oid, private_patterns))
         elif object_type == "blob":
             blob_count += 1
-            added_bytes += len(data)
+            for key in paths or {oid}:
+                largest_version[key] = max(largest_version.get(key, 0), len(data))
             findings.extend(scan_blob(data, oid, paths, allowlist, private_patterns))
     # The volume tripwires ask "did this change add more than anyone chose file by
     # file?", which only means something for an incremental scan. A whole-history
@@ -621,7 +630,10 @@ def scan_range(
     # build output and undeclared vendoring are wrong at any point in history.
     findings.extend(
         scan_publication_policy(
-            published_paths, added_bytes, allowlist, enforce_volume=not all_history
+            published_paths,
+            sum(largest_version.values()),
+            allowlist,
+            enforce_volume=not all_history,
         )
     )
     return findings, len(commits), blob_count
