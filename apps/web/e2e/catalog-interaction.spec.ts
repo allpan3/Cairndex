@@ -153,7 +153,9 @@ test('Space looks at bundles in place, steps through the results and opens the v
     await page.keyboard.press(' ')
     const preview = page.getByRole('dialog', { name: 'Quick preview' })
     await expect(preview.getByLabel('Position in results')).toHaveText('1 / 3')
-    await page.keyboard.press('ArrowRight')
+    await expect(preview.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled()
+    await preview.getByRole('button', { name: 'Next', exact: true }).focus()
+    await page.keyboard.press('Enter')
     await expect(preview.getByLabel('Position in results')).toHaveText('2 / 3')
     await expect(preview).toContainText('Synthetic playback')
     // The selection follows the preview, and a video plays at once
