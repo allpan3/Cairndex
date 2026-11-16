@@ -61,6 +61,8 @@ import { changeableTogether } from '../api/catalogBulk'
 import { readBundleIds, SelectAllAborted, type SelectAllProgress } from '../api/catalogSelectAll'
 import { SELECT_BUNDLES_EVENT } from './catalogBulkNotice'
 import { navTargetsFrom, rowStep } from './spatialNav'
+import { QuickPreview } from './QuickPreview'
+import { useQuickPreview } from './useQuickPreview'
 
 type Page = components['schemas']['CatalogBrowsePage']
 // Browse version 11 adds local file observations and opening/edit history.
@@ -462,6 +464,18 @@ export function CatalogBundleBrowser({
     [items, selectedIds],
   )
   const albumId = album?.scope === scope ? album.id : null
+  const peek = useQuickPreview({
+    items,
+    activeId: active,
+    total: browse.data?.pages[0]?.total ?? items.length,
+    hasNextPage: browse.hasNextPage,
+    fetchingNextPage: browse.isFetchingNextPage,
+    fetchNextPage: () => void browse.fetchNextPage(),
+    onSelect: (id) => {
+      select(id, { shiftKey: false, metaKey: false, ctrlKey: false })
+      navigation.current?.focus(id)
+    },
+  })
   const clipboard = useCatalogTagClipboard(library, onNotice)
   useEffect(() => {
     if (
@@ -943,6 +957,12 @@ export function CatalogBundleBrowser({
           next = (listing.classList.contains('collhead') ? folderWalk : bundleWalk)[0] ?? null
         if (event.key === 'End')
           next = (listing.classList.contains('collhead') ? folderWalk : bundleWalk).at(-1) ?? null
+        // Space looks at the active bundle without opening it, as in Eagle
+        if (event.key === ' ' && !folderActive && active && !event.metaKey && !event.ctrlKey) {
+          event.preventDefault()
+          peek.show()
+          return
+        }
         if (event.key === 'Enter' && folderIds.size === 1 && folderActive) {
           event.preventDefault()
           onOpenCollection(folderActive)
@@ -1283,6 +1303,23 @@ export function CatalogBundleBrowser({
         </aside>
       )}
       <ContextMenu state={menu.state} onClose={menu.close} />
+      {peek.item && !albumId && (
+        <QuickPreview
+          library={library}
+          item={peek.item}
+          position={peek.position}
+          total={browse.data?.pages[0]?.total ?? items.length}
+          onStep={peek.step}
+          onOpen={() => {
+            peek.close()
+            onOpen(peek.item!.id)
+          }}
+          onClose={() => {
+            peek.close()
+            navigation.current?.focus(peek.item!.id)
+          }}
+        />
+      )}
       {cleaning && (
         <CleanupOrderDialog
           title="Clean up bundle order"

@@ -16,6 +16,9 @@ export function ShortcutReference() {
         <Shortcut label="Extend selection" keys="Shift + Arrow keys" />
         <Shortcut label="First / last loaded item" keys="Home / End" />
         <Shortcut label="Select all items" keys={`${command}A`} />
+        <Shortcut label="Quick preview / close it" keys="Space" />
+        <Shortcut label="Previous / next in the preview" keys="Arrow keys" />
+        <Shortcut label="Open the previewed bundle" keys="Enter" />
         <Shortcut label="Clear selection / close dialog" keys="Escape" />
       </dl>
       <h3>Video player</h3>

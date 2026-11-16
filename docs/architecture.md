@@ -319,7 +319,9 @@ Current browsing surfaces:
   A dragged zoom scales the laid-out grid with a CSS transform and lays it out
   once on release (`Browser`'s `previewZoom`), because a column-count change
   remounts every visible card. Each zoom keeps the selected item, or the one
-  nearest the middle of the view, at the same window position.
+  nearest the middle of the view, at the same window position. Space opens
+  `QuickPreview` over the window: it reads the bundle's playlist and streams its
+  current file directly, without the viewer's cursor and history writes.
 - **File Browser:** read-only filesystem browser over the active library root,
   separate from Bundle Browser selection and bundle inspection.
 
