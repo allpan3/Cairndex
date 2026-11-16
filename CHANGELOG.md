@@ -10,6 +10,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- Interface fades and transitions share a 150 ms ease-out timing. Reduce
+  Motion disables these transitions and the indeterminate progress sweeps.
+
 - Empty browse states offer a relevant action: clear search or filters, show
   subcollection contents, browse all bundles or update the library. Empty File
   Browser folders offer Create folder when permitted, otherwise Refresh files.

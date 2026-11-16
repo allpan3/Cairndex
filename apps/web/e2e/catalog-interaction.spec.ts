@@ -131,6 +131,10 @@ test('covers fade in as inert images over the card placeholder @fullstack', asyn
     ).toEqual(['none', 'none'])
     // Shown starts the fade; it ends fully opaque
     await expect(cover).toHaveCSS('opacity', '1')
+    await expect(page.locator('html')).toHaveCSS('--motion-duration', '150ms')
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await expect(page.locator('html')).toHaveCSS('--motion-duration', '0ms')
+    await expect(cover).toHaveCSS('transition-duration', '0s')
   } finally {
     await library.close()
   }
