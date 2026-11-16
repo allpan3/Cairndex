@@ -17,6 +17,8 @@ import { CatalogBundleMemberships } from './CatalogBundleMemberships'
 import { StarRating } from './Stars'
 import { useCatalogDraft } from './useCatalogDraft'
 import { validCatalogBulkDraft } from './catalogBulkDraft'
+import { BundleCoverStack } from './BundleCoverStack'
+import type { BundleCardItem } from './BundleCard'
 import { CatalogConflictDialog } from './CatalogConflictDialog'
 import { SELECT_BUNDLES_EVENT } from './catalogBulkNotice'
 
@@ -43,6 +45,7 @@ export function CatalogMultiBundleInspector({
   library,
   editor,
   ids,
+  covers = [],
   fileCount,
   totalSize,
   blocked,
@@ -56,6 +59,7 @@ export function CatalogMultiBundleInspector({
   library: string
   editor: string
   ids: string[]
+  covers?: BundleCardItem[]
   /** The selected cards' files together. */
   fileCount: number | null
   totalSize?: number | null
@@ -200,6 +204,7 @@ export function CatalogMultiBundleInspector({
           Clear
         </button>
       </div>
+      {covers.length > 0 && <BundleCoverStack items={covers} />}
       {retained && (
         <p className="catalog-bulk-inspector__retry" role="alert">
           {draft.body.label} for {pending} bundles did not finish saving.{' '}
