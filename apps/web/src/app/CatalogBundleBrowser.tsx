@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { catalog, type Entity } from '../api/catalog'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { components } from '../api/schema'
@@ -211,6 +211,7 @@ export function CatalogBundleBrowser({
   /** Where files dropped on this view should go: its collection and likeliest folder. */
   onDropContext?: (context: IncomingDropContext) => void
 }) {
+  const client = useQueryClient()
   const status = useReplicaStatus(library).data
   const localHistoryEnabled = (status?.browse_version ?? 0) >= 11
   const supportedSorts = localHistoryEnabled
@@ -794,6 +795,9 @@ export function CatalogBundleBrowser({
   const refresh = () => {
     void browse.refetch()
     if (single) void detail.refetch()
+    // A selection's snapshot read before this save holds the bases the save
+    // replaced, so a bulk change made from it would be refused as stale
+    void client.invalidateQueries({ queryKey: ['catalog-selection', library] })
   }
   return (
     <div
