@@ -9574,3 +9574,27 @@ button.pick-row:disabled {
   height: 28px;
   color: var(--text-muted);
 }
+
+.toolbar__breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.toolbar__breadcrumb button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+.type-filter {
+  width: min(260px, calc(100vw - 16px));
+  padding: 12px;
+}
+.type-filter__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}

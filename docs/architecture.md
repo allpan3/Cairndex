@@ -331,6 +331,9 @@ Current browsing surfaces:
   [Undo message](screenshots/organize-undo.png) captures show both.
 - The multi-bundle inspector renders up to three selected card covers, reusing
   the decoded-cover placeholder and avoiding selection-sized thumbnail requests.
+- Search breadcrumbs retain the current scope and show the server result count.
+  The File type chip compiles to the existing extension predicate; filtering
+  combines with search and Smart Collections before paging.
 - View options groups layout, zoom, sort and card details in one anchored
   panel. Changes apply live; hiding card details also removes their row height
   from virtualized layout and marquee geometry.
