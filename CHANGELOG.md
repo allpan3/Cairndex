@@ -10,6 +10,28 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Incoming files become a bundle, join a bundle or land in a folder.** Files dropped
+  in the Bundle Browser's empty space, or chosen with Add Files…, open **Add N files
+  as a new bundle**, with a name taken from the files, the open collection already
+  chosen and a suggested folder beside that collection's bundles, never inside another
+  bundle's folder. Folders that do not exist yet are marked “new folder” and created,
+  journaled, before the copy, and the folder picker has New Folder. Files dropped on a
+  bundle card, or into an open bundle, join that bundle in its folder; in the File
+  Browser they copy into the open folder. Copies run in the background with Undo, and
+  an occupied name waits for Keep Both, Replace or Skip.
+- **Library file actions are single actions, without the File Operations panel.** With
+  write mode on, files and folders, including those in a bundle's album, have Rename…,
+  Copy to…, Move to…, Move to Trash and Locate in File Browser. Rename and New Folder
+  name the item inline (a new folder starts as **Untitled**) and reject an occupied
+  name in place. Each action responds at once, runs in the background and has Undo,
+  and ⌘Z undoes the latest one. **Trash** in the sidebar lists trashed items with Put
+  Back and replaced versions with Restore a Copy, and has **Empty Trash** for retained
+  originals and **Delete Kept Copies…** for duplicates that earlier versions kept.
+  Operations saved by a reload or another window show in the sidebar with Review….
+  Write mode is switched only in Libraries.
+- **File activity card.** File tasks show in a compact bottom-right card with received
+  bytes, an averaged speed, percentage and completed-file counts. A stopped task is
+  listed with its reason, Cancel and Try Again, and a cancellation survives a reload.
 - Restore ranked manual-bundling targets, suggested draft titles/roles and
   related Unbundled files for portable libraries. Recommendations use indexed
   metadata and filenames, including files outside the first page. Apply remains
@@ -297,6 +319,40 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Faster file operations.** Copying a file into the library writes it once instead
+  of copying and hashing it twice (ADR-0042), which halves copy time on a test share,
+  and uploads are written in 4 MiB blocks. Same-volume Rename, Move and Trash move the
+  original instead of keeping a full recovery copy; Undo and Put Back return it. On a
+  network share, Rename, Move, Trash, Put Back and Undo take about 0.3–0.7 s of
+  backend time instead of 3–4 s: Cairndex clears the macOS mount's cached absence of a
+  name instead of waiting it out, moves once instead of twice, and proves a folder's
+  SMB mapping once per mount.
+- **Network share access.** Cairndex asks macOS for a share's saved login when Write
+  Mode is enabled and before a file task's first step, and shows **Allow Access…** in
+  a compact confirmation when the login cannot be used; the stopped task waits for Try
+  Again. A failed step stops the steps after it, so one cause is reported once.
+  Permission, read-only and full-storage failures are told apart, a refused upload
+  shows the server's reason, and metadata saves continue during file work.
+- **Update's file changes are readable, and one action settles each.** Each changed
+  file is listed with its folder and a label (Not confirmed, Possibly moved, Content
+  changed) beside a plain explanation. One button (Check and Restore, Check and Link,
+  Use New Content) reads the file when needed, prepares the review and accepts it,
+  with progress and Cancel. Large files that Cairndex copied in stay confirmed after
+  their share is mounted again, and a file it cannot confirm is called unconfirmed
+  rather than different.
+- **Grouping review accepts in one step and keeps its choices across Updates, as in
+  v0.2.1.** **Accept selected** prepares, checks and saves the exact review. A new
+  Update's draft keeps titles, selection, file order, moves, merges, splits,
+  collection placement and folder choices for the files still there. When Accept
+  selected is refused because files changed, the review runs Update and opens the new
+  draft with those choices kept. Section headings are titles, and the split action
+  reads **Make new bundle**.
+- **Inspectors save automatically and resolve conflicts in place, as in v0.2.1.**
+  Title, notes, rating and cover save without Save or Discard, and an interrupted edit
+  is kept and retried. Selecting a file in an open bundle shows only that file's
+  inspector. Review Conflicts opens a compact dialog over the browser with readable
+  versions of title, rating, notes, cover and main file; file, order and existence
+  conflicts link to Metadata review.
 - Library preparation and the first file scan now explain their server scope.
   Initial scans retain their label across refresh, cancellation and retry;
   later Updates keep the compact progress display. Existing libraries opened
@@ -408,6 +464,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Restore Set Frame as Video Cover and Reset Video Cover to Default in the portable
+  viewer, as in v0.2.1. The offset is saved as the file's `cover_time` through a
+  catalog save job.
+- Keep macOS approval for network volumes across local rebuilds: with the opted-in
+  local signer, `just build-desktop` re-signs `Cairndex.app` with that certificate
+  instead of an ad-hoc identity.
 - Reduce Update overhead after a macOS SMB reconnect by retaining checked
   directory handles and overlapping at most sixteen fingerprint reads. Native
   device changes still require fresh evidence. Cancellation and failures discard
