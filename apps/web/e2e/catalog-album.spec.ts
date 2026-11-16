@@ -376,6 +376,8 @@ test('album file actions use live Write Mode and preserve file identity @fullsta
         { timeout: 30_000 },
       )
       .toBe(false)
+    // The file leaves before the task finishes; Undo is offered with its result
+    await expect(page.getByText('Moved “frame000.png” to the Trash.')).toBeVisible()
     await page.getByRole('button', { name: 'Undo', exact: true }).click()
     await expect
       .poll(
@@ -388,11 +390,17 @@ test('album file actions use live Write Mode and preserve file identity @fullsta
       )
       .toBe(true)
     expect(await readFile(join(root, 'Loose/frame000.png'))).toEqual(original)
-    const file = await (
-      await fetch(`${backend.baseUrl}/api/v1/libraries/${library.id}/replica/media/files/loose-000`)
-    ).json()
-    expect(file.file.id).toBe('loose-000')
-    expect(file.file.relative_path).toBe('Loose/frame000.png')
+    // The file is back on disk before the catalog has recorded where it is
+    const record = async () =>
+      (
+        await (
+          await fetch(
+            `${backend.baseUrl}/api/v1/libraries/${library.id}/replica/media/files/loose-000`,
+          )
+        ).json()
+      ).file as { id: string; relative_path: string } | undefined
+    await expect.poll(async () => (await record())?.relative_path).toBe('Loose/frame000.png')
+    expect((await record())?.id).toBe('loose-000')
     await page.screenshot({ path: test.info().outputPath('synthetic-album-actions.png') })
   } finally {
     await stopBackend(backend.child)

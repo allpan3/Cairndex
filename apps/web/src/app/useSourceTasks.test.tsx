@@ -88,7 +88,17 @@ function mount(originals = false) {
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   )
   const hook = renderHook(
-    () => useSourceTasks('synthetic', (notice) => notices.push(notice), originals),
+    () =>
+      useSourceTasks(
+        'synthetic',
+        // An update rewrites the message on screen, which is the latest one
+        (notice) => {
+          if (typeof notice !== 'function') notices.push(notice)
+          else if (notices.length > 0)
+            notices[notices.length - 1] = notice(notices.at(-1)!) ?? notices.at(-1)!
+        },
+        originals,
+      ),
     {
       wrapper,
     },
@@ -139,6 +149,23 @@ test('copies become one new bundle in the chosen collection, then leave the side
   expect(notices[0]).toMatchObject({ text: 'Created “Clip” with 2 files.' })
   expect(notices[0]!.action?.label).toBe('Undo')
   expect(hook.result.current.tasks).toHaveLength(0)
+})
+
+test('a new operation takes back the Undo of the result before it', async () => {
+  server()
+  const { hook, notices } = mount()
+  act(() => {
+    hook.result.current.start(copies(['first.jpg'], { kind: 'none' }))
+  })
+  await waitFor(() => expect(notices).toHaveLength(1))
+  expect(notices[0]!.action?.label).toBe('Undo')
+  act(() => {
+    hook.result.current.start(copies(['second.jpg'], { kind: 'none' }))
+  })
+  // Still on screen, but its Undo would undo an operation older than the latest
+  expect(notices[0]).toEqual({ text: 'Copied.' })
+  await waitFor(() => expect(notices).toHaveLength(2))
+  expect(notices[1]!.action?.label).toBe('Undo')
 })
 
 test('an occupied name waits in the sidebar, and Keep Both reuses the received bytes', async () => {
@@ -495,8 +522,8 @@ test('⌘Z undoes the latest finished operation once, outside text fields', asyn
   press()
   await waitFor(() => expect(notices).toHaveLength(2))
   expect(posted[1]).toMatchObject({ action: 'return', prior: 'rename-clip' })
-  // Neither a second ⌘Z nor the first notice's button repeats that Undo
+  // A second ⌘Z does not repeat that Undo, and the first notice no longer offers it
   press()
-  act(() => notices[0]!.action!.run())
+  expect(notices[0]!.action).toBeUndefined()
   expect(posted).toHaveLength(2)
 })

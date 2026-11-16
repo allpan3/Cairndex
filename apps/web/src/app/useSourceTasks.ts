@@ -88,7 +88,9 @@ export type NewTask = Pick<SourceTask, 'title' | 'summary' | 'finish'> & {
  */
 export function useSourceTasks(
   library: string,
-  onNotice: (notice: CatalogNotice) => void,
+  onNotice: (
+    notice: CatalogNotice | ((current: CatalogNotice | null) => CatalogNotice | null),
+  ) => void,
   originals = false,
 ) {
   const cache = useQueryClient()
@@ -107,6 +109,9 @@ export function useSourceTasks(
   // ⌘Z undoes the latest finished operation; any later operation replaces it
   const latest = useRef<SourceTask | null>(null)
   const newest = useRef('')
+  // The result message whose Undo names the latest operation, so the next
+  // operation can take that Undo back as it takes back ⌘Z
+  const offered = useRef<CatalogNotice | null>(null)
   const undone = useRef(new Set<string>())
   const undoLatest = useRef<(task: SourceTask) => void>(() => undefined)
   useEffect(() => {
@@ -273,10 +278,12 @@ export function useSourceTasks(
         done.some((state) => !state.skipped) &&
         (task.finish.kind === 'none' || done.every((state) => state.skipped || state.created))
       if (undoable && newest.current === id) latest.current = task
-      onNotice({
+      const notice = {
         text: summary,
         action: undoable ? { label: 'Undo', run: () => undo(task) } : undefined,
-      })
+      }
+      if (notice.action) offered.current = notice
+      onNotice(notice)
     } catch (reason) {
       patch(id, (current) => ({
         ...current,
@@ -332,6 +339,13 @@ export function useSourceTasks(
     const id = operationId()
     newest.current = id
     latest.current = null
+    // The earlier result keeps its message but no longer offers Undo, which
+    // would undo an operation older than this one
+    const previous = offered.current
+    if (previous) {
+      offered.current = null
+      onNotice((current) => (current === previous ? { text: previous.text } : current))
+    }
     commit([
       ...tasks.current,
       {
