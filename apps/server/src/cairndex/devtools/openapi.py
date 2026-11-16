@@ -10,8 +10,13 @@ import json
 from cairndex.main import app
 
 
+# The exact text committed as apps/web/src/api/openapi.json
+def render() -> str:
+    return json.dumps(app.openapi(), indent=2, sort_keys=True) + "\n"
+
+
 def main() -> None:
-    print(json.dumps(app.openapi(), indent=2, sort_keys=True))
+    print(render(), end="")
 
 
 if __name__ == "__main__":

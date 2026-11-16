@@ -785,9 +785,13 @@ npm run gen:api          # writes src/api/schema.d.ts
 ```
 
 Both `openapi.json` and `schema.d.ts` are committed (generated, excluded from
-lint/format). `gen:api` uses `npx openapi-typescript` rather than a pinned
-devDependency because that tool's TypeScript peer range does not yet include
-TS 6.
+lint/format), so the web app, its type checks and the desktop build need no Python
+environment. `just api` runs both steps. The backend test
+`tests/test_generated_api.py` fails when `openapi.json` is stale, and the frontend
+CI job regenerates `schema.d.ts` and fails on any difference. `gen:api` uses
+`npx openapi-typescript` rather than a devDependency because that tool's
+TypeScript peer range does not yet include TS 6; the script pins an exact version
+so the generated file does not change with a new release.
 
 ## macOS SQLite durability
 
