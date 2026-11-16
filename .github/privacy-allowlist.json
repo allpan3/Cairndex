@@ -194,6 +194,22 @@
       ],
       "purpose": "Document compact grouping review and additions above new collection suggestions",
       "provenance": "Playwright capture from the approved macOS VM using only fresh synthetic discovery fixtures. Reviewed edge to edge with no owner media, paths, account data, notifications or desktop content"
+    },
+    {
+      "sha256": "2c6d248cb5903706671be63cb265add4842fd454514a4ab7ce6b4e10a35e206d",
+      "paths": [
+        "docs/screenshots/quick-preview.png"
+      ],
+      "purpose": "Document the Bundle Browser's Space quick preview with its position in the results",
+      "provenance": "Playwright capture of a fresh synthetic playable library at 1300 by 800 pixels in the approved macOS VM. Reviewed edge to edge with no owner media, paths, account data, notifications or desktop content"
+    },
+    {
+      "sha256": "ca2d473ef10617e1a58cb28ab5999581acae556b581e8478eaaacba3725326e6",
+      "paths": [
+        "docs/screenshots/organize-undo.png"
+      ],
+      "purpose": "Document a collection drop reported with its Undo in the Bundle Browser",
+      "provenance": "Playwright capture of a fresh synthetic playable library at 1300 by 800 pixels in the approved macOS VM. Reviewed edge to edge with no owner media, paths, account data, notifications or desktop content"
     }
   ],
   "vendored_trees": []
