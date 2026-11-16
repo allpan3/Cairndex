@@ -37,8 +37,20 @@ async function createLibrary(page: Page, root: string, name: string) {
       response.request().method() === 'POST',
   )
   await page.getByRole('button', { name: 'Create library', exact: true }).click()
-  expect((await created).status()).toBe(201)
+  const response = await created
+  expect(response.status()).toBe(201)
   await expect(page.getByRole('combobox', { name: 'Library', exact: true })).toContainText(name)
+  // The initial scan reports its result in the one message slot, so a later
+  // step's message must not race it
+  const { id } = (await response.json()) as { id: string }
+  await expect
+    .poll(() =>
+      page.evaluate(
+        async (url) => ((await (await fetch(url)).json()) as { state: string }).state,
+        `/api/v1/libraries/${id}/replica/discovery/status`,
+      ),
+    )
+    .toBe('succeeded')
   // Write mode is switched in Libraries and nowhere else
   await page.getByRole('button', { name: 'Manage libraries', exact: true }).click()
   const manager = page.getByRole('dialog', { name: 'Libraries', exact: true })
