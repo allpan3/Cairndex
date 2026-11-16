@@ -265,20 +265,18 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
-- Portable migration gaps (owner request, 2026-11-11), in review as
-  `prepare/portable-select-all` on top of #137, not installed. Restored: Size, Has
-  missing file and Has cover filters from this device's observations; File
-  Browser card hover previews for unchanged observed videos; Unbundled sorts over
-  the whole queue (`browse_version: 17`); and selections above 100 bundles as
-  batched server bulk operations (`selection_version: 5`, owner-chosen design:
-  skip changed bundles and continue, stop on a change to the shared target).
-  The same branch adds the windowed Unbundled and Select All work: Unbundled is
-  a windowed list sized from the server's total that fetches and stats only the
-  pages on screen, and Select All takes every matching bundle or queued file
-  through paged key reads (`selection_version: 6`). The backend and
-  frontend gates pass. Hosted CI runs the full-stack suite; its first run found
-  that `catalog-selection.spec.ts` still expected the older loaded-only Select
-  All, and the test now expects every match.
+- Portable migration gaps (owner request, 2026-11-11), merged in #142, not
+  installed. Restored: Size, Has missing file and Has cover filters from this
+  device's observations; File Browser card hover previews for unchanged observed
+  videos; Unbundled sorts over the whole queue (`browse_version: 17`); and
+  selections above 100 bundles as batched server bulk operations
+  (`selection_version: 5`, owner-chosen design: skip changed bundles and
+  continue, stop on a change to the shared target). The same branch adds the
+  windowed Unbundled and Select All work: Unbundled is a windowed list sized
+  from the server's total that fetches and stats only the pages on screen, and
+  Select All takes every matching bundle or queued file through paged key reads
+  (`selection_version: 6`). All hosted CI jobs, including the full-stack suite,
+  passed on the merged head.
   Limits: Size is not in the ordinary condition editor; Select All refuses
   views above 100,000 items; each Select All page re-sorts the whole view on
   the server; a selection of many thousand bundles reads its inspector state
