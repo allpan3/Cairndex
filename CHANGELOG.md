@@ -169,8 +169,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   ([ADR-0042](docs/adr/0042-copy-publishes-its-version.md)). **Trash** in the sidebar
   lists trashed items with Put Back and replaced versions with Restore a Copy, and has
   **Empty Trash** and **Delete Kept Copies…** for duplicates that earlier builds kept.
-  Operations saved by a reload or another window show in the sidebar with Review…. Write
-  mode is switched only in Libraries.
+  Operations that a reload or another window left waiting show in the activity card
+  with their reason and actions, older ones a page at a time
+  (`GET …/source-operations?waiting=true` lists only these). Write mode is switched
+  only in Libraries.
 - **File activity card.** File tasks show in a compact bottom-right card with received
   bytes, an averaged speed, percentage and completed-file counts. A stopped task is
   listed with its reason, Cancel and Try Again, and a cancellation survives a reload.
@@ -283,7 +285,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 - **Opening an old-format library directly.** It opens the conversion review instead.
 - **The File Operations panel.** Each file action runs on its own (see Added), and
-  operations that need attention show in the sidebar with Review….
+  operations that need attention show in the activity card.
 - **The bundle-card review badge,** as ADR-0011 requires. Internal grouping confirmation
   still controls future suggestions.
 

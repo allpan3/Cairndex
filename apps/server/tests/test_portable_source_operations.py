@@ -818,6 +818,51 @@ def test_old_rejected_name_does_not_reserve_source_or_destination(tmp_path):
     assert (root / "occupied.txt").read_bytes() == b"synthetic occupied"
 
 
+def test_waiting_listing_reaches_older_operations_behind_newer_ones(tmp_path):
+    from cairndex.replicas.source_journal import listing
+
+    root, store = fixture(tmp_path)
+    for name in ("a.txt", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt"):
+        (root / name).write_bytes(b"synthetic " + name.encode())
+
+    def stop(operation, action, source, destination):
+        enqueue(
+            store,
+            SourceRequest(
+                operation=operation, action=action, source=source, destination=destination
+            ),
+        )
+        run_one(store, root, lambda: None)
+        assert job(store, operation).state == "interrupted"
+
+    # An occupied copy destination waits for Keep Both, Replace or Skip.
+    stop("stopped-copy", "copy", "a.txt", "b.txt")
+    # A refused name changed nothing and asks nothing more, unless it had started.
+    stop("refused-rename", "rename", "c.txt", "d.txt")
+    stop("started-rename", "rename", "e.txt", "f.txt")
+    with store.connection() as db:
+        db.execute(
+            "UPDATE source_operations SET result=? WHERE id='started-rename'",
+            (json.dumps({"started": True}),),
+        )
+    enqueue(store, SourceRequest(operation="paused-folder", action="mkdir", destination="Paused"))
+    run_one(store, root, lambda: None)
+    assert job(store, "paused-folder").state == "prepared"
+    for index in range(3):
+        perform(store, root, f"done-{index}", "mkdir", destination=f"Done {index}")
+
+    newest = listing(store, limit=2)
+    assert [item.id for item in newest.items] == ["done-2", "done-1"]
+    waiting, after = [], 0
+    while True:
+        page = listing(store, after, limit=2, waiting=True)
+        waiting += [item.id for item in page.items]
+        if page.next_cursor is None:
+            break
+        after = page.next_cursor
+    assert waiting == ["paused-folder", "started-rename", "stopped-copy"]
+
+
 @pytest.mark.parametrize("state", ["preparing", "prepared", "accepted", "applying", "interrupted"])
 def test_unfinished_directory_reserves_descendants_and_parents(tmp_path, state):
     from cairndex.replicas.protocol import ReplicaError

@@ -132,7 +132,9 @@ and it is accepted the same way.
 Unstarted naming collisions from earlier versions stay in the private journal
 but do not appear as recovery tasks. Actual stopped operations from a reload,
 another window or an earlier version show their name, reason and available actions directly in the activity card. No separate
-Review dialog is needed. **Cancel** persists in the operation journal; it does not
+Review dialog is needed. The server lists only the operations that wait for an
+answer, newest first (`GET …/source-operations?waiting=true`), so newer finished
+work never hides an older one; **Show older stopped operations** loads the next page. **Cancel** persists in the operation journal; it does not
 return after reload. An operation that already changed files must finish recovery
 and cannot be dismissed as cancelled. Changing a collision choice or name cancels
 the old intent before preparing the new one.

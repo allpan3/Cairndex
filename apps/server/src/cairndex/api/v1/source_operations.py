@@ -85,8 +85,11 @@ def listing(
     store: Catalog,
     after: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=50)] = 30,
+    waiting: bool = False,
 ) -> SourcePage:
-    return journal.listing(store, after, limit)
+    """Newest first. With waiting=true, only operations that wait for the owner:
+    prepared but not applied, or interrupted for a reason other than a refused name."""
+    return journal.listing(store, after, limit, waiting)
 
 
 @router.get("/receipts")

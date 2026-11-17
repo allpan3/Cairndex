@@ -28,6 +28,18 @@ TABLES = {
     "source_receipts",
     "source_uploads",
 }
+# A name refused before anything changed. Earlier clients hid these without
+# always cancelling the journal row, so they neither reserve a location nor
+# wait for the owner.
+REFUSED_NAME = (
+    "(json_extract(intent,'$.action') IN ('rename','mkdir','relocate') "
+    "AND state='interrupted' AND phase='prepare' "
+    "AND NOT COALESCE(json_extract(result,'$.started'),0) "
+    "AND COALESCE(error,'') IN ("
+    "'Destination exists; choose Replace, Skip or Keep Both',"
+    "'Folder name is already in use; choose another name',"
+    "'Folder path has catalog entries; choose another name'))"
+)
 
 
 class SourceRequest(StrictModel):
@@ -102,8 +114,7 @@ def enqueue(store: CatalogStore, request: SourceRequest) -> SourceJob:
             # mutations against a path an unfinished operation may already own.
             for path in {request.source, request.destination} - {""}:
                 occupied = db.execute(
-                    "SELECT DISTINCT o.id,o.state,o.phase,o.error,o.result,"
-                    "json_extract(o.intent,'$.action') AS action "
+                    f"SELECT DISTINCT o.id,{REFUSED_NAME} AS refused "
                     "FROM source_operations o, json_each(o.intent) p "
                     "WHERE o.state IN ('queued','preparing','prepared','accepted',"
                     "'applying','interrupted') AND p.key IN ('source','destination') "
@@ -112,21 +123,7 @@ def enqueue(store: CatalogStore, request: SourceRequest) -> SourceJob:
                     (path, path, path, path),
                 )
                 for other in occupied:
-                    # Earlier clients hid these refused names without always
-                    # cancelling the journal row. They changed no source names
-                    # and must not reserve a location indefinitely.
-                    if (
-                        other["action"] in {"rename", "mkdir", "relocate"}
-                        and other["state"] == "interrupted"
-                        and other["phase"] == "prepare"
-                        and not json.loads(other["result"] or "{}").get("started")
-                        and other["error"]
-                        in {
-                            "Destination exists; choose Replace, Skip or Keep Both",
-                            "Folder name is already in use; choose another name",
-                            "Folder path has catalog entries; choose another name",
-                        }
-                    ):
+                    if other["refused"]:
                         db.execute(
                             "UPDATE source_operations SET state='cancelled' WHERE id=?",
                             (other["id"],),
@@ -164,11 +161,17 @@ def job(store: CatalogStore, operation: str) -> SourceJob:
         )
 
 
-def listing(store: CatalogStore, after: int = 0, limit: int = 30) -> SourcePage:
+def listing(
+    store: CatalogStore, after: int = 0, limit: int = 30, waiting: bool = False
+) -> SourcePage:
+    """Newest first. ``waiting`` keeps only operations that need the owner's answer:
+    prepared, or interrupted other than a refused name. Filtering here, not in
+    the client, keeps an older waiting operation reachable behind newer ones."""
+    waits = f"AND state IN ('prepared','interrupted') AND NOT {REFUSED_NAME} " if waiting else ""
     with store.connection(readonly=True) as db:
         rows = db.execute(
             "SELECT id,sequence FROM source_operations WHERE (?=0 OR sequence<?) "
-            "ORDER BY sequence DESC LIMIT ?",
+            f"{waits}ORDER BY sequence DESC LIMIT ?",
             (after, after, limit + 1),
         ).fetchall()
     return SourcePage(

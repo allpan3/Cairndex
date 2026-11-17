@@ -39,6 +39,7 @@ async function createLibrary(page: Page, root: string, name: string) {
   await page.getByRole('button', { name: 'Create library', exact: true }).click()
   const response = await created
   expect(response.status()).toBe(201)
+  const { id } = (await response.json()) as { id: string }
   await expect(page.getByRole('combobox', { name: 'Library', exact: true })).toContainText(name)
   // The initial scan reports its result in the one message slot, so a later
   // step's message must not race it. The window posts it after the server's run
@@ -52,6 +53,7 @@ async function createLibrary(page: Page, root: string, name: string) {
   await manager.getByRole('button', { name: 'Turn on', exact: true }).click()
   await expect(toggle).toHaveAttribute('aria-pressed', 'true')
   await manager.getByRole('button', { name: 'Close', exact: true }).click()
+  return id
 }
 
 // A real HTML File drop, as the browser delivers one from the desktop
@@ -411,6 +413,39 @@ test('New Folder creates in the current folder and Undo preserves later files @f
     await manager.getByRole('button', { name: 'Write mode for Synthetic folders' }).click()
     await manager.getByRole('button', { name: 'Close', exact: true }).click()
     await expect(page.getByRole('button', { name: 'New Folder', exact: true })).toHaveCount(0)
+  } finally {
+    await stopBackend(backend.child)
+    await rm(scratch, { recursive: true, force: true })
+  }
+})
+
+test('operations another window left waiting stay listed behind newer ones @fullstack', async ({
+  page,
+}) => {
+  test.setTimeout(150_000)
+  const { scratch, root } = await fixture('cairndex-source-waiting-')
+  const backend = await startBackend(join(scratch, 'private'), { CAIRNDEX_WORKER_ENABLED: 'true' })
+  try {
+    await proxyApi(page, backend.baseUrl)
+    const library = await createLibrary(page, root, 'Synthetic waiting')
+    // Prepared and never applied, as a closed window leaves them: one more
+    // than a page, so the oldest is behind the newest thirty.
+    for (let index = 0; index <= 30; index += 1)
+      await apiPost(backend.baseUrl, `/api/v1/libraries/${library}/source-operations`, {
+        operation: `waiting-${index}`,
+        action: 'mkdir',
+        destination: `Waiting ${String(index).padStart(2, '0')}`,
+      })
+    const stopped = page.getByRole('region', { name: 'Stopped file operation', exact: true })
+    const oldest = page.getByRole('heading', { name: 'Create folder: Waiting 00', exact: true })
+    const older = page.getByRole('button', { name: 'Show older stopped operations', exact: true })
+    await expect(stopped).toHaveCount(30)
+    await expect(oldest).toHaveCount(0)
+    await older.click()
+    await expect(oldest).toBeVisible()
+    await expect(stopped).toHaveCount(31)
+    await expect(older).toHaveCount(0)
+    expect((await readdir(root)).filter((name) => name.startsWith('Waiting'))).toEqual([])
   } finally {
     await stopBackend(backend.child)
     await rm(scratch, { recursive: true, force: true })

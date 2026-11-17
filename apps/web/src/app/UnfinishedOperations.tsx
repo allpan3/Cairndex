@@ -6,15 +6,17 @@ import type { SourceTasks } from './useSourceTasks'
 export function UnfinishedOperations({
   library,
   operations,
+  more,
   enabled,
   tasks,
 }: {
   library: string
   operations: SourceJob[]
+  more: { load: () => void; loading: boolean } | null
   enabled: boolean
   tasks: SourceTasks
 }) {
-  if (operations.length === 0) return null
+  if (operations.length === 0 && !more) return null
   return (
     <div className="source-operation-panel source-stopped" aria-label="Stopped file operations">
       {operations.map((job) => (
@@ -36,6 +38,11 @@ export function UnfinishedOperations({
           }
         />
       ))}
+      {more && (
+        <button disabled={more.loading} onClick={more.load}>
+          {more.loading ? 'Loading older operations…' : 'Show older stopped operations'}
+        </button>
+      )}
     </div>
   )
 }
