@@ -190,8 +190,9 @@ acceptance remains open.
 Branch `feat/eagle-interaction-polish`, rebased onto current `main` including
 the windowed Unbundled, Select All and shared-scroll changes, is
 [PR #141](https://github.com/allpan3/Cairndex/pull/141). Its two screenshots
-are declared first in [PR #140](https://github.com/allpan3/Cairndex/pull/140),
-which must merge before #141's trusted privacy check can pass. It carries
+were declared in [PR #140](https://github.com/allpan3/Cairndex/pull/140), now merged.
+The subsequent rebase changed documentation only; application sources match the
+qualified tree. The owner authorized merging #141 after all checks pass. It carries
 owner-approved interaction changes, one commit each: a
 zoom slider that lays the grid out once per drag, covers that fade in over a
 neutral placeholder, a Space quick preview, Undo for organizing (toast
