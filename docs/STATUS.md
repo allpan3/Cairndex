@@ -98,22 +98,14 @@ open in a compact dialog with readable alternatives. Structural conflicts retain
 full review. Confirmed saves survive inspector remounts, and explicit conflict
 choices advance only their covered local drafts.
 
-## Work awaiting consolidation
+## Merged audit, SMB and incoming-files work
 
-Original branches remain available as local implementation and evidence records.
-The prepared stack keeps the audit fixes and privacy correction together,
-followed by the separate SMB and incoming-files changes. Application runtime
-files match the tested audit and installed SMB snapshots; the incoming application
-tree matches a merge of the original branches. Audit, SMB and
-incoming-files are merged.
+The audit, SMB and incoming-files work is merged into `main`, and its original
+and prepared branches were removed. The audit and SMB branch tips are kept in a
+local Git bundle outside the checkout. Owner acceptance of the incoming-files
+work remains open.
 
-| Scope | Original branch | Prepared branch |
-| --- | --- | --- |
-| Audit, metadata, Update, Rename, Accept and Widen | `fix/audit-build-owner-findings` | `prepare/audit-owner-findings` |
-| Unique SMB scanner implementation and measurements | `fix/smb-reconnect-update` | `prepare/smb-reconnect-update` |
-| Incoming-only workflow after both prior scopes | `fix/incoming-copy-dialog` | `prepare/incoming-copy-dialog` |
-
-The incoming branch adds background copies, bundle-aware drops, per-action menus,
+The incoming work adds background copies, bundle-aware drops, per-action menus,
 Library-only Write Mode and Trash. Immediate Apply uses the exact prepared
 receipt; Enter confirms Rename. Undo for a bundled copy trashes its files and
 removes the task-created bundle. Replace bundling has no Undo. The old storage
