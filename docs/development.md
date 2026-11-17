@@ -1067,7 +1067,8 @@ an amd64 image for the NAS from an Apple Silicon Mac.
   `.gitignore` is only a convenience and is not a publication boundary.
 - Install the repository's staged-content, commit-message, and pre-push privacy
   hooks once per clone with `just install-privacy-hooks`. Add known owner data to
-  Git's untracked `cairndex-private-patterns` file; the scanner never prints a
+  the untracked `cairndex-private-patterns` file in the clone's shared Git
+  directory, which every linked worktree reads; the scanner never prints a
   matched literal. The scanner needs a Git whose `rev-list --objects -z` output
   is NUL-delimited: Git 2.54 has it, the Git 2.43 package in Ubuntu 24.04 does
   not, and on such a Git the scanner stops instead of passing (use the

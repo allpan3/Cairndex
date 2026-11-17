@@ -519,7 +519,23 @@ def test_installer_uses_git_private_storage(tmp_path: Path):
     repo = initialized_repo(tmp_path)
     assert privacy_gate.install_hooks(repo) == 0
     assert git(repo, "config", "--get", "core.hooksPath") == ".githooks"
-    pattern_path = repo / git(repo, "rev-parse", "--git-path", "cairndex-private-patterns")
+    pattern_path = repo / ".git" / "cairndex-private-patterns"
     assert pattern_path.is_file()
     assert str(repo) in pattern_path.read_text(encoding="utf-8")
     assert not (repo / "cairndex-private-patterns").exists()
+
+
+# A linked worktree, such as one an agent creates per thread, reads the clone's one file
+def test_linked_worktree_reads_the_clone_pattern_file(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("CAIRNDEX_PRIVACY_PATTERNS_FILE", raising=False)
+    repo = initialized_repo(tmp_path)
+    (repo / "README.md").write_text("synthetic\n", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "commit", "-q", "-m", "synthetic base")
+    (repo / ".git" / "cairndex-private-patterns").write_text(
+        "synthetic-private-literal\n", encoding="utf-8"
+    )
+    worktree = tmp_path / "linked"
+    git(repo, "worktree", "add", "-q", "--detach", str(worktree))
+    patterns = privacy_gate.load_private_patterns(worktree, [], True)
+    assert patterns == ["synthetic-private-literal"]
