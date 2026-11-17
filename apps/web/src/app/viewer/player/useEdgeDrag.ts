@@ -18,7 +18,8 @@ import type { ClipRangeController } from './useClipRange'
  * - the edge commits on **every** pointer move, so the band tracks the pointer;
  * - the seek that previews the edge's frame is **throttled**, because each one
  *   cancels the in-flight byte range and opens another (`SeekBar`'s original
- *   reason for the same throttle).
+ *   reason for the same throttle). With `deferSeekDuringDrag` (a transcoded
+ *   source, where a seek can restart the encoder) it happens once, at release.
  */
 const EDGE_SEEK_THROTTLE_MS = 150
 
@@ -30,6 +31,8 @@ interface UseEdgeDragOptions {
   onGestureStart?: () => void
   onGestureEnd?: () => void
   onDragChange?: (dragging: boolean) => void
+  /** Seek only at release, as the seek bar does for a transcoded source. */
+  deferSeekDuringDrag?: boolean
 }
 
 export function useEdgeDrag({
@@ -38,15 +41,30 @@ export function useEdgeDrag({
   onGestureStart,
   onGestureEnd,
   onDragChange,
+  deferSeekDuringDrag = false,
 }: UseEdgeDragOptions): (edge: ClipEdge) => (event: React.PointerEvent) => void {
   const seek = useRef<LeadingTrailingThrottle<{ edge: ClipEdge; time: number }> | null>(null)
   const cleanup = useRef<(() => void) | null>(null)
 
   // Live refs: a gesture outlives the render that started it, and a trailing
   // flush must not call into a stale controller.
-  const latest = useRef({ clip, timeFor, onGestureStart, onGestureEnd, onDragChange })
+  const latest = useRef({
+    clip,
+    timeFor,
+    onGestureStart,
+    onGestureEnd,
+    onDragChange,
+    deferSeekDuringDrag,
+  })
   useEffect(() => {
-    latest.current = { clip, timeFor, onGestureStart, onGestureEnd, onDragChange }
+    latest.current = {
+      clip,
+      timeFor,
+      onGestureStart,
+      onGestureEnd,
+      onDragChange,
+      deferSeekDuringDrag,
+    }
   })
 
   useEffect(() => {
@@ -79,19 +97,20 @@ export function useEdgeDrag({
     controller.setAdjusting(true)
     latest.current.onDragChange?.(true)
 
-    const apply = (clientX: number, flush: boolean) => {
+    const apply = (clientX: number, phase: 'start' | 'move' | 'end') => {
       const time = latest.current.timeFor(clientX)
       // Commit without seeking so the band is live, then let the throttle own
       // the seek that actually shows the frame.
       latest.current.clip?.moveTo(edge, time, { scrub: false })
-      if (flush) seek.current?.flush({ edge, time })
-      else seek.current?.schedule({ edge, time })
+      if (latest.current.deferSeekDuringDrag && phase !== 'end') return
+      if (phase === 'move') seek.current?.schedule({ edge, time })
+      else seek.current?.flush({ edge, time })
     }
-    apply(event.clientX, true)
+    apply(event.clientX, 'start')
 
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== event.pointerId) return
-      apply(moveEvent.clientX, false)
+      apply(moveEvent.clientX, 'move')
     }
     const removeListeners = () => {
       window.removeEventListener('pointermove', move)
@@ -104,7 +123,7 @@ export function useEdgeDrag({
     }
     const end = (endEvent: PointerEvent) => {
       if (endEvent.pointerId !== event.pointerId) return
-      apply(endEvent.clientX, true)
+      apply(endEvent.clientX, 'end')
       if (handle.hasPointerCapture?.(event.pointerId)) {
         handle.releasePointerCapture(event.pointerId)
       }

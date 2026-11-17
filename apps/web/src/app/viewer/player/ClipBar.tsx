@@ -33,6 +33,8 @@ interface ClipBarProps {
    * cannot hold one — an unindexed File Browser path has no row to hang it on.
    */
   onSaveMoment?: () => void
+  /** Seek only when a timeline handle is released, for a transcoded source. */
+  deferSeekDuringDrag?: boolean
 }
 
 function EdgeRow({
@@ -100,7 +102,14 @@ function EdgeRow({
   )
 }
 
-export function ClipBar({ clip, player, onExport, maxExportSeconds, onSaveMoment }: ClipBarProps) {
+export function ClipBar({
+  clip,
+  player,
+  onExport,
+  maxExportSeconds,
+  onSaveMoment,
+  deferSeekDuringDrag = false,
+}: ClipBarProps) {
   const range = clip.range
   if (!clip.active || !range) return null
 
@@ -193,7 +202,7 @@ export function ClipBar({ clip, player, onExport, maxExportSeconds, onSaveMoment
         </div>
       </div>
 
-      <ClipTimeline clip={clip} player={player} />
+      <ClipTimeline clip={clip} player={player} deferSeekDuringDrag={deferSeekDuringDrag} />
     </div>
   )
 }

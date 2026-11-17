@@ -291,6 +291,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **A superseded transcode seek no longer restarts the encoder at its old
+  position.** An abandoned HLS segment request is checked against the latest
+  seek before it restarts an encoder. Dragging the seek bar or a clip-range handle
+  of a transcoded video moves the thumb, storyboard preview and range band live and
+  seeks once on release; direct and copy-only remux playback keep seeking during
+  the drag.
 - Arrow keys walk the File Browser listing instead of reaching the shell, and in a grid
   Up and Down move a row, keeping the column, across folder cards and bundles as one
   plane. <kbd>Esc</kbd> clears whichever selection is live.

@@ -39,9 +39,12 @@ function shows(view: ClipRange, range: ClipRange): boolean {
 export function ClipTimeline({
   clip,
   player,
+  deferSeekDuringDrag = false,
 }: {
   clip: ClipRangeController
   player: PlayerController
+  /** Seek only when a handle is released, for a transcoded source. */
+  deferSeekDuringDrag?: boolean
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
   const trackRect = useRef<DOMRect | null>(null)
@@ -119,6 +122,7 @@ export function ClipTimeline({
   const onEdgePointerDown = useEdgeDrag({
     clip,
     timeFor,
+    deferSeekDuringDrag,
     onGestureStart: () => {
       trackRect.current = ref.current?.getBoundingClientRect() ?? null
     },

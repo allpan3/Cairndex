@@ -98,22 +98,14 @@ open in a compact dialog with readable alternatives. Structural conflicts retain
 full review. Confirmed saves survive inspector remounts, and explicit conflict
 choices advance only their covered local drafts.
 
-## Work awaiting consolidation
+## Merged audit, SMB and incoming-files work
 
-Original branches remain available as local implementation and evidence records.
-The prepared stack keeps the audit fixes and privacy correction together,
-followed by the separate SMB and incoming-files changes. Application runtime
-files match the tested audit and installed SMB snapshots; the incoming application
-tree matches a merge of the original branches. Audit, SMB and
-incoming-files are merged.
+The audit, SMB and incoming-files work is merged into `main`, and its original
+and prepared branches were removed. The audit and SMB branch tips are kept in a
+local Git bundle outside the checkout. Owner acceptance of the incoming-files
+work remains open.
 
-| Scope | Original branch | Prepared branch |
-| --- | --- | --- |
-| Audit, metadata, Update, Rename, Accept and Widen | `fix/audit-build-owner-findings` | `prepare/audit-owner-findings` |
-| Unique SMB scanner implementation and measurements | `fix/smb-reconnect-update` | `prepare/smb-reconnect-update` |
-| Incoming-only workflow after both prior scopes | `fix/incoming-copy-dialog` | `prepare/incoming-copy-dialog` |
-
-The incoming branch adds background copies, bundle-aware drops, per-action menus,
+The incoming work adds background copies, bundle-aware drops, per-action menus,
 Library-only Write Mode and Trash. Immediate Apply uses the exact prepared
 receipt; Enter confirms Rename. Undo for a bundled copy trashes its files and
 removes the task-created bundle. Replace bundling has no Undo. The old storage
@@ -184,6 +176,17 @@ application bytes match the package; stopped private profiles retain identical
 files, modes, sizes and modification times. Credentials were untouched. Rollback
 and local receipts are retained under `20261106-open-bundle-drop`. Owner
 acceptance remains open.
+
+## Transcode seeking
+
+A superseded HLS segment request can no longer restart an obsolete encoder
+generation. For a transcoded video, seek-bar and clip-handle drags seek once, at
+release ([ADR-0014](adr/0014-hls-session-model.md)). Concurrency tests control
+the overlap with events, including a seek between the failure check and the
+fallback restart; a real-Chromium test plays a disposable portable library with
+actual transcoding. Limits: arrow-key and media-key seeks are not coalesced, so
+holding an arrow key on a transcoded video can restart the encoder at each
+repeat. Native packaging and NAS playback were not retested.
 
 ## Eagle interaction polish
 
