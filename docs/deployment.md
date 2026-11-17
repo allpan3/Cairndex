@@ -674,7 +674,7 @@ saved SMB login through the packaged backend. While the request waits, publicati
 pauses and changes stay saved on this device; the library's status shows
 **Allow Access…** rather than the general storage message. Ad-hoc builds use a code hash as their designated requirement, so saved
 Keychain grants may not cover a rebuilt executable. Local source builders can
-[configure a persistent sidecar certificate](development.md#local-server-sidecar-appsserverpackaging)
+[configure a persistent sidecar certificate](desktop.md#signing)
 with `uv run python packaging/macos_signing.py create-local` from `apps/server`.
 Both build variants then retain the same certificate and `dev.cairndex.sidecar`
 identifier. The first operation with the new signer can require **Always Allow**.

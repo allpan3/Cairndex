@@ -143,7 +143,8 @@ be the first privacy check.
 
 Install the tracked local hooks once per clone with `just install-privacy-hooks`. Keep
 owner-specific names, library labels, paths, domains, and other known private literals
-in Git's untracked `cairndex-private-patterns` file, one literal per line. The installer
+in the untracked `cairndex-private-patterns` file in the clone's shared Git directory,
+one literal per line; every linked worktree reads that one file. The installer
 seeds the local checkout and home-path prefixes; add incident-specific values without
 copying them into tracked configuration. Never use `--no-verify`, change
 `core.hooksPath`, or remove a pattern to get a commit or push through. A scanner finding
@@ -375,6 +376,8 @@ Required documentation targets include, as applicable:
 - `docs/product-brief.md`
 - `docs/architecture.md`
 - `docs/development.md`
+- `docs/desktop.md`
+- `docs/ci.md`
 - `docs/deployment.md`
 - `docs/data-model.md`
 - `docs/filter-language.md`

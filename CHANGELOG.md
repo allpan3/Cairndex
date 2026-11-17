@@ -343,7 +343,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   and a count, never text built from a scanned object. The gate fails closed when Git
   ignores `rev-list --objects -z`, recognizes Dependabot's public sign-off, and no
   longer flags an owner-approved false positive in a public codesign field name; private
-  values stay protected.
+  values stay protected. Every linked worktree reads its clone's one local pattern file
+  in the shared Git directory, so a new worktree no longer starts without patterns.
 
 ### Internal
 

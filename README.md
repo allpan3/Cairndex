@@ -134,7 +134,7 @@ deploy/     # What a server needs: compose file, env sample, runbook
 
 ## Quickstart (local development)
 
-Requirements: uv (manages Python 3.12+ for you) and Node.js 20+. Desktop
+Requirements: uv (manages Python 3.12+ for you) and Node.js 22. Desktop
 development additionally needs a current stable Rust toolchain and the Tauri 2
 platform prerequisites. See
 [docs/development.md](docs/development.md) for full setup, environment variables,
@@ -253,7 +253,9 @@ Both need Docker with the Compose v2 plugin (Docker Desktop on macOS, or
 - [docs/product-brief.md](docs/product-brief.md) — product model, domain concepts, UI direction, and first-release anti-goals
 - [AGENTS.md](AGENTS.md) — canonical agent operating rules and engineering constraints
 - [docs/architecture.md](docs/architecture.md)
-- [docs/development.md](docs/development.md)
+- [docs/development.md](docs/development.md) — setup, running, and focused tests
+- [docs/desktop.md](docs/desktop.md) — desktop shell and bundled local server
+- [docs/ci.md](docs/ci.md) — CI scope, required checks, and publication privacy
 - [docs/deployment.md](docs/deployment.md)
 - [docs/data-model.md](docs/data-model.md)
 - [docs/filter-language.md](docs/filter-language.md)

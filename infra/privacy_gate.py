@@ -312,6 +312,17 @@ def load_allowlist(path: Path = ALLOWLIST_PATH) -> PrivacyAllowlist:
     )
 
 
+# Keep one pattern file per clone, in the Git directory every worktree shares.
+# `--git-path` would give each linked worktree its own empty location.
+def shared_pattern_path(repo_root: Path) -> Path:
+    common_dir = Path(
+        _git(repo_root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+        .decode("utf-8", errors="strict")
+        .strip()
+    )
+    return common_dir / "cairndex-private-patterns"
+
+
 # Resolve configured private-literal files without printing their locations
 def _configured_pattern_paths(repo_root: Path, explicit: list[Path]) -> list[Path]:
     paths = list(explicit)
@@ -331,17 +342,7 @@ def _configured_pattern_paths(repo_root: Path, explicit: list[Path]) -> list[Pat
     if environment_path:
         paths.append(Path(environment_path).expanduser())
 
-    private_git_path = Path(
-        _git(
-            repo_root,
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-path",
-            "cairndex-private-patterns",
-        )
-        .decode("utf-8", errors="strict")
-        .strip()
-    )
+    private_git_path = shared_pattern_path(repo_root)
     if private_git_path.exists():
         paths.append(private_git_path)
 
@@ -740,17 +741,7 @@ def report(findings: list[str], summary: str, private_pattern_count: int) -> int
 # Install tracked hooks and initialize the Git-private literal profile
 def install_hooks(repo_root: Path) -> int:
     _git(repo_root, "config", "core.hooksPath", ".githooks")
-    pattern_path = Path(
-        _git(
-            repo_root,
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-path",
-            "cairndex-private-patterns",
-        )
-        .decode("utf-8", errors="strict")
-        .strip()
-    )
+    pattern_path = shared_pattern_path(repo_root)
     if not pattern_path.exists():
         values = {
             str(repo_root),
