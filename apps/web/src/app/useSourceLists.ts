@@ -1,19 +1,7 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import {
-  sourceRequest,
-  type ReceiptPage,
-  type SourceJob,
-  type SourcePage,
-} from '../api/sourceOperations'
+import { useInfiniteQuery } from '@tanstack/react-query'
+import { sourceRequest, type ReceiptPage, type SourcePage } from '../api/sourceOperations'
 import { trashRows } from './sourceActions'
-import { isCollision, type SourceTasks } from './useSourceTasks'
-
-/** An occupied name is a refused edit, not an interrupted file mutation. */
-export const rejectedName = (job: SourceJob) =>
-  ['mkdir', 'rename', 'relocate'].includes(job.action) &&
-  job.state === 'interrupted' &&
-  !job.result?.started &&
-  isCollision(job)
+import type { SourceTasks } from './useSourceTasks'
 
 /**
  * The library's Trash, newest first. The open Trash view polls for other
@@ -34,24 +22,30 @@ export function useTrash(library: string, enabled: boolean, open: boolean) {
 
 /**
  * Saved operations that wait for the owner and belong to no task in this
- * window, including occupied names and prepared but unapplied items. They come
- * from a reload, another window or an earlier version's review panel. Only
- * the newest page is read; older ones stay listed by the server.
+ * window, such as a copy stopped on an occupied name or a prepared but
+ * unapplied item, left by a reload, another window or an earlier version.
+ * The server lists only these, newest first, so newer finished work never
+ * hides an older one; `more` loads the next page.
  */
 export function useUnfinishedOperations(library: string, enabled: boolean, tasks: SourceTasks) {
-  const page = useQuery({
-    queryKey: ['source-operations', library, 0],
-    queryFn: () => sourceRequest<SourcePage>(library, '?after=0'),
+  const pages = useInfiniteQuery({
+    queryKey: ['source-operations', library, 'waiting'],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      sourceRequest<SourcePage>(library, `?waiting=true&after=${pageParam}`),
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled,
     refetchInterval: 2000,
   })
   const own = new Set(
     tasks.tasks.flatMap((task) => task.items.map((item) => item.request.operation)),
   )
-  return (page.data?.items ?? []).filter(
-    (job: SourceJob) =>
-      !own.has(job.id) &&
-      !rejectedName(job) &&
-      (job.state === 'prepared' || job.state === 'interrupted'),
-  )
+  return {
+    operations: (pages.data?.pages ?? [])
+      .flatMap((page) => page.items)
+      .filter((job) => !own.has(job.id)),
+    more: pages.hasNextPage
+      ? { load: () => void pages.fetchNextPage(), loading: pages.isFetchingNextPage }
+      : null,
+  }
 }

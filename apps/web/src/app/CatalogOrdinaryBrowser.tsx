@@ -511,12 +511,15 @@ export function CatalogOrdinaryBrowser(props: {
           />
         )}
         <div className="catalog-ordinary-content">
-          {(tasks.tasks.some((task) => !task.inline) || unfinished.length > 0) && (
+          {(tasks.tasks.some((task) => !task.inline) ||
+            unfinished.operations.length > 0 ||
+            unfinished.more) && (
             <div className="file-activity" aria-label="File activity">
               <SourceTaskProgress tasks={tasks} />
               <UnfinishedOperations
                 library={props.library}
-                operations={unfinished}
+                operations={unfinished.operations}
+                more={unfinished.more}
                 enabled={writable}
                 tasks={tasks}
               />

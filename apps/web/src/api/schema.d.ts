@@ -4046,7 +4046,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Listing */
+        /**
+         * Listing
+         * @description Newest first. With waiting=true, only operations that wait for the owner:
+         *     prepared but not applied, or interrupted for a reason other than a refused name.
+         */
         get: operations["listing_api_v1_libraries__library_id__source_operations_get"];
         put?: never;
         /** Enqueue */
@@ -17157,6 +17161,7 @@ export interface operations {
             query?: {
                 after?: number;
                 limit?: number;
+                waiting?: boolean;
             };
             header?: {
                 authorization?: string | null;

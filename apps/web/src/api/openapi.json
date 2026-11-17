@@ -32216,6 +32216,7 @@
     },
     "/api/v1/libraries/{library_id}/source-operations": {
       "get": {
+        "description": "Newest first. With waiting=true, only operations that wait for the owner:\nprepared but not applied, or interrupted for a reason other than a refused name.",
         "operationId": "listing_api_v1_libraries__library_id__source_operations_get",
         "parameters": [
           {
@@ -32248,6 +32249,16 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "waiting",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Waiting",
+              "type": "boolean"
             }
           },
           {
