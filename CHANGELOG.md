@@ -10,9 +10,6 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
-- Interface fades and transitions share a 150 ms ease-out timing. Reduce
-  Motion disables these transitions and the indeterminate progress sweeps.
-
 - Empty browse states offer a relevant action: clear search or filters, show
   subcollection contents, browse all bundles or update the library. Empty File
   Browser folders offer Create folder when permitted, otherwise Refresh files.
@@ -26,18 +23,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 - View options combines layout, item size, sort and card details in one
   anchored panel. Changes update the grid live and keep the panel open; the
-  card-details preference survives reloads.
-
-- Quick preview places Previous, the result counter and Next together below
-  the media. Tab stays inside the preview and Enter activates focused buttons.
+  card-details preference survives reloads. Hidden details retain accessible
+  titles, and changing them refreshes virtual row heights.
 
 - Tag pickers show Recently Used and Selected filters, nested tag paths,
   arrow-key movement and a key-help footer. The last 12 choices stay in this
-  browser session, scoped to their server and library.
+  browser session, scoped to their server and library. Picking waits for loaded
+  choices.
 
 - Bundle context menus have icons, keyboard navigation, and Copy and Tags
   submenus. Copy offers the title, current file name and desktop URI; Tags
-  reuses guarded Copy/Paste and Undo. Tag shortcuts leave text inputs alone.
+  reuses guarded Copy/Paste and Undo; Paste Tags keeps batched changes above
+  100 bundles without organizing Undo. Tag shortcuts leave text inputs alone.
+  Shared menus preserve grouping-review
+  focus and Tab dismissal.
 
 - **Undo for organizing.** Adding bundles to a collection or moving them into
   one, removing them from the open collection, changing a tag or collection in
@@ -58,7 +57,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   just the loaded page; stepping loads further pages. Space or Escape closes it
   and Enter opens the full viewer. A preview is not an opening: it moves no
   bundle cursor and records no Date Opened. A file the browser cannot play
-  directly offers the viewer instead.
+  directly offers the viewer instead. Previous, the counter and Next sit below
+  the media; Tab stays inside the preview and Enter activates focused buttons.
 
 - **Portable libraries (library format three).** A library keeps its metadata history in
   its own folder. Working databases, drafts, jobs, access settings and caches are
@@ -213,12 +213,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Interface fades and transitions share a 150 ms ease-out timing. Reduce
+  Motion disables these transitions and the indeterminate progress sweeps.
+
 - **Dragging bundles shows their covers.** A bundle drag now shows the covers
   of up to three dragged cards, stacked with the grabbed card in front, above
   the usual title or count label. Only covers already on screen take part; a
   drag without one keeps the label pill.
 - **Covers fade in.** Bundle card and list covers are images decoded off the
-  main thread that fade in over the card's placeholder in 140 ms, instead of
+  main thread that fade in over the card's placeholder in 150 ms, instead of
   CSS backgrounds that popped in. Until it arrives, every cover frame shows the
   same soft gradient, with a slow sweep once a cover takes longer than 300 ms.
   A cover already loaded appears at once, a failed one keeps the still
@@ -285,10 +288,6 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   still controls future suggestions.
 
 ### Fixed
-
-- Shared menus preserve grouping-review focus and Tab dismissal. Hidden card
-  details retain accessible titles and refresh virtual row heights, and tag picking
-  waits for loaded choices. Paste Tags keeps batched changes above 100 bundles.
 
 - Arrow keys walk the File Browser listing instead of reaching the shell, and in a grid
   Up and Down move a row, keeping the column, across folder cards and bundles as one
