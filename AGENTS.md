@@ -376,6 +376,8 @@ Required documentation targets include, as applicable:
 - `docs/product-brief.md`
 - `docs/architecture.md`
 - `docs/development.md`
+- `docs/desktop.md`
+- `docs/ci.md`
 - `docs/deployment.md`
 - `docs/data-model.md`
 - `docs/filter-language.md`

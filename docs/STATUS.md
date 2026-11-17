@@ -75,7 +75,7 @@ See [owner findings](restoration-audit.md#owner-testing-findings-november-2026),
 
 macOS SQLite writers retain FULL synchronous and both fullfsync flags.
 [ADR-0039](adr/0039-macos-sqlite-durability.md) records the durability decision;
-[storage measurements](development.md#macos-sqlite-durability) record its cost.
+[storage measurements](performance.md#macos-sqlite-durability-2026-10-18) record its cost.
 Batching must preserve durability, source validation and repair safeguards.
 Do not restore cross-device metadata reuse as a shortcut for SMB remounts.
 

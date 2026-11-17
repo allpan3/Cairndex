@@ -32,7 +32,7 @@ All macOS SQLite writers use `synchronous=FULL`, `fullfsync=ON` and
 synchronous for each writable attached schema. Linux settings and journal-mode
 selection are unchanged. SQLite falls back to `fsync` if a filesystem rejects
 `F_FULLFSYNC`; physical durability depends on the storage stack. See
-[ADR-0039](adr/0039-macos-sqlite-durability.md) and [measurements](development.md#macos-sqlite-durability).
+[ADR-0039](adr/0039-macos-sqlite-durability.md) and [measurements](performance.md#macos-sqlite-durability-2026-10-18).
 
 Private-store readers open SQLite in read-only mode and retain transaction
 snapshots without writer setup or close-time writer checkpoints. Update shares
