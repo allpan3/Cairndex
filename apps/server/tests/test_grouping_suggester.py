@@ -646,3 +646,47 @@ def test_addition_with_no_enclosing_collection_stays_at_the_top_level() -> None:
 
     added = next(p for p in plan.proposals if p.target_bundle_id == "b")
     assert added.parent_directory is None
+
+
+def test_hyphenated_identifier_keeps_full_code_across_sidecars_and_siblings() -> None:
+    """A hyphenated identifier shared up to a delimiter boundary keeps its number.
+
+    Regression: ``CLIP-100 - HDR.mp4``, ``CLIP-100-cover.jpg``, and ``CLIP-100.srt``
+    have raw common prefix ``CLIP-100`` (followed by `` ``, ``-``, and end-of-stem).
+    Trimming unconditionally to the last delimiter inside ``shared`` stripped
+    ``-100`` to ``CLIP``, and single-token sidecar fallback failed whenever two
+    items in one folder shared the leading ``CLIP`` token.
+    """
+    solo_root = [
+        _f("CLIP-100 - HDR.mp4", MediaKind.VIDEO),
+        _f("CLIP-100-cover.jpg", MediaKind.IMAGE),
+        _f("CLIP-100.srt", MediaKind.SUBTITLE),
+    ]
+    solo_plan = suggest_grouping(solo_root)
+    solo_bundles = _bundles(solo_plan.proposals)
+    assert len(solo_bundles) == 1
+    assert solo_bundles[0].title == "CLIP-100"
+    assert len(solo_bundles[0].files) == 3
+
+    # Widening to 2 segments (`level = 2`, depth 2 of 3) still groups and titles as `CLIP-100`.
+    widened_plan = suggest_grouping(solo_root, stem_levels={"": 2})
+    widened_bundles = _bundles(widened_plan.proposals)
+    assert len(widened_bundles) == 1
+    assert widened_bundles[0].title == "CLIP-100"
+
+    # Two sibling items sharing the leading `CLIP` token in the same folder stay two
+    # 3-file bundles (`CLIP-100` and `CLIP-200`) instead of fragmenting sidecars.
+    shelf = [
+        _f("Shelf/CLIP-100 - HDR.mp4", MediaKind.VIDEO),
+        _f("Shelf/CLIP-100-cover.jpg", MediaKind.IMAGE),
+        _f("Shelf/CLIP-100.srt", MediaKind.SUBTITLE),
+        _f("Shelf/CLIP-200 - SDR.mp4", MediaKind.VIDEO),
+        _f("Shelf/CLIP-200-cover.jpg", MediaKind.IMAGE),
+        _f("Shelf/CLIP-200.srt", MediaKind.SUBTITLE),
+    ]
+    shelf_plan = suggest_grouping(shelf)
+    shelf_bundles = sorted(_bundles(shelf_plan.proposals), key=lambda p: p.title)
+    assert [(b.title, len(b.files)) for b in shelf_bundles] == [
+        ("CLIP-100", 3),
+        ("CLIP-200", 3),
+    ]

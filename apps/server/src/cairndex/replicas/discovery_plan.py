@@ -1,8 +1,8 @@
 """Disk-backed complete grouping context; worker batches never define bundle boundaries"""
 
 import json
-import os
 import sqlite3
+from collections.abc import Iterator
 from pathlib import PurePosixPath
 
 from cairndex.domain.enums import FileRole, MediaKind
@@ -256,15 +256,22 @@ def assign_batch(
                     ).fetchall()
                     matches.extend(row[0] for row in match)
                 if len(matches) != 1 and not split and level >= 1:
-                    matches = [
-                        row[0]
-                        for row in db.execute(
-                            "SELECT DISTINCT proposal FROM discovery_plan_files WHERE run=? "
-                            "AND directory=? AND owner IS NULL AND kind='video' "
-                            "AND prefix=? LIMIT 2",
-                            (run, path, file["prefix"]),
-                        )
-                    ]
+                    for prefix in (file["stem"], *rules._space_prefixes(file["stem"])):
+                        found = [
+                            row[0]
+                            for row in db.execute(
+                                "SELECT DISTINCT proposal FROM discovery_plan_files WHERE run=? "
+                                "AND directory=? AND owner IS NULL AND kind='video' "
+                                "AND (stem=? OR (stem>=? AND stem<?)) LIMIT 2",
+                                (run, path, prefix, prefix + " ", prefix + "!"),
+                            )
+                        ]
+                        if len(found) == 1:
+                            matches = found
+                            break
+                        if len(found) > 1:
+                            matches = []
+                            break
             if len(exact) == 1 or not exact and len(matches) == 1:
                 identity = exact[0][0] if exact else matches[0]
         db.execute(
@@ -429,24 +436,21 @@ def classify_directory(
 
 # Shared stem titles are reduced without retaining the directory's files in memory
 def title(db: sqlite3.Connection, run: str, group: str, videos: int) -> str:
-    shared, first, count, equal = None, "", 0, True
-    for (path,) in db.execute(
-        "SELECT path FROM discovery_plan_files WHERE run=? AND proposal=? "
-        "AND (?<=1 OR kind='video') ORDER BY rank,natural,path",
-        (run, group, videos),
-    ):
-        stem = rules._stem(path)
-        count += 1
-        if shared is None:
-            shared, first = stem, stem
-        else:
-            equal = equal and first == stem
-            shared = os.path.commonprefix((shared, stem))
-    if shared and not equal:
-        boundaries = list(rules._SUBJECT_DELIMITER.finditer(shared))
-        if boundaries:
-            shared = shared[: boundaries[-1].start()]
-    return shared if count > 1 and shared else first
+    first = ""
+
+    def _stems() -> Iterator[str]:
+        nonlocal first
+        for (path,) in db.execute(
+            "SELECT path FROM discovery_plan_files WHERE run=? AND proposal=? "
+            "AND (?<=1 OR kind='video') ORDER BY rank,natural,path",
+            (run, group, videos),
+        ):
+            stem = rules._stem(path)
+            if not first:
+                first = stem
+            yield stem
+
+    return rules.shared_stem_prefix(_stems()) or first
 
 
 # Roles and order are assigned after consolidation; source batches never reset sequences or covers

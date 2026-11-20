@@ -565,7 +565,7 @@ def test_widened_single_subject_keeps_its_filename_title_inside_collection(repli
             assert collection["title"] == "Contributor"
             children = pages.nodes(db, run, storage.status(store, run)["revision"], header)["items"]
             assert len(children) == 1
-            assert children[0]["title"] == "SCENE"
+            assert children[0]["title"] == "SCENE-204"
             assert children[0]["files"] == 3
             assert (
                 db.execute(
