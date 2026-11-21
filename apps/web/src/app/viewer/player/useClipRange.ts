@@ -373,11 +373,13 @@ export function useClipPlayback(
     onEnd,
     play,
     pause,
+    seek,
   }: {
     mode: ClipPlaybackMode
     onEnd: () => void
     play?: () => void
     pause?: () => void
+    seek?: (time: number) => void
   },
 ) {
   useEffect(() => {
@@ -395,7 +397,10 @@ export function useClipPlayback(
       // to want, and yanking it forward would make seeking inside an armed loop
       // impossible (plan 7 §2).
       if (video.currentTime < range.end) return
-      if (armed) video.currentTime = range.start
+      if (armed) {
+        if (seek) seek(range.start)
+        else video.currentTime = range.start
+      }
       // A session stops on the out-point and lets the pause below close it, so
       // there is one ending rather than two that can disagree.
       else if (pause) pause()
@@ -419,7 +424,8 @@ export function useClipPlayback(
     }
     const onEnded = () => {
       if (armed) {
-        video.currentTime = range.start
+        if (seek) seek(range.start)
+        else video.currentTime = range.start
         if (play) play()
         else void video.play()
         return
@@ -428,7 +434,8 @@ export function useClipPlayback(
       // next press replays the span instead of restarting the whole file — a
       // browser resets an ended element's playhead before `play` fires, which is
       // why leaving it at the end silently lost the selection.
-      video.currentTime = range.start
+      if (seek) seek(range.start)
+      else video.currentTime = range.start
       onEnd()
     }
     video.addEventListener('pause', onPause)
@@ -439,5 +446,5 @@ export function useClipPlayback(
       video.removeEventListener('pause', onPause)
       video.removeEventListener('ended', onEnded)
     }
-  }, [mode, onEnd, range, video, play, pause])
+  }, [mode, onEnd, range, video, play, pause, seek])
 }

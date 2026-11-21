@@ -28,6 +28,7 @@ export interface ReplicaOpen {
   fileId?: string
   relativePath?: string
   time?: number
+  loop?: { start: number; end: number } | null
 }
 
 /** What the viewer hands to the bundle inspector that its workspace builds. */
@@ -335,6 +336,23 @@ export function ReplicaViewer({
   ])
   const mediaError =
     local.data?.state === 'available' && local.data.message ? new Error(local.data.message) : null
+  // Stable reference across polling re-renders so ViewerShell consumes an opening
+  // moment/loop jump once rather than re-seeking on every status or storyboard update.
+  const targetLoopStart = target.loop?.start
+  const targetLoopEnd = target.loop?.end
+  const startAt = useMemo(
+    () =>
+      target.fileId && target.time !== undefined
+        ? {
+            fileId: target.fileId,
+            time: target.time,
+            ...(targetLoopStart !== undefined && targetLoopEnd !== undefined
+              ? { loop: { start: targetLoopStart, end: targetLoopEnd } }
+              : {}),
+          }
+        : null,
+    [target.fileId, target.time, targetLoopStart, targetLoopEnd],
+  )
   const shell = (
     <ViewerShell
       items={items}
@@ -383,11 +401,7 @@ export function ReplicaViewer({
       serverExports={!unlinked && status.data?.export_version === 1}
       hostFiles={hostFiles}
       hostPath={observation?.file.relative_path ?? pathObservation?.entry.relative_path ?? null}
-      startAt={
-        target.fileId && target.time !== undefined
-          ? { fileId: target.fileId, time: target.time }
-          : null
-      }
+      startAt={startAt}
     />
   )
   return (

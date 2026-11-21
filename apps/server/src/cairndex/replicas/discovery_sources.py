@@ -259,3 +259,31 @@ def matches(old: dict[str, Any], new: dict[str, Any]) -> bool:
         and bool(old.get("device"))
         and bool(old.get("inode"))
     )
+
+
+def moved_observation(old: dict[str, Any], new: dict[str, Any]) -> dict[str, Any] | None:
+    """Confirm a unique 1:1 move/rename across local disks and mounted network shares.
+
+    macOS ``smbfs`` assigns a new ``st_ino`` on rename/move (ADR-0037) and a new
+    ``st_dev`` on remount, while preserving ``st_mtime_ns`` and all sampled bytes.
+    Files with a recorded ``sha256`` plus ``sample`` (Cairndex copies and verified
+    files) carry their complete hash across a confirmed rename just as ``confirms``
+    does across a same-path remount.
+    """
+    same_inode = (
+        (old.get("device"), old.get("inode")) == (new["device"], new["inode"])
+        and bool(old.get("device"))
+        and bool(old.get("inode"))
+    )
+    same_mtime = bool(old.get("mtime")) and old.get("mtime") == new["mtime"]
+    if old["evidence"] == new["evidence"]:
+        if new["evidence"]["algorithm"] == "sha256" or same_inode or same_mtime:
+            return new
+        return None
+    if (
+        old["evidence"]["algorithm"] == "sha256"
+        and old.get("sample") == new["evidence"]
+        and (same_inode or same_mtime)
+    ):
+        return new | {"evidence": old["evidence"], "sample": new["evidence"]}
+    return None

@@ -77,6 +77,11 @@ export interface BundleInspectorActions {
    * open the viewer on that file already at that instant.
    */
   onPlayMoment?: (bundleId: string, fileId: string, at: number) => void
+  /**
+   * Loop a saved span moment: arm the open player's range loop, or — from the
+   * shell — open the viewer on that file with its range loop already armed.
+   */
+  onLoopMoment?: (bundleId: string, fileId: string, range: { start: number; end: number }) => void
   /** The player-bound moment abilities; absent wherever there is no player. */
   moments?: MomentPlayerActions
 }
@@ -103,6 +108,7 @@ export const BUNDLE_INSPECTOR_ACTION_KEYS = [
   'onFilterByTags',
   'onOpenCollection',
   'onPlayMoment',
+  'onLoopMoment',
   'moments',
 ] as const satisfies readonly (keyof BundleInspectorActions)[]
 

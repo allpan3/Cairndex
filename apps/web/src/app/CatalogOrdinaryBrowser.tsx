@@ -108,7 +108,12 @@ export function CatalogOrdinaryBrowser(props: {
   onReviewConflict?: (unit: string) => void
   onOpen: (id: string) => void
   /** Open one file in the viewer, at `time` seconds when it is given. */
-  onOpenFile: (bundle: string, file: string, time?: number) => void
+  onOpenFile: (
+    bundle: string,
+    file: string,
+    time?: number,
+    loop?: { start: number; end: number } | null,
+  ) => void
   onChangeLibrary: (id: string) => void
   onManage: () => void
   onSettings?: () => void
@@ -729,6 +734,9 @@ export function CatalogOrdinaryBrowser(props: {
                       onReviewConflict={props.onReviewConflict}
                       onFilterTag={filterFromChip}
                       onPlayMoment={props.onOpenFile}
+                      onLoopMoment={(bundleId, fileId, range) =>
+                        props.onOpenFile(bundleId, fileId, range.start, range)
+                      }
                     />
                     {!file.linked && status?.path_media_version !== 1 && (
                       <p>Update the server to preview unindexed files.</p>

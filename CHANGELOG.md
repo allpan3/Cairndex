@@ -165,10 +165,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   reopens the draft with those choices. Files that are already in the catalog keep their
   identities, notes, moments and subtitles when grouped.
 - **Update with readable file changes.** Update names its phase with completed and total
-  counts. Its file changes list each file with its folder, a label (Not confirmed,
-  Possibly moved, Content changed) and a plain explanation, and one action (Check and
-  Restore, Check and Link, Use New Content) reads the file when needed, prepares the
-  review and accepts it. Repeat Updates batch their work, skip grouping when there are
+  counts, repairs unambiguous 1:1 renames and moves automatically across local disks,
+  SMB shares and unbundled copies so renamed unbundled files stay in Grouping
+  Suggestions, and reserves File changes for content replacements, unconfirmed copies
+  and ambiguous moves. Its file changes list each file with its folder, a label (Not
+  confirmed, Possibly moved, Content changed) and a plain explanation, pre-select a
+  single missing-file rename or move, offer **Settle All** when multiple unambiguous
+  file changes wait together, and let one action (Check and Restore, Check and Link,
+  Use New Content) read the file when needed, prepare the review and accept it. Repeat Updates batch their work, skip grouping when there are
   no new files and no longer pause after each step. On a synthetic 2,269-bundle library,
   sorts, counts and filter facets take under 0.3 s, and Collect metadata runs about 15
   files/s.
@@ -344,8 +348,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
-- **Moment hover previews and video card/album scrub previews in portable
-  libraries.** The desktop media relay now forwards portable moment
+- **Moment range-loop playback, hover previews, and video card/album scrub
+  previews in portable libraries.** Clicking a span moment's loop control or
+  badge in the Browser or File Inspector opens the viewer with the range loop
+  armed, and initial moment seeks/loops stay anchored on scalar target values so
+  background status and storyboard polling never reset `currentTime` back to the
+  moment start mid-playback. The desktop media relay forwards portable moment
   `/replica/media/moments/{id}/poster.jpg` and `clip.mp4` routes instead of
   rejecting them before they reach the sidecar, and Moment hover previews show
   fallback cover artwork and retry while initial posters or span clips finish

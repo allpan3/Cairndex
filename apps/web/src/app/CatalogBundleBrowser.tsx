@@ -194,7 +194,12 @@ export function CatalogBundleBrowser({
   onReviewConflict?: (unit: string) => void
   onOpen: (id: string) => void
   /** Open one file in the viewer, at `time` seconds when it is given. */
-  onOpenFile: (bundle: string, file: string, time?: number) => void
+  onOpenFile: (
+    bundle: string,
+    file: string,
+    time?: number,
+    loop?: { start: number; end: number } | null,
+  ) => void
   hostFiles?: LibraryHostFiles
   onHostPath?: (path: string | null) => void
   /** Show one library-relative file in the File Browser. */
@@ -1429,12 +1434,13 @@ export function CatalogBundleBrowser({
           onLocateFile={onLocateFile}
           onOpenDirectory={onOpenDirectory}
           onOpen={() => onOpen(detail.data.id)}
-          onOpenFile={(file, time) => onOpenFile(detail.data.id, file, time)}
+          onOpenFile={(file, time, loop) => onOpenFile(detail.data.id, file, time, loop)}
           moments={
             <CatalogBundleMoments
               library={library}
               bundle={detail.data.id}
               onPlay={(file, time) => onOpenFile(detail.data.id, file, time)}
+              onLoop={(file, range) => onOpenFile(detail.data.id, file, range.start, range)}
             />
           }
         />

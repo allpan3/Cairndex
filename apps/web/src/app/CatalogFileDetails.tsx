@@ -33,6 +33,7 @@ export function CatalogFileDetails({
   onReviewConflict,
   onFilterTag,
   onPlayMoment,
+  onLoopMoment,
 }: {
   library: string
   file: string | null
@@ -50,6 +51,7 @@ export function CatalogFileDetails({
   onReviewConflict?: (unit: string) => void
   onFilterTag?: (id: string) => void
   onPlayMoment?: (bundleId: string, fileId: string, time: number) => void
+  onLoopMoment?: (bundleId: string, fileId: string, range: { start: number; end: number }) => void
 }) {
   const [starConflict, setStarConflict] = useState<string | null>(null)
   const [starError, setStarError] = useState<Error | null>(null)
@@ -91,6 +93,7 @@ export function CatalogFileDetails({
         bundle={observedFile.bundle_id}
         file={observedFile}
         onPlay={onPlayMoment}
+        onLoop={onLoopMoment}
         onFilterTag={onFilterTag}
       />
     ) : null

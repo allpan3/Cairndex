@@ -165,15 +165,42 @@ def test_verified_large_playable_discovery_converges(replicas):
         assert not discovery_state.candidates(store)["items"]
 
 
-# A fully verified move is found through its retained sample and verified again
-def test_verified_file_move_requires_matching_complete_evidence(replicas):
+# An ordinary rename of a verified file carries its complete hash; an unverified
+# replacement copy with changed mtime and inode still requires verification.
+def test_verified_file_move_auto_repairs_rename_and_verifies_ambiguous_copy(replicas):
+    import json
+    import os
+
     store, root, _ = replicas[0]
     operation, candidate = start(store, root)
     assert finish(store, root, operation)["state"] == "succeeded"
     accepted = confirm(store, root, candidate, verification=operation)
     identity = accepted["prepared"]["files"][0]["id"]
-    (root / "large.mp4").rename(root / "moved.mp4")
-    scan(store, root)
+    expected_evidence = accepted["prepared"]["files"][0]["evidence"]
+
+    # 1. Ordinary filesystem rename repairs automatically without re-hashing
+    (root / "large.mp4").rename(root / "renamed.mp4")
+    renamed_scan = scan(store, root)
+    assert renamed_scan["repaired"] == 1
+    assert discovery_state.candidates(store, file_changes=True)["items"] == []
+    assert (
+        json.loads(store.entity("asset_files", identity)["fields"]["relative_path"]["value"])
+        == "renamed.mp4"
+    )
+    assert (
+        json.loads(store.entity("asset_files", identity)["fields"]["$content"]["value"])
+        == expected_evidence
+    )
+
+    # 2. Replacing across physical files with changed inode and mtime still requires verification
+    prior = discovery.sources.inspect(root, "renamed.mp4")
+    shutil.copy(root / "renamed.mp4", root / "moved.mp4")
+    os.utime(
+        root / "moved.mp4",
+        ns=(prior["mtime"] + 2_000_000_000, prior["mtime"] + 2_000_000_000),
+    )
+    (root / "renamed.mp4").unlink()
+    assert scan(store, root)["repaired"] == 0
     candidate = discovery_state.candidates(store)["items"][0]
     assert candidate["body"]["kind"] == "repair"
     operation = uuid4().hex

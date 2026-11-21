@@ -432,11 +432,15 @@ export function CatalogWorkspace({
                   file_id?: string
                   video_file_id?: string
                   start_s?: number
+                  end_s?: number | null
                 }
                 setMedia({
                   bundleId: value.bundle_id,
                   fileId: value.file_id ?? value.video_file_id,
                   time: value.start_s,
+                  ...(value.start_s !== undefined && value.end_s != null
+                    ? { loop: { start: value.start_s, end: value.end_s } }
+                    : {}),
                 })
               }
             }}
@@ -446,7 +450,7 @@ export function CatalogWorkspace({
         )}
       {media && (
         <ReplicaViewer
-          key={`${libraryId}/${media.bundleId}/${media.fileId}/${media.time}`}
+          key={`${libraryId}/${media.bundleId}/${media.fileId}/${media.time}/${media.loop ? `${media.loop.start}-${media.loop.end}` : ''}`}
           library={libraryId}
           target={media}
           onClose={() => setMedia(null)}
@@ -558,7 +562,9 @@ export function CatalogWorkspace({
           }}
           onReviewConflict={reviewConflict}
           onOpen={(id) => setMedia({ bundleId: id })}
-          onOpenFile={(bundleId, fileId, time) => setMedia({ bundleId, fileId, time })}
+          onOpenFile={(bundleId, fileId, time, loop) =>
+            setMedia({ bundleId, fileId, time, ...(loop ? { loop } : {}) })
+          }
           viewerOpen={media !== null}
           deepLink={deepLink}
           onDeepLinkHandled={onDeepLinkHandled}

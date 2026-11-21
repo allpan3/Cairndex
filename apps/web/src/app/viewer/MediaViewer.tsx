@@ -21,7 +21,7 @@ interface MediaViewerProps {
   bundleId: string
   initialFileId?: string | null
   /** Open already at a saved moment (plan 7), from the inspector's rail. */
-  startAt?: { fileId: string; time: number } | null
+  startAt?: { fileId: string; time: number; loop?: { start: number; end: number } | null } | null
   playerPrefs: PlayerPrefs
   onPlayerPrefs: React.Dispatch<React.SetStateAction<PlayerPrefs>>
   onClose: () => void

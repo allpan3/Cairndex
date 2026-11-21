@@ -116,9 +116,14 @@ ticks, Grouping **Accept selected** reuses recorded candidate fingerprints and
 batches candidate/group checks with parallel generation verification, cached
 thumbnails bypass derivative worker admission while keeping `no-store` HTTP
 headers and client-side session cover blobs, UI mutations apply optimistically
-with rollback, the global top sweep bar is removed, and portable Moment hover
+with rollback, the global top sweep bar is removed, portable Moment hover
 previews plus on-demand video scrub previews work across desktop and SMB
-remounts. See [performance measurements](performance.md#smb-responsiveness-and-grouping-accept-2026-11-21).
+remounts, span Moments open with an armed range loop from Browser/File
+inspectors and play continuously without re-seeking on status/storyboard polls,
+and Update repairs 1:1 Finder/SMB renames and renamed unbundled copies
+automatically (keeping them in Grouping Suggestions) while pre-selecting
+single-choice repairs and offering **Settle All** in File Changes. See
+[performance measurements](performance.md#smb-responsiveness-and-grouping-accept-2026-11-21).
 
 ## Merged audit, SMB and incoming-files work
 

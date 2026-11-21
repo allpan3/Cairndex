@@ -722,8 +722,10 @@ def test_recovery_rejects_invalid_discovery_state(replicas, damage):
             validate(db, store)
 
 
-# Samples propose a manual identity choice across physical files but never carry resume implicitly
+# Samples propose a manual identity choice across physical files with changed mtime/inode
 def test_large_ambiguous_repair_requires_explicit_identity_choice(replicas):
+    import os
+
     store, root, _ = replicas[0]
     source = root / "large.mp4"
     source.write_bytes(b"synthetic segment" * 100_000)
@@ -737,7 +739,9 @@ def test_large_ambiguous_repair_requires_explicit_identity_choice(replicas):
             "INSERT INTO local_progress VALUES (?,?,?,?,?)",
             (identity, prior["generation"], 5, 10, 0),
         )
-    shutil.copy2(source, root / "possible.mp4")
+    replacement = root / "possible.mp4"
+    shutil.copy(source, replacement)
+    os.utime(replacement, ns=(prior["mtime"] + 2_000_000_000, prior["mtime"] + 2_000_000_000))
     source.unlink()
     assert scan(store, root)["repaired"] == 0
     candidate = state.candidates(store)["items"][0]
@@ -754,6 +758,120 @@ def test_large_ambiguous_repair_requires_explicit_identity_choice(replicas):
     assert (
         json.loads(store.entity("asset_files", identity)["fields"]["relative_path"]["value"])
         == "possible.mp4"
+    )
+
+
+def test_smb_rename_with_changed_inode_and_device_auto_repairs(replicas):
+    store, root, _ = replicas[0]
+    source = root / "large_smb.mp4"
+    source.write_bytes(b"synthetic smb segment" * 100_000)
+    scan(store, root)
+    candidate = state.candidates(store)["items"][0]
+    identity = candidate["body"]["files"][0]["id"]
+    confirm(store, root, candidate)
+    prior = discovery.sources.inspect(root, "large_smb.mp4")
+    with store.connection() as db:
+        # Simulate macOS smbfs: baseline came from an earlier mount (different device)
+        # and rename on SMB assigns a new mounted inode while preserving mtime and samples.
+        smb_baseline = prior | {"device": prior["device"] + 10, "inode": prior["inode"] + 999}
+        db.execute(
+            "UPDATE discovery_baselines SET body=? WHERE file_id=?",
+            (json.dumps(smb_baseline), identity),
+        )
+        db.execute(
+            "INSERT INTO local_progress VALUES (?,?,?,?,?)",
+            (identity, prior["generation"], 7.5, 20, 0),
+        )
+    renamed = root / "renamed_smb.mp4"
+    source.rename(renamed)
+    result = scan(store, root)
+    assert result["repaired"] == 1
+    assert state.candidates(store, file_changes=True)["items"] == []
+    assert (
+        json.loads(store.entity("asset_files", identity)["fields"]["relative_path"]["value"])
+        == "renamed_smb.mp4"
+    )
+    with store.connection(readonly=True) as db:
+        progress = db.execute(
+            "SELECT generation,position FROM local_progress WHERE file_id=?", (identity,)
+        ).fetchone()
+        assert progress["position"] == 7.5
+        assert (
+            progress["generation"]
+            == discovery.sources.inspect(root, "renamed_smb.mp4")["generation"]
+        )
+
+
+def test_renamed_unbundled_copy_repairs_and_stays_in_grouping_suggestions(replicas):
+    from cairndex.replicas.catalog.commands import Preview
+    from cairndex.replicas.catalog.controls import creation
+    from cairndex.replicas.catalog.model import key, value_text
+    from cairndex.replicas.catalog.protocol import UnitChange
+
+    store, root, _ = replicas[0]
+    scan(store, root)
+    folder = root / "Staging"
+    folder.mkdir()
+    clip = folder / "raw_take_01.mp4"
+    payload = b"synthetic copied media " * 20_000
+    clip.write_bytes(payload)
+    sampled = discovery.sources.inspect(root, "Staging/raw_take_01.mp4")
+    import hashlib
+
+    full_evidence = {
+        "algorithm": "sha256",
+        "size": len(payload),
+        "digest": hashlib.sha256(payload).hexdigest(),
+    }
+    with store.connection() as db:
+        builder = Preview(store, db)
+        bundle_row = {k: json.loads(v) for k, v in creation("asset_bundles")["cells"].items()}
+        file_row = {k: json.loads(v) for k, v in creation("asset_files")["cells"].items()}
+        bundle_row.update(
+            id="bundle-staged-copy",
+            title="raw_take_01.mp4",
+            grouping_state="PROVISIONAL",
+            grouping_source="SCAN_SUGGESTION",
+        )
+        file_row.update(
+            id="file-staged-copy",
+            bundle_id="bundle-staged-copy",
+            relative_path="Staging/raw_take_01.mp4",
+            original_filename="raw_take_01.mp4",
+            display_title="raw_take_01.mp4",
+        )
+        builder.create("asset_bundles", bundle_row)
+        builder.create("asset_files", file_row)
+        builder.put(key("asset_files", "file-staged-copy", "$content"), full_evidence)
+        receipt = builder.receipt()
+        store.save_in(
+            db,
+            [UnitChange.model_validate(c) for c in receipt["changes"]],
+            "stage-copy",
+            parents=receipt["parents"],
+        )
+        baseline = sampled | {
+            "evidence": full_evidence,
+            "sample": sampled["evidence"],
+            "device": sampled["device"] + 5,
+            "inode": sampled["inode"] + 50,
+        }
+        db.execute(
+            "INSERT OR REPLACE INTO discovery_baselines VALUES (?,?)",
+            ("file-staged-copy", value_text(baseline)),
+        )
+
+    # Rename the unbundled file directly in the filesystem before grouping it
+    clip.rename(folder / "curated_take_01.mp4")
+    result = scan(store, root)
+    assert result["repaired"] == 1
+    assert state.candidates(store, file_changes=True)["items"] == []
+    grouping_candidates = state.candidates(store, file_changes=False)["items"]
+    staging = [c for c in grouping_candidates if c["path"].startswith("Staging/")]
+    assert len(staging) == 1
+    assert staging[0]["path"] == "Staging/curated_take_01.mp4"
+    assert (
+        staging[0]["body"]["title"] == "Staging" or "curated_take_01" in staging[0]["body"]["title"]
     )
 
 

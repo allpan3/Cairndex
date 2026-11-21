@@ -167,6 +167,7 @@ test('FileInspector renders star inline in the title row with 0ms optimistic fli
       }),
   )
   const onPlayMoment = vi.fn()
+  const onLoopMoment = vi.fn()
   const { container } = render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
@@ -177,6 +178,7 @@ test('FileInspector renders star inline in the title row with 0ms optimistic fli
         editor="editor-1"
         metadataEnabled
         onPlayMoment={onPlayMoment}
+        onLoopMoment={onLoopMoment}
       />
     </QueryClientProvider>,
   )
@@ -202,4 +204,10 @@ test('FileInspector renders star inline in the title row with 0ms optimistic fli
   // Clicking the moment's Play button opens the viewer at that exact file and timestamp
   fireEvent.click(screen.getByRole('button', { name: /Play from/i }))
   expect(onPlayMoment).toHaveBeenCalledWith('bundle-1', 'file-video-1', 12.5)
+
+  // Clicking the moment's Range loop button opens the viewer with the span loop armed
+  const loopBtn = screen.getByRole('button', { name: /^Range loop/i })
+  expect(loopBtn).toBeEnabled()
+  fireEvent.click(loopBtn)
+  expect(onLoopMoment).toHaveBeenCalledWith('bundle-1', 'file-video-1', { start: 12.5, end: 16.0 })
 })

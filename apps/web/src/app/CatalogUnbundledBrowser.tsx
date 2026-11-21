@@ -39,7 +39,12 @@ export function CatalogUnbundledBrowser({
   onReview: () => void
   onReviewConflict?: (unit: string) => void
   onFilterTag?: (id: string) => void
-  onOpenFile?: (bundleId: string, fileId: string, time?: number) => void
+  onOpenFile?: (
+    bundleId: string,
+    fileId: string,
+    time?: number,
+    loop?: { start: number; end: number } | null,
+  ) => void
   onNotice: (notice: CatalogNotice) => void
   hostFiles?: LibraryHostFiles
   onHostPath?: (path: string | null) => void
@@ -116,6 +121,11 @@ export function CatalogUnbundledBrowser({
             onReviewConflict={onReviewConflict}
             onFilterTag={onFilterTag}
             onPlayMoment={onOpenFile}
+            onLoopMoment={
+              onOpenFile
+                ? (bundleId, fileId, range) => onOpenFile(bundleId, fileId, range.start, range)
+                : undefined
+            }
           />
         </aside>
       ) : (

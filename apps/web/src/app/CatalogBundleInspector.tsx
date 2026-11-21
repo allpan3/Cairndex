@@ -54,7 +54,7 @@ export function CatalogBundleInspector({
   onReviewConflict?: (unit: string) => void
   /** Open the bundle in the viewer; absent inside the viewer itself. */
   onOpen?: () => void
-  onOpenFile: (file: string, time?: number) => void
+  onOpenFile: (file: string, time?: number, loop?: { start: number; end: number } | null) => void
   /** The moments section; each surface supplies its own source and actions. */
   moments?: ReactNode
   albumFile?: string | null
@@ -160,6 +160,7 @@ export function CatalogBundleInspector({
           onReviewConflict={onReviewConflict}
           onFilterTag={onFilterTag}
           onPlayMoment={(_bundleId, fileId, time) => onOpenFile(fileId, time)}
+          onLoopMoment={(_bundleId, fileId, range) => onOpenFile(fileId, range.start, range)}
         />
       </aside>
     )

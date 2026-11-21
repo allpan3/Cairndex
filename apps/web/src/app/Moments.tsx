@@ -48,7 +48,12 @@ export function Moments({ bundleId, files }: { bundleId: string; files: FileRead
   const legacyMutations = useMomentMutations(source ? null : bundleId)
   const moments = source?.moments ?? legacyMoments
   const mutations: MomentMutations = source?.mutations ?? legacyMutations
-  const { onPlayMoment, onFilterByTags, moments: player } = useBundleInspectorActions()
+  const {
+    onPlayMoment,
+    onLoopMoment,
+    onFilterByTags,
+    moments: player,
+  } = useBundleInspectorActions()
   const menu = useContextMenu()
   // The moment saved by the most recent capture, so its row opens straight into
   // its comment box (owner, 2026-08-29): the thing you want to write down is
@@ -134,6 +139,7 @@ export function Moments({ bundleId, files }: { bundleId: string; files: FileRead
                     startEditing={moment.id === justSaved}
                     mutations={mutations}
                     onPlay={onPlayMoment}
+                    onLoop={onLoopMoment}
                     onFilterByTags={onFilterByTags}
                     player={player}
                     onMenu={menu.open}
@@ -176,6 +182,7 @@ function MomentRow({
   startEditing,
   mutations,
   onPlay,
+  onLoop,
   onFilterByTags,
   player,
   onMenu,
@@ -188,6 +195,8 @@ function MomentRow({
   startEditing: boolean
   mutations: MomentMutations
   onPlay: ((bundleId: string, fileId: string, at: number) => void) | undefined
+  onLoop:
+    ((bundleId: string, fileId: string, range: { start: number; end: number }) => void) | undefined
   onFilterByTags: ((tagIds: string[]) => void) | undefined
   player: ReturnType<typeof useBundleInspectorActions>['moments']
   onMenu: (event: React.MouseEvent, entries: MenuEntry[]) => void
@@ -208,6 +217,21 @@ function MomentRow({
     : momentPosterUrl(moment.bundle_id, moment.id, moment.version)
   const isRange = moment.end_s !== null
   const range = isRange ? { start: moment.start_s, end: moment.end_s as number } : null
+  const canLoop = Boolean(range && (player || onLoop))
+  const triggerLoop = () => {
+    if (!range) return
+    if (player) player.loop(moment.file_id, range)
+    else onLoop?.(bundleId, moment.file_id, range)
+  }
+  const triggerPrimary = range
+    ? canLoop
+      ? triggerLoop
+      : onPlay
+        ? () => onPlay(bundleId, moment.file_id, moment.start_s)
+        : undefined
+    : onPlay
+      ? () => onPlay(bundleId, moment.file_id, moment.start_s)
+      : undefined
   // A range on a file the browser can decode plays itself on hover. `supported`
   // is the same flag the grid's card preview gates on: anything needing the
   // player's remux keeps the still tile rather than dragging that machinery into
@@ -289,8 +313,22 @@ function MomentRow({
       )}
       <div className="moment-row__body">
         <div className="moment-row__line">
-          <span className="moment-row__time">{time}</span>
-          {length && <span className="moment-row__length">{length}</span>}
+          <span
+            className="moment-row__time"
+            onClick={triggerPrimary}
+            style={triggerPrimary ? { cursor: 'pointer' } : undefined}
+          >
+            {time}
+          </span>
+          {length && (
+            <span
+              className="moment-row__length"
+              onClick={triggerPrimary}
+              style={triggerPrimary ? { cursor: 'pointer' } : undefined}
+            >
+              {length}
+            </span>
+          )}
           {/* Tags share the first line: there is usually one, and a line of its
               own for one pill made every moment three rows tall (owner,
               2026-08-30). The region is width-capped and clips rather than
@@ -335,11 +373,11 @@ function MomentRow({
           {range && (
             <button
               className="moment-row__act"
-              onClick={() => player?.loop(moment.file_id, range)}
-              disabled={!player}
+              onClick={triggerLoop}
+              disabled={!canLoop}
               aria-label={`Range loop from ${time}`}
               title={
-                player
+                canLoop
                   ? 'Range loop: keep playback inside this span'
                   : 'A range loop needs the player — open this bundle to loop a span'
               }

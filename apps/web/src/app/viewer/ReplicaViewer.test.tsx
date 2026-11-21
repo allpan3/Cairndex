@@ -9,6 +9,7 @@ import { coverOffset } from './replicaCover'
 import { useMomentSource } from '../momentSource'
 
 vi.mock('../../api/replicas', () => ({ replicaRequest: vi.fn() }))
+const seenStartAt: unknown[] = []
 vi.mock('./ViewerShell', () => ({
   ViewerShell: function ViewerShell({
     loading,
@@ -20,6 +21,7 @@ vi.mock('./ViewerShell', () => ({
     cover,
     items,
     index,
+    startAt,
   }: {
     cover?: { onUseFrame: (time: number) => unknown; onClear: () => unknown } | null
     items?: { canSetCover: boolean }[]
@@ -30,7 +32,9 @@ vi.mock('./ViewerShell', () => ({
     playable: { storyboard_url: string | null } | null
     inspectorTarget: { kind: string; inspector?: ReactNode } | null
     savedMoments?: unknown[]
+    startAt?: { fileId: string; time: number; loop?: { start: number; end: number } | null } | null
   }) {
+    if (!loading && startAt !== undefined) seenStartAt.push(startAt)
     const source = useMomentSource()
     return loading ? (
       <p>Loading media</p>
@@ -386,3 +390,67 @@ test('a cover offset stays inside the video', () => {
   expect(coverOffset(4, null)).toBe(4)
   expect(coverOffset(null, 10)).toBeNull()
 })
+
+test('startAt keeps one stable reference across storyboard polling re-renders and forwards loop bounds', async () => {
+  setActiveLibraryId('synthetic')
+  seenStartAt.length = 0
+  const ready = { state: 'ready', url: '/api/v1/storyboard.vtt?v=g', message: null }
+  const replies = [{ state: 'queued', url: null, message: null }, ready]
+  const file = {
+    id: 'file',
+    bundle_id: 'bundle',
+    relative_path: 'a.mp4',
+    original_filename: 'a.mp4',
+    display_title: 'a',
+    media_kind: 'video',
+    supported: true,
+    availability: 'available',
+  }
+  vi.mocked(replicaRequest).mockImplementation(async (_library, path) => {
+    if (path === '/status') return { storyboard_version: 1 }
+    if (path.endsWith('/storyboard')) return replies.shift() ?? ready
+    if (path.startsWith('/media/files/'))
+      return {
+        file,
+        generation: 'g',
+        state: 'available',
+        message: null,
+        playback: { file_id: 'file', stream_url: '/stream', storyboard_url: null, subtitles: [] },
+      }
+    return {
+      title: 'Synthetic album',
+      files: [file],
+      directories: [],
+      moments: [],
+      cursor: null,
+      revision: 'first',
+      next_offset: null,
+    }
+  })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ReplicaViewer
+        library="synthetic"
+        target={{ bundleId: 'bundle', fileId: 'file', time: 12.5, loop: { start: 12.5, end: 16 } }}
+        onClose={() => {}}
+      />
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByText('Storyboard none')).toBeInTheDocument()
+  expect(
+    await screen.findByText('Storyboard /api/v1/storyboard.vtt?v=g', {}, { timeout: 4000 }),
+  ).toBeInTheDocument()
+  expect(seenStartAt.length).toBeGreaterThanOrEqual(2)
+  expect(seenStartAt[0]).toEqual({
+    fileId: 'file',
+    time: 12.5,
+    loop: { start: 12.5, end: 16 },
+  })
+  for (const entry of seenStartAt) {
+    expect(entry).toBe(seenStartAt[0])
+  }
+  view.unmount()
+  client.clear()
+  setActiveLibraryId(null)
+}, 10_000)

@@ -421,11 +421,18 @@ test('browser inspector plays a moment and hands its drafts to the viewer @fulls
     // An unsaved note follows the bundle into the viewer: one inspector owns its drafts
     const note = inspector.getByRole('textbox', { name: 'Note', exact: true })
     await note.fill('Synthetic draft note')
-    await inspector.getByRole('button', { name: 'Play from 0:42' }).click()
-    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(41)
-    expect((await picture(page)).time).toBeLessThan(48)
-    await expect(page.getByText('The bundle inspector is in the viewer.')).toBeAttached()
+    await inspector.getByRole('button', { name: 'Range loop from 0:42' }).click()
     const viewer = page.locator('.media-viewer')
+    await expect(
+      viewer.getByTestId('clip-bar').getByRole('button', { name: 'Range loop' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await expect.poll(async () => (await picture(page)).time).toBeGreaterThan(41)
+    // Workspace and storyboard polling must not re-seek back to 42.0s mid-loop
+    await expect
+      .poll(async () => (await picture(page)).time, { timeout: 15_000 })
+      .toBeGreaterThan(43.8)
+    expect((await picture(page)).time).toBeLessThan(47.5)
+    await expect(page.getByText('The bundle inspector is in the viewer.')).toBeAttached()
     // Wake auto-hidden controls before pointer hit testing
     await viewer.hover()
     await viewer.getByRole('button', { name: 'Show bundle inspector' }).click()
