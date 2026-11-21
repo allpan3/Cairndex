@@ -13,6 +13,9 @@ import type { CatalogNotice } from './CatalogToast'
 import { noun, type SourceTask, type TaskItem, type TaskItemState } from './sourceTasks'
 import { undoStamp, type Undoable } from './undoShortcut'
 
+const CONTENT_QUERY = (query: { queryKey: readonly unknown[] }) =>
+  !['auth-status', 'libraries', 'library-ownership'].includes(String(query.queryKey[0]))
+
 // The server's collision refusal (`source_plan.py`); its job stops as interrupted
 export const isCollision = (job: Pick<SourceJob, 'error'>) =>
   Boolean(
@@ -270,7 +273,7 @@ export function useSourceTasks(
       }
       commit(tasks.current.filter((item) => item.id !== id))
       // Counts and views that read the bundles changed again
-      if (task.finish.kind !== 'none') void cache.invalidateQueries()
+      if (task.finish.kind !== 'none') void cache.invalidateQueries({ predicate: CONTENT_QUERY })
       const done = task.items.flatMap((item) => (item.state.kind === 'done' ? [item.state] : []))
       // Bundled copies are undone through the Trash (see `undo`), which only
       // takes back files this task made; a Replace stays, with its old version kept
@@ -325,7 +328,7 @@ export function useSourceTasks(
       controllers.current.delete(id)
       // Views refresh before the task stops running: a File Browser hides moved
       // items only while it runs, so they must not reappear in between
-      await cache.invalidateQueries()
+      await cache.invalidateQueries({ predicate: CONTENT_QUERY })
       patch(id, (task) => ({ ...task, running: false, stopping: false }))
     }
     if (find(id)?.items.every((item) => item.state.kind === 'done')) await finish(id)

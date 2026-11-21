@@ -1,7 +1,10 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { CatalogJobError, operationId, runJob, type Entity, type Save } from '../api/catalog'
 import { bundleLockKey, fileLockKey, withCatalogWriteLock } from '../api/catalogWriteQueue'
+import { resolveApiUrl } from '../api/client'
 import { captureRequestScope } from '../api/requestScope'
+import { evictCoverBlobPrefix } from './coverMemoryCache'
 import { useCatalogDraft } from './useCatalogDraft'
 
 type Pending = { operation: string; request: Save; inputs: Record<string, string> }
@@ -109,6 +112,7 @@ export function useCatalogBundleDraft(
   refresh: () => void,
   blocked = false,
 ) {
+  const client = useQueryClient()
   const storage = useCatalogDraft(
     library,
     `inspector/${entity.id}`,
@@ -170,6 +174,32 @@ export function useCatalogBundleDraft(
         ]),
       ],
     })
+    if (field === 'title' || field === 'rating' || field === 'cover_file_id') {
+      const decoded: unknown = JSON.parse(raw)
+      if (field === 'cover_file_id')
+        evictCoverBlobPrefix(
+          resolveApiUrl(`/api/v1/libraries/${library}/bundles/${entity.id}/thumbnail`),
+        )
+      client.setQueriesData<InfiniteData<{ items: Record<string, unknown>[] }>>(
+        { queryKey: ['catalog-browse', library] },
+        (data) =>
+          data?.pages
+            ? {
+                ...data,
+                pages: data.pages.map((page) => ({
+                  ...page,
+                  items: page.items.map((item) =>
+                    item.id === entity.id
+                      ? field === 'cover_file_id'
+                        ? { ...item, cover_file_id: decoded, cover_key: decoded }
+                        : { ...item, [field]: decoded }
+                      : item,
+                  ),
+                })),
+              }
+            : data,
+      )
+    }
     setError('')
     setMessage('Saving…')
   }
@@ -277,6 +307,7 @@ export function useCatalogBundleDraft(
     } catch (reason) {
       if (!storage.isCurrent()) return
       if (reason instanceof CatalogJobError) persist({ ...latest.current, pending: null })
+      void client.invalidateQueries({ queryKey: ['catalog-browse', library] })
       setMessage('')
       setError((reason as Error).message)
     } finally {

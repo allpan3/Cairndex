@@ -2765,6 +2765,15 @@ button {
      letterbox it rather than stretching. */
   object-fit: contain;
 }
+.moment-preview__fallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.45;
+  filter: blur(4px);
+}
 /* A range plays itself over the tile. Faded in only once it has a frame, so the
    still picture underneath is never replaced by a black box mid-load. */
 /* The honest still: one frame decoded at the marked instant, over the storyboard
@@ -7950,48 +7959,6 @@ code {
   border: 0;
 }
 
-/* --- Global fetching indicator: visible feedback for ⌘R / any refresh ------ */
-.top-progress {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  z-index: 1000;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  background-size: 40% 100%;
-  background-repeat: no-repeat;
-  /* A faint wash under the sweep, so the bar is locatable even at the moment the
-     highlight is off-screen at one end. */
-  box-shadow: inset 0 0 0 100vmax var(--accent-soft);
-  /* The minimum-visible-duration, done without a timer: fading out waits 420ms
-     and then uses the shared fade duration, so even a brief request remains
-     visible. Appearing is near-instant (see --active below). */
-  opacity: 0;
-  transition: opacity var(--motion-duration) var(--motion-easing) 420ms;
-}
-/* Appearing must be *instant*, not a fade: a local request can be in flight for
-   only a few milliseconds, and any fade-in would be cut off partway — leaving a
-   bar at 5% opacity that nobody can see. Jumping to full opacity and relying on
-   the delayed fade-out above is what makes a 3ms fetch visible for about 570ms. */
-.top-progress--active {
-  opacity: 1;
-  transition: none;
-  /* Only sweeps while it is actually on: the element stays mounted so the
-     fade-out has something to animate, and an animation left running behind an
-     invisible bar is work for nothing. */
-  animation: top-progress-sweep 1s linear infinite;
-}
-@keyframes top-progress-sweep {
-  0% {
-    background-position: -40% 0;
-  }
-  100% {
-    background-position: 140% 0;
-  }
-}
-
 /* Bounded metadata workspace shares the application's palette and keyboard controls */
 .replica-workspace {
   height: 100vh;
@@ -9942,8 +9909,7 @@ button.pick-row:disabled {
   .moment-preview__video {
     transition: none;
   }
-  .job-progress__track--indeterminate .job-progress__bar,
-  .top-progress--active {
+  .job-progress__track--indeterminate .job-progress__bar {
     animation: none;
   }
 }

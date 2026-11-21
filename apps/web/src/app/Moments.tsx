@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import {
   fileStoryboardUrl,
   fileStreamUrl,
+  fileThumbnailUrl,
   momentClipUrl,
   momentPosterUrl,
   type FileRead,
@@ -280,6 +281,7 @@ function MomentRow({
           // its poster (owner, 2026-08-29 and 2026-08-30).
           span={playableSpan}
           posterUrl={posterUrl}
+          fallbackUrl={!cue && posterUrl ? fileThumbnailUrl(bundleId, moment.file_id) : null}
           storyboardUrl={storyboardUrl}
           cue={cue}
           comment={moment.comment}
@@ -429,10 +431,16 @@ const PREVIEW_PLAY_DELAY_MS = 100
  * from the row rather than from the image — the picture letterboxes inside it,
  * so a storyboard that has not loaded cannot resize the box under the pointer.
  */
+function withRetryAttempt(url: string, attempt: number): string {
+  if (attempt <= 0) return url
+  return `${url}${url.includes('?') ? '&' : '?'}retry=${attempt}`
+}
+
 function MomentPreview({
   anchor,
   span,
   posterUrl,
+  fallbackUrl = null,
   storyboardUrl,
   cue,
   comment,
@@ -445,6 +453,8 @@ function MomentPreview({
   span: { clipUrl: string; streamUrl: string | null; start: number; end: number } | null
   /** The frame this moment marks, decoded server-side. The honest still. */
   posterUrl: string | null
+  /** Dimmed video cover shown while a first-hover poster frame is still encoding. */
+  fallbackUrl?: string | null
   storyboardUrl: string | null
   cue: StoryboardCue | null
   /** The moment's comment in full, which the row itself can only clamp. */
@@ -469,23 +479,6 @@ function MomentPreview({
       aria-hidden="true"
     >
       <div className="moment-preview__frame" style={{ height }}>
-        {/* Three layers, each replacing the one under it as it arrives.
-            
-            The storyboard tile is the bottom and the least accurate: it is
-            already in memory, so there is a picture from the first frame the
-            pointer rests, but the sheet is sampled every 2 to 30 seconds and
-            holds the frame at the *start* of the interval containing the mark —
-            up to half a minute before the moment on a long video. That is what
-            the owner kept seeing (2026-08-30, twice: "the initial frame is not
-            part of the range").
-
-            The poster is the same picture done properly: one frame decoded at
-            the marked instant, queued when the moment was saved, so normally it
-            is simply there. It covers a frame moment, which has no third layer.
-
-            The clip is the third, for a span, and its own first frame is the
-            in-point too — so once the poster is in place nothing in this stack
-            shows the wrong frame at any point. */}
         {cue && storyboardUrl && (
           <StoryboardTile
             storyboardUrl={storyboardUrl}
@@ -494,6 +487,7 @@ function MomentPreview({
             fillClassName="moment-preview__tile"
           />
         )}
+        {!cue && fallbackUrl && <MomentFallback url={fallbackUrl} />}
         {posterUrl && <MomentPoster url={posterUrl} />}
         {span && <SpanPlayback span={span} />}
       </div>
@@ -503,23 +497,51 @@ function MomentPreview({
   )
 }
 
+function MomentFallback({ url }: { url: string }) {
+  const [hidden, setHidden] = useState(false)
+  if (hidden) return null
+  return (
+    <img className="moment-preview__fallback" src={url} alt="" onError={() => setHidden(true)} />
+  )
+}
+
 /**
  * The frame a moment marks, over whatever the storyboard could guess at.
  *
  * Hidden until it has actually loaded, so a 404 — which is what the server says
  * while the frame is still being decoded — leaves the tile underneath visible
- * rather than punching a hole in the preview.
+ * rather than punching a hole in the preview, and retries briefly while hovered.
  */
 function MomentPoster({ url }: { url: string }) {
   const [loaded, setLoaded] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const retryTimer = useRef<number | null>(null)
+  useEffect(
+    () => () => {
+      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current)
+    },
+    [],
+  )
   return (
     <img
       className={`moment-preview__poster${loaded ? ' is-ready' : ''}`}
       data-testid="moment-preview-poster"
-      src={url}
+      src={withRetryAttempt(url, attempt)}
       alt=""
-      onLoad={() => setLoaded(true)}
-      onError={() => setLoaded(false)}
+      onLoad={() => {
+        if (retryTimer.current !== null) window.clearTimeout(retryTimer.current)
+        retryTimer.current = null
+        setLoaded(true)
+      }}
+      onError={() => {
+        setLoaded(false)
+        if (attempt < 8 && retryTimer.current === null) {
+          retryTimer.current = window.setTimeout(() => {
+            retryTimer.current = null
+            setAttempt((n) => n + 1)
+          }, 400)
+        }
+      }}
     />
   )
 }
@@ -556,14 +578,20 @@ function SpanPlayback({
 }) {
   const [ready, setReady] = useState(false)
   const [armed, setArmed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const retryTimer = useRef<number | null>(null)
   // The clip is tried first and demoted on error, which is the 404 it answers
   // while the cut is still queued. Keyed by span so a different row starts
   // hopeful again rather than inheriting this one's verdict.
-  // A portable span has no stream, so a missing clip leaves the still in place.
+  // A portable span has no stream, so a missing clip leaves the still in place
+  // and retries once the background cut finishes.
   const [source, setSource] = useState<'clip' | 'stream' | 'none'>('clip')
   useEffect(() => {
     const timer = window.setTimeout(() => setArmed(true), PREVIEW_PLAY_DELAY_MS)
-    return () => window.clearTimeout(timer)
+    return () => {
+      window.clearTimeout(timer)
+      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current)
+    }
   }, [])
   if (!armed || source === 'none') return null
 
@@ -574,7 +602,11 @@ function SpanPlayback({
     playsInline: true,
     // Only shown once it has a frame, so the tile underneath is never replaced
     // by a black box mid-load.
-    onPlaying: () => setReady(true),
+    onPlaying: () => {
+      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current)
+      retryTimer.current = null
+      setReady(true)
+    },
   } as const
 
   if (source === 'clip') {
@@ -582,7 +614,7 @@ function SpanPlayback({
       <video
         {...shared}
         data-source="clip"
-        src={span.clipUrl}
+        src={withRetryAttempt(span.clipUrl, attempt)}
         // Small, faststart, and starting where it should: nothing to arrange
         // before playing, and looping needs no seek.
         autoPlay
@@ -590,7 +622,18 @@ function SpanPlayback({
         preload="auto"
         onError={() => {
           setReady(false)
-          setSource(span.streamUrl ? 'stream' : 'none')
+          if (span.streamUrl) {
+            setSource('stream')
+            return
+          }
+          setSource('none')
+          if (attempt < 8 && retryTimer.current === null) {
+            retryTimer.current = window.setTimeout(() => {
+              retryTimer.current = null
+              setAttempt((n) => n + 1)
+              setSource('clip')
+            }, 650)
+          }
         }}
       />
     )

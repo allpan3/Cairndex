@@ -662,3 +662,54 @@ def test_concurrent_requests_share_the_same_generation_probe(media_api, monkeypa
         file.tech_metadata and file.tech_metadata["video_codec"] == "h264" for file in results
     )
     assert results[0].quick_fingerprint == results[1].quick_fingerprint
+
+
+def test_probe_false_after_remount_preserves_cached_tech_metadata(media_api, monkeypatch):
+    from cairndex.replicas import media
+
+    client, base, store, _, roots = media_api
+    probed = client.get(base + "/replica/media/files/media-direct").json()
+    assert probed["playback"]["duration"] > 70
+    real_generation = media.generation
+
+    def remounted_generation(path, stat):
+        return real_generation(path, stat) + "f"
+
+    monkeypatch.setattr(media, "generation", remounted_generation)
+    adapter = ReplicaMedia(store, roots[0], "synthetic")
+    adapter.resolve_file("media-direct", probe=False)
+    refreshed = adapter.file("media-direct", inspect=False, probe=False)
+    assert refreshed.tech_metadata is not None
+    assert refreshed.tech_metadata["video_codec"] == "h264"
+    assert refreshed.tech_metadata["duration"] > 70
+
+
+def test_cached_thumbnail_fast_path_serves_and_rejects_symlink_escape(
+    media_api, monkeypatch, tmp_path
+):
+    from cairndex.api.v1 import bundles as bundles_api
+
+    client, base, _, _, roots = media_api
+    warm = client.get(base + "/bundles/bundle-000001/thumbnail")
+    assert warm.status_code == 200
+    assert "no-store" in warm.headers["cache-control"]
+
+    real_derivative = bundles_api.run_derivative
+
+    async def unexpected_derivative(*_args, **_kwargs):
+        raise AssertionError("Cached thumbnail fast path must bypass run_derivative")
+
+    monkeypatch.setattr(bundles_api, "run_derivative", unexpected_derivative)
+    cached_resp = client.get(base + "/bundles/bundle-000001/thumbnail")
+    assert cached_resp.status_code == 200
+    assert "no-store" in cached_resp.headers["cache-control"]
+    monkeypatch.setattr(bundles_api, "run_derivative", real_derivative)
+
+    outside = tmp_path / "outside.jpg"
+    outside.write_bytes(b"outside")
+    for candidate in (roots[0] / "Playback").iterdir():
+        if candidate.is_file():
+            candidate.unlink()
+            candidate.symlink_to(outside)
+    escaped = client.get(base + "/bundles/bundle-000001/thumbnail")
+    assert escaped.status_code == 404

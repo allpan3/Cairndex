@@ -45,7 +45,10 @@ export function AlbumTile({
   const duration = typeof meta.duration === 'number' ? meta.duration : 0
   const container = typeof meta.container === 'string' ? meta.container : null
   const videoCodec = typeof meta.video_codec === 'string' ? meta.video_codec : null
+  const videoCodecTag = typeof meta.video_codec_tag === 'string' ? meta.video_codec_tag : null
   const audioCodec = typeof meta.audio_codec === 'string' ? meta.audio_codec : null
+  const storyboardVersion =
+    typeof meta.storyboard_version === 'string' ? meta.storyboard_version : null
   const previewSource = useMemo<HoverPreviewSource | null>(
     () =>
       file.availability === 'available' && file.media_kind === 'video' && duration > 0
@@ -56,22 +59,45 @@ export function AlbumTile({
             relativePath: file.relative_path,
             container,
             videoCodec,
+            videoCodecTag,
             audioCodec,
             duration,
             startTime: file.resume_position,
+            storyboardVersion,
+            generation: file.quick_fingerprint ?? null,
           }
-        : null,
+        : catalog && file.media_kind === 'video'
+          ? {
+              mediaKind: 'video',
+              fileId: file.id,
+              mimeType: file.mime_type,
+              relativePath: file.relative_path,
+              container,
+              videoCodec,
+              videoCodecTag,
+              audioCodec,
+              duration: 0,
+              startTime: file.resume_position,
+              storyboardVersion,
+              generation: file.quick_fingerprint ?? null,
+              needsProbe: true,
+            }
+          : null,
     [
       audioCodec,
+      catalog,
       container,
       duration,
       file.availability,
       file.id,
       file.media_kind,
       file.mime_type,
+      file.quick_fingerprint,
       file.relative_path,
       file.resume_position,
+      storyboardVersion,
       videoCodec,
+      videoCodecTag,
     ],
   )
 

@@ -165,22 +165,39 @@ export function CatalogNavigation({
             .filter((item) => (item.parent_id ?? null) === payload.parent_id)
             .reduce((last, item) => Math.max(last, item.sort_order + 1), 0)
           void createCollection(library, payload.name, payload.parent_id, order)
-            .then(async (created) => {
+            .then((created) => {
               current()
-              await collections.refresh()
+              client.setQueryData<typeof items>(
+                ['catalog-navigation', library, 'collections'],
+                (old) => [...(old ?? []), { ...created, count: 0, direct_count: 0 }],
+              )
               callbacks.onSuccess(created)
+              void collections.refresh()
             })
             .catch(callbacks.onError)
         }}
         onRenameCollection={(id, name, callbacks) => {
           const current = captureRequestScope()
+          const navKey = ['catalog-navigation', library, 'collections'] as const
+          const previous = client.getQueryData<typeof items>(navKey)
+          client.setQueryData<typeof items>(navKey, (old) =>
+            old?.map((item) => (item.id === id ? { ...item, name } : item)),
+          )
+          callbacks.onSuccess()
           void rename(library, 'collections', id, name)
             .then(async () => {
               current()
               await collections.refresh()
-              callbacks.onSuccess()
             })
-            .catch(callbacks.onError)
+            .catch((reason: Error) => {
+              try {
+                current()
+              } catch {
+                return
+              }
+              if (previous !== undefined) client.setQueryData(navKey, previous)
+              onNotice({ text: reason.message, alert: true })
+            })
         }}
         onReorderCollections={(parent, moved, before) => collections.arrange(moved, parent, before)}
         onReparentCollections={(moved, target) => collections.arrange(moved, target, null)}

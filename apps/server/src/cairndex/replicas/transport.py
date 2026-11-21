@@ -63,27 +63,50 @@ class Transport:
 
     # Restart a discovery cycle so files inserted before an iterator are eventually visited
     def _objects(self) -> Iterator[tuple[str, bytes]]:
-        for shard in range(256):
-            part = f"{shard:02x}"
-            try:
-                with (
-                    directory(self.root, [".cairndex", "replica", "objects", part]) as fd,
-                    os.scandir(fd) as entries,
-                ):
-                    for entry in entries:
-                        if entry.name.endswith(".json"):
-                            try:
-                                yield part + "/" + entry.name, read_file(fd, entry.name)
-                            except (OSError, ReplicaError):
-                                # Unreadable or unsafe entries never replace good state
-                                yield part + "/" + entry.name, b""
-                        else:
-                            yield (
-                                "ignored",
-                                b"",
-                            )  # Every entry consumes the per-tick work budget
-            except FileNotFoundError:
-                continue
+        try:
+            with (
+                directory(self.root, [".cairndex", "replica", "objects"]) as objects_fd,
+                os.scandir(objects_fd) as shard_entries,
+            ):
+                shards: list[str] = []
+                for shard_entry in shard_entries:
+                    name = shard_entry.name
+                    if (
+                        len(name) == 2
+                        and all(ch in "0123456789abcdef" for ch in name)
+                        and shard_entry.is_dir(follow_symlinks=False)
+                    ):
+                        shards.append(name)
+                    else:
+                        yield ("ignored", b"")
+                shards.sort()
+                for part in shards:
+                    try:
+                        shard_fd = os.open(
+                            part,
+                            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                            dir_fd=objects_fd,
+                        )
+                    except FileNotFoundError:
+                        continue
+                    try:
+                        with os.scandir(shard_fd) as entries:
+                            for entry in entries:
+                                if entry.name.endswith(".json"):
+                                    try:
+                                        yield (
+                                            part + "/" + entry.name,
+                                            read_file(shard_fd, entry.name),
+                                        )
+                                    except (OSError, ReplicaError):
+                                        # Unreadable or unsafe entries never replace good state
+                                        yield part + "/" + entry.name, b""
+                                else:
+                                    yield ("ignored", b"")
+                    finally:
+                        os.close(shard_fd)
+        except FileNotFoundError:
+            return
 
     # Immutable names cannot be replaced with different bytes, including corrupt provider copies
     def publish(self, event_id: str, raw: bytes) -> None:
@@ -124,6 +147,27 @@ class Transport:
                 os.unlink(temporary, dir_fd=fd)
             os.fsync(fd)
             self.store.fault("publish_after_rename")
+
+    def flush_outbox(self) -> int:
+        """Publish newly committed local events without scanning or repairing all shards."""
+        with self.store.connection(readonly=True) as db:
+            rows = db.execute(
+                "SELECT id,raw FROM events WHERE local=1 AND published=0 ORDER BY id LIMIT ?",
+                (BATCH,),
+            ).fetchall()
+        if not rows:
+            return 0
+        smb_transport._mount(self.root)
+        info = self.root.stat(follow_symlinks=False)
+        if self._root_identity != (info.st_dev, info.st_ino):
+            self.close()
+            raise ReplicaError("Library directory changed; reopen after recovery review")
+        for row in rows:
+            self.publish(row["id"], row["raw"])
+            self.store.fault("publish_before_receipt")
+            with self.store.connection() as db:
+                db.execute("UPDATE events SET published=1 WHERE id=?", (row["id"],))
+        return len(rows)
 
     # One exchange tick bounds discovery, dependency retries and outbox publication separately
     def tick(self) -> None:

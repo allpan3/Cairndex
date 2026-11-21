@@ -422,10 +422,24 @@ def _local_facts(db: sqlite3.Connection, ids: list[str]) -> dict[str, dict[str, 
     for identity in ids:
         supported = [row for row in members.get(identity, []) if _supported(row["path"])]
         available = [row for row in supported if row["state"] == "available"]
+        available_videos = [
+            row
+            for row in available
+            if (classified := classify(row["path"].rsplit("/", 1)[-1])) is not None
+            and classified[0] == MediaKind.VIDEO
+        ]
+        supported_videos = [
+            row
+            for row in supported
+            if (classified := classify(row["path"].rsplit("/", 1)[-1])) is not None
+            and classified[0] == MediaKind.VIDEO
+        ]
         current = (
             next((row for row in supported if row["id"] == cursors.get(identity)), None)
             or next((row for row in available if row["position"] and not row["completed"]), None)
+            or next(iter(available_videos), None)
             or next(iter(available), None)
+            or next(iter(supported_videos), None)
             or next(iter(supported), None)
         )
         fact: dict[str, Any] = {"has_missing": identity in missing}

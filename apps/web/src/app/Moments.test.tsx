@@ -633,3 +633,28 @@ test('a portable row offers no tags and no poster', () => {
   expect(screen.getByTestId('moment-preview')).toHaveTextContent('note')
   expect(screen.queryByTestId('moment-preview-poster')).not.toBeInTheDocument()
 })
+
+test('a portable row retries its poster while decoding and shows fallback cover artwork', async () => {
+  const previews = vi.fn((row: Moment) => ({
+    poster: `/previews/${row.id}/poster.jpg`,
+    clip: null,
+  }))
+  renderPortable({
+    ...portableSource([moment({ id: 'decode-wait', start_s: 12 })]),
+    previews,
+  })
+  const [row] = screen.getAllByRole('listitem')
+  fireEvent.pointerEnter(row!)
+  expect(document.querySelector('.moment-preview__fallback')).not.toBeNull()
+  const poster = screen.getByTestId('moment-preview-poster')
+  expect(poster).toHaveAttribute('src', '/previews/decode-wait/poster.jpg')
+
+  await act(async () => {
+    fireEvent.error(poster)
+    vi.advanceTimersByTime(400)
+  })
+  expect(screen.getByTestId('moment-preview-poster')).toHaveAttribute(
+    'src',
+    '/previews/decode-wait/poster.jpg?retry=1',
+  )
+})

@@ -284,8 +284,8 @@ def apply(
 
 # The existing worker advances one bounded prepare/apply, while HTTP handlers only enqueue intent
 def tick(store: CatalogStore, root: Path) -> None:
-    deadline = time.monotonic() + 0.05
-    for _ in range(32):
+    deadline = time.monotonic() + 0.25
+    for _ in range(128):
         if not step(store, root) or time.monotonic() >= deadline:
             return
 

@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useContext, useMemo } from 'react'
 
+import { CatalogQueryContext } from '../api/catalogQuery'
 import type { BundleSummary } from '../api/client'
 import { fileThumbnailUrl, thumbnailUrl } from '../api/client'
 import { formatDimensions, formatDuration } from '../lib/format'
@@ -51,6 +52,7 @@ export function BundleCard({
   // Duration only makes sense for a video-backed card; an image bundle whose
   // current file happens to carry a stray "duration" in its metadata shouldn't
   // show a runtime badge next to a JPG type badge.
+  const catalogLibrary = useContext(CatalogQueryContext)
   const isVideo = item.media_kind === 'video'
   const previewSource = useMemo<HoverPreviewSource | null>(
     () =>
@@ -79,8 +81,28 @@ export function BundleCard({
               storyboardVersion: item.resume_storyboard_version,
               generation: item.resume_generation,
             }
-          : null,
+          : item.resume_file_id &&
+              Boolean(catalogLibrary) &&
+              (item.resume_media_kind === 'video' || (!item.resume_media_kind && isVideo))
+            ? {
+                mediaKind: 'video',
+                fileId: item.resume_file_id,
+                mimeType: item.resume_mime_type,
+                relativePath: item.resume_relative_path,
+                container: item.resume_container,
+                videoCodec: item.resume_video_codec,
+                videoCodecTag: item.resume_video_codec_tag,
+                audioCodec: item.resume_audio_codec,
+                duration: 0,
+                startTime: item.resume_position,
+                storyboardVersion: item.resume_storyboard_version,
+                generation: item.resume_generation,
+                needsProbe: true,
+              }
+            : null,
     [
+      catalogLibrary,
+      isVideo,
       item.id,
       item.resume_audio_codec,
       item.resume_container,

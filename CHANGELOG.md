@@ -249,6 +249,23 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **Instant local-first UI updates, faster SMB responsiveness, and cached cover
+  delivery.** Metadata edits across Bundle Browser, inspectors, All Tags, Moments,
+  and Grouping Review — including bundle and multi-bundle titles, star ratings,
+  cover choices, collection create/rename/delete/reorder, bundle and file tag or
+  collection toggles, tag/group management, moment comments, and grouping row
+  edits — now update the UI immediately and reconcile in the background with
+  automatic rollback on failure. Cached thumbnails and previews bypass the
+  transcode worker limiter on cache hits and stay in a bounded in-memory session
+  cover cache across virtualized scrolling and view switches without weakening
+  `Cache-Control: private, no-store` or symlink fencing. Local catalog, grouping,
+  and discovery steps drain directly without blocking behind periodic SMB
+  transport scans, replica object discovery scans only existing shard directories
+  instead of probing 256 shard paths per tick, and **Accept selected** in
+  Grouping Review batches candidate exports (`256` files/step, `64` groups/step)
+  with cached fingerprints and parallel SMB generation checks. Window-focus
+  query storms are disabled.
+
 - Interface fades and transitions share a 150 ms ease-out timing. Reduce
   Motion disables these transitions and the indeterminate progress sweeps.
 
@@ -317,6 +334,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Removed
 
+- **The global top fetching sweep bar (`.top-progress`),** which flashed across the
+  top edge of the window on routine refetches and background operations.
 - **Opening an old-format library directly.** It opens the conversion review instead.
 - **The File Operations panel.** Each file action runs on its own (see Added), and
   operations that need attention show in the activity card.
@@ -325,6 +344,18 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Moment hover previews and video card/album scrub previews in portable
+  libraries.** The desktop media relay now forwards portable moment
+  `/replica/media/moments/{id}/poster.jpg` and `clip.mp4` routes instead of
+  rejecting them before they reach the sidecar, and Moment hover previews show
+  fallback cover artwork and retry while initial posters or span clips finish
+  decoding instead of showing a dark box. Bundle cards with both a cover image
+  and a video member now select the video member for hover scrubbing while
+  retaining the cover image, cached technical metadata survives `probe=False`
+  resolutions after an SMB remount when file size and mtime are unchanged, and
+  hovering an uninspected portable video card or album tile probes its stream
+  metadata on demand so scrub preview works without running a full-library
+  metadata pass first.
 - **Hyphenated filename identifiers stay intact during grouping and stem
   widening/narrowing.** Shared bundle titles keep a complete token-aligned prefix
   such as `CLIP-100` (across `CLIP-100 - HDR.mp4`, `CLIP-100-cover.jpg`, and

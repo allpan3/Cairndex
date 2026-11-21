@@ -8,6 +8,7 @@ import sqlite3
 import stat
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import BoundedSemaphore, Lock
 from typing import Any
@@ -233,6 +234,10 @@ class ReplicaMedia:
         kind = classify(row["relative_path"])
         with self._read() as db:
             cached = db.execute("SELECT * FROM local_media WHERE file_id=?", (identity,)).fetchone()
+            prior_fact = db.execute(
+                "SELECT size, modified_at FROM local_file_facts WHERE file_id=? AND path=?",
+                (identity, row["relative_path"]),
+            ).fetchone()
         token = cached["generation"] if cached else None
         state = cached["state"] if cached else "unknown"
         metadata = json.loads(cached["metadata"]) if cached and cached["metadata"] else None
@@ -246,7 +251,15 @@ class ReplicaMedia:
                     current = generation(row["relative_path"], info)
                     size = info.st_size
                 if current != token:
-                    metadata = None
+                    same_facts = (
+                        not probe
+                        and prior_fact is not None
+                        and prior_fact["size"] == info.st_size
+                        and prior_fact["modified_at"]
+                        == datetime.fromtimestamp(info.st_mtime_ns / 1_000_000_000, UTC).isoformat()
+                    )
+                    if not same_facts:
+                        metadata = None
                 token, state = current, "available"
             except (OSError, PathSafetyError, ValidationError):
                 token, state, metadata = None, "unavailable", None

@@ -233,7 +233,10 @@ export function CatalogBundleInspector({
         <span className="prop__k">Rating</span>
         <StarRating
           value={rating ?? 0}
-          onChange={(value) => draft.change('rating', JSON.stringify(value || null))}
+          onChange={(value) => {
+            draft.change('rating', JSON.stringify(value || null))
+            void draft.save()
+          }}
         />
       </div>
       {summary && (
@@ -330,9 +333,10 @@ export function CatalogBundleInspector({
           blocked={blocked || draft.busy}
           editor={editor}
           fileCount={summary?.file_count}
-          onCover={(file, reference) =>
+          onCover={(file, reference) => {
             draft.change('cover_file_id', JSON.stringify(file), reference ? [reference] : [])
-          }
+            void draft.save()
+          }}
           onOpen={onOpenFile}
           onAddFiles={canAddFiles ? () => setAddingFiles(true) : undefined}
           onReview={onReview}

@@ -179,6 +179,8 @@ export function CatalogMultiBundleInspector({
       // The server refused it, so there is nothing left to retry
       if (reason instanceof CatalogJobError) draft.update(empty)
       setError((reason as Error).message)
+      void client.invalidateQueries({ queryKey: ['catalog-selection', library] })
+      void client.invalidateQueries({ queryKey: ['catalog-browse', library] })
     } finally {
       running.current = false
       setBusy(false)
@@ -243,9 +245,41 @@ export function CatalogMultiBundleInspector({
       setBusy(false)
     }
   }
+  const patchOptimisticSelection = (field: 'title' | 'rating', value: string | number | null) => {
+    const idSet = new Set(ids)
+    client.setQueryData<Snapshot>(['catalog-selection', library, named], (current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.map((item) => ({
+              ...item,
+              ...(field === 'title'
+                ? { title: value as string | null }
+                : { rating: value as number | null }),
+            })),
+          }
+        : current,
+    )
+    client.setQueriesData<{ pages: { items: Record<string, unknown>[] }[] }>(
+      { queryKey: ['catalog-browse', library] },
+      (data) =>
+        data?.pages
+          ? {
+              ...data,
+              pages: data.pages.map((page) => ({
+                ...page,
+                items: page.items.map((item) =>
+                  idSet.has(String(item.id)) ? { ...item, [field]: value } : item,
+                ),
+              })),
+            }
+          : data,
+    )
+  }
   function save(field: 'title' | 'rating', value: string | number | null, label: string) {
     if (locked) return
     if (large) {
+      patchOptimisticSelection(field, value)
       void runLarge(field, value)
       return
     }
@@ -260,6 +294,7 @@ export function CatalogMultiBundleInspector({
       applying: 'true',
       label,
     }
+    patchOptimisticSelection(field, value)
     draft.update(intent)
     void run(intent)
   }

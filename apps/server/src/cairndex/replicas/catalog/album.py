@@ -229,14 +229,18 @@ def _observations(db: sqlite3.Connection, ids: list[str]) -> dict[str, dict[str,
 
     A size observed at an earlier path no longer describes the file, so it is ignored.
     """
+    from cairndex.domain.enums import FileAvailability
+
     if not ids:
         return {}
     facts: dict[str, dict[str, Any]] = {}
     for row in db.execute(
-        "SELECT c.entity,m.metadata,s.size FROM catalog_rows c "
+        "SELECT c.entity,m.state,m.generation,m.metadata,s.size,g.position,g.completed "
+        "FROM catalog_rows c "
         "LEFT JOIN local_media m ON m.file_id=c.entity "
         "LEFT JOIN local_file_facts s ON s.file_id=c.entity "
         "AND s.path=json_extract(c.body,'$.relative_path') "
+        "LEFT JOIN local_progress g ON g.file_id=c.entity AND g.generation=m.generation "
         "WHERE c.family='asset_files' AND c.entity IN (SELECT value FROM json_each(?))",
         (json.dumps(ids),),
     ):
@@ -245,5 +249,10 @@ def _observations(db: sqlite3.Connection, ids: list[str]) -> dict[str, dict[str,
             fact["size_bytes"] = row["size"]
         if row["metadata"]:
             fact["tech_metadata"] = json.loads(row["metadata"])
+        if row["state"] == "available" and row["generation"]:
+            fact["availability"] = FileAvailability.AVAILABLE
+            fact["quick_fingerprint"] = row["generation"]
+            if row["position"] and not row["completed"]:
+                fact["resume_position"] = row["position"]
         facts[row["entity"]] = fact
     return facts

@@ -108,12 +108,40 @@ export function useCatalogCollections(
         failed?.()
       })
   }
-  const arrange = (moved: string[], parent: string | null, before: string | null) =>
-    run(() =>
-      arrangeHierarchy(library, 'collections', (forest) =>
-        moveCollections(forest, names, moved, parent, before),
-      ),
+  const navKey = ['catalog-navigation', library, 'collections'] as const
+  const arrange = (moved: string[], parent: string | null, before: string | null) => {
+    const previous = client.getQueryData<CatalogCollection[]>(navKey)
+    if (previous) {
+      const forest = moveCollections(
+        previous.map((item) => ({
+          id: item.id,
+          parent_id: item.parent_id ?? null,
+          sort_order: item.sort_order,
+        })),
+        names,
+        moved,
+        parent,
+        before,
+      )
+      const byId = new Map(forest.map((entry) => [entry.id, entry]))
+      client.setQueryData<CatalogCollection[]>(navKey, (old) =>
+        old?.map((item) => {
+          const next = byId.get(item.id)
+          return next ? { ...item, parent_id: next.parent_id, sort_order: next.sort_order } : item
+        }),
+      )
+    }
+    run(
+      () =>
+        arrangeHierarchy(library, 'collections', (forest) =>
+          moveCollections(forest, names, moved, parent, before),
+        ),
+      undefined,
+      () => {
+        if (previous !== undefined) client.setQueryData(navKey, previous)
+      },
     )
+  }
   // Bundles leaving the open collection leave its grid at once, as in v0.2.1, and
   // come back if the change is refused. What each change will alter is read
   // first, so its Undo puts back exactly that.
@@ -181,14 +209,39 @@ export function useCatalogCollections(
           onCancel={() => setDeleting(null)}
           onConfirm={() => {
             const targets = deleting.map((item) => item.id)
+            const targetSet = new Set(targets)
+            const previous = client.getQueryData<CatalogCollection[]>(navKey)
+            if (previous) {
+              const byId = new Map(previous.map((item) => [item.id, item]))
+              const promotedParent = (parentId: string | null | undefined): string | null => {
+                let current = parentId ?? null
+                const seen = new Set<string>()
+                while (current && targetSet.has(current) && !seen.has(current)) {
+                  seen.add(current)
+                  current = byId.get(current)?.parent_id ?? null
+                }
+                return current
+              }
+              client.setQueryData<CatalogCollection[]>(navKey, (old) =>
+                old
+                  ?.filter((item) => !targetSet.has(item.id))
+                  .map((item) =>
+                    item.parent_id && targetSet.has(item.parent_id)
+                      ? { ...item, parent_id: promotedParent(item.parent_id) }
+                      : item,
+                  ),
+              )
+            }
+            if (selection.collectionId && targetSet.has(selection.collectionId))
+              onSelect({ view: 'all', collectionId: null })
             setDeleting(null)
             run(
               async () => {
                 for (const target of targets) await remove(library, 'collections', target)
               },
+              undefined,
               () => {
-                if (selection.collectionId && targets.includes(selection.collectionId))
-                  onSelect({ view: 'all', collectionId: null })
+                if (previous !== undefined) client.setQueryData(navKey, previous)
               },
             )
           }}

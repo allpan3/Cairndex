@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 from cairndex.core.config import get_settings
-from cairndex.core.errors import DomainError, LibraryReleasedError
+from cairndex.core.errors import DomainError, LibraryReleasedError, NotFoundError
 from cairndex.file_ops import smb_transport
 from cairndex.ownership.lifecycle import lifecycle
 from cairndex.registry.library_package import read_manifest
@@ -24,12 +24,27 @@ from cairndex.replicas.store import Store
 from cairndex.replicas.transport import Transport
 
 _handles: dict[str, tuple[Store | CatalogStore, Transport, threading.Lock, str, BindingLock]] = {}
+_manifest_stats: dict[str, tuple[int, int, int, int]] = {}
 _lock = threading.RLock()
 _source_transports: dict[str, SourceTransport] = {}
 _source_locks: dict[str, threading.Lock] = {}
 # Libraries whose last exchange needs the owner to allow or save the share's login.
 # Runtime state: after a restart the next exchange finds the same problem again.
 _storage_access: dict[str, Literal["authorization", "login"]] = {}
+
+
+def is_open(library_id: str) -> bool:
+    """True when this server already holds an open replica store handle for `library_id`."""
+    with _lock:
+        return library_id in _handles
+
+
+def _stat_manifest(root: Path) -> tuple[int, int, int, int] | None:
+    try:
+        st = (root / ".cairndex" / "manifest.json").stat(follow_symlinks=False)
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
 
 
 # Cache only handles, never authoritative metadata or an in-memory causal history
@@ -39,8 +54,16 @@ def get_store(library: RegisteredLibrary) -> Store | CatalogStore:
     if library.serving_released or lifecycle.blocked(library.id):
         raise LibraryReleasedError("Library released; choose Reopen")
     root = Path(library.root_path)
+    with _lock:
+        existing = _handles.get(library.id)
+        cached_stat = _manifest_stats.get(library.id)
+    if existing is not None and cached_stat is not None:
+        current_stat = _stat_manifest(root)
+        if current_stat == cached_stat:
+            return existing[0]
     smb_transport._mount(root)
     manifest = read_manifest(root)
+    manifest_stat = _stat_manifest(root)
     if manifest.replica is None:
         raise PackageFormatError("This library uses the existing central metadata workflow")
     if manifest.library_uuid != library.library_uuid:
@@ -51,6 +74,8 @@ def get_store(library: RegisteredLibrary) -> Store | CatalogStore:
         if prior:
             if prior[3] != identity:
                 raise ReplicaError("Library descriptor changed; recovery review required")
+            if manifest_stat is not None:
+                _manifest_stats[library.id] = manifest_stat
             return prior[0]
         base = get_settings().data_dir.resolve()
         if base.is_relative_to(root.resolve()):
@@ -71,15 +96,88 @@ def get_store(library: RegisteredLibrary) -> Store | CatalogStore:
             if revision == "unbound":
                 bind(base, manifest.replica, "original", "initial")
             _handles[library.id] = store, Transport(root, store), threading.Lock(), identity, guard
+            if manifest_stat is not None:
+                _manifest_stats[library.id] = manifest_stat
             if isinstance(store, CatalogStore):
                 _source_transports[library.id] = SourceTransport(root, store)
                 _source_locks[library.id] = threading.Lock()
+            wake()
         except BaseException:
             if registered:
                 smb_transport.close_root(root)
             guard.close()
             raise
         return store
+
+
+def _verify_handle_manifest(library_id: str, root: Path, expected_identity: str) -> None:
+    with _lock:
+        cached_stat = _manifest_stats.get(library_id)
+    current_stat = _stat_manifest(root)
+    if cached_stat is not None and current_stat == cached_stat:
+        return
+    manifest = read_manifest(root)
+    if manifest.replica is None or manifest.replica.model_dump_json() != expected_identity:
+        raise ReplicaError("Library descriptor changed; recovery review required")
+    if current_stat is not None:
+        with _lock:
+            if library_id in _handles:
+                _manifest_stats[library_id] = current_stat
+
+
+def _run_local_catalog_work(store: CatalogStore, root: Path) -> None:
+    for _ in range(32):
+        if not run_one(store, root):
+            break
+    advance_grouping(store)
+    advance_discovery(store, root)
+    advance_grouping(store)
+
+
+def _clear_exchange_error(library_id: str, store: Store | CatalogStore) -> None:
+    _storage_access.pop(library_id, None)
+    with store.connection(readonly=True) as db:
+        has_err = db.execute("SELECT 1 FROM config WHERE key='exchange_error'").fetchone()
+    if has_err is not None:
+        with store.connection() as db:
+            db.execute("DELETE FROM config WHERE key='exchange_error'")
+
+
+def drain_local(library_id: str) -> None:
+    """Execute queued local catalog/grouping/discovery work immediately without SMB shard scans."""
+    with _lock:
+        handle = _handles.get(library_id)
+    if handle is None or not isinstance(handle[0], CatalogStore):
+        return
+    if not handle[2].acquire(blocking=False):
+        return
+    try:
+        with lifecycle.work(library_id):
+            _verify_handle_manifest(library_id, handle[1].root, handle[3])
+            _run_local_catalog_work(handle[0], handle[1].root)
+            if handle[1].flush_outbox():
+                _clear_exchange_error(library_id, handle[0])
+    except (OSError, DomainError) as error:
+        if isinstance(error, NotFoundError):
+            raise
+        problem = smb_transport.access_problem(error)
+        if problem is None:
+            _storage_access.pop(library_id, None)
+        else:
+            _storage_access[library_id] = problem
+        with handle[0].connection() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO config VALUES ('exchange_error', ?)",
+                (
+                    "Changes are saved on this device but not yet written to the library "
+                    "folder. Cairndex keeps trying.",
+                ),
+            )
+        raise ReplicaError(
+            "Metadata exchange is waiting for storage; saved work remains private"
+        ) from error
+    finally:
+        handle[2].release()
 
 
 # HTTP and background exchanges share a nonblocking per-replica lock and lifecycle admission
@@ -93,20 +191,14 @@ def exchange(library_id: str, *, source_work: Callable[[], bool] | None = None) 
         return
     try:
         with lifecycle.work(library_id):
-            manifest = read_manifest(handle[1].root)
-            if manifest.replica is None or manifest.replica.model_dump_json() != handle[3]:
-                raise ReplicaError("Library descriptor changed; recovery review required")
+            _verify_handle_manifest(library_id, handle[1].root, handle[3])
             if isinstance(handle[0], CatalogStore):
-                run_one(handle[0], handle[1].root)
-                advance_discovery(handle[0], handle[1].root)
-                advance_grouping(handle[0])
+                _run_local_catalog_work(handle[0], handle[1].root)
             handle[1].tick()
             source_transport = _source_transports.get(library_id)
             if source_transport:
                 source_transport.tick()
-            with handle[0].connection() as db:
-                db.execute("DELETE FROM config WHERE key='exchange_error'")
-            _storage_access.pop(library_id, None)
+            _clear_exchange_error(library_id, handle[0])
     except (OSError, DomainError) as error:
         problem = smb_transport.access_problem(error)
         if problem is None:
@@ -168,6 +260,20 @@ def exchange_sources(library_id: str, source_work: Callable[[], bool]) -> None:
         wake()
 
 
+def _has_active_review_or_verify(store: CatalogStore | None) -> bool:
+    if not isinstance(store, CatalogStore):
+        return False
+    with store.connection(readonly=True) as db:
+        return bool(
+            db.execute(
+                "SELECT 1 FROM discovery_reviews "
+                "WHERE state IN ('queued','apply_queued') "
+                "UNION ALL SELECT 1 FROM discovery_verifications "
+                "WHERE state IN ('queued','running') LIMIT 1"
+            ).fetchone()
+        )
+
+
 def advance_discovery(store: CatalogStore, root: Path) -> None:
     """Amortize exchange overhead without extending an individual Update transaction."""
     from cairndex.replicas.discovery import tick
@@ -176,7 +282,9 @@ def advance_discovery(store: CatalogStore, root: Path) -> None:
     deadline = time.monotonic() + DISCOVERY_SECONDS
     for _ in range(32):
         tick(store, root)
-        if time.monotonic() >= deadline or run(store).get("state") != "running":
+        if time.monotonic() >= deadline or (
+            run(store).get("state") != "running" and not _has_active_review_or_verify(store)
+        ):
             return
 
 
@@ -312,6 +420,7 @@ def serving(library_id: str, store: Store | CatalogStore) -> bool:
 def close(library_id: str) -> None:
     with _lock:
         handle = _handles.pop(library_id, None)
+        _manifest_stats.pop(library_id, None)
         source_transport = _source_transports.pop(library_id, None)
         _source_locks.pop(library_id, None)
         _storage_access.pop(library_id, None)
@@ -331,11 +440,54 @@ def close(library_id: str) -> None:
 # Seconds between passes while work is queued, and while every open library is idle.
 # Each pass keeps its bounded per-library steps, so Release still drains promptly;
 # the short pause leaves the SQLite writer free for HTTP saves between passes.
-BUSY_WAIT = 0.025
+BUSY_WAIT = 0.015
 IDLE_WAIT = 1.0
+SYNC_INTERVAL = 2.0
 # Longest run of review edit steps in one pass; a save waits at most this much longer
 GROUPING_SECONDS = 0.25
 DISCOVERY_SECONDS = 0.25
+
+
+def _is_warming_up(library_id: str) -> bool:
+    if library_id in _storage_access:
+        return False
+    with _lock:
+        handle = _handles.get(library_id)
+    if handle is None or not isinstance(handle[0], CatalogStore):
+        return False
+    with handle[0].connection(readonly=True) as db:
+        if db.execute(
+            "SELECT 1 FROM config WHERE key IN ('catalog_ready','blocked','exchange_error') LIMIT 1"
+        ).fetchone():
+            return False
+    return True
+
+
+def _needs_full_exchange(library_id: str, last_sync: float) -> bool:
+    with _lock:
+        if library_id not in _handles:
+            return False
+        handle = _handles.get(library_id)
+    if handle is None:
+        return True
+    store = handle[0]
+    if not isinstance(store, CatalogStore):
+        return True
+    if time.monotonic() - last_sync >= SYNC_INTERVAL:
+        return True
+    if library_id in _storage_access:
+        return True
+    with store.connection(readonly=True) as db:
+        if not db.execute("SELECT 1 FROM config WHERE key='catalog_ready'").fetchone():
+            return True
+        if db.execute("SELECT 1 FROM config WHERE key='exchange_error'").fetchone():
+            return True
+        if db.execute(
+            "SELECT 1 FROM source_receipts WHERE state IN ('local','pending') LIMIT 1"
+        ).fetchone():
+            return True
+    return False
+
 
 # Set when a request queues work, so the next pass starts now rather than after
 # IDLE_WAIT. Clearing after the wait loses no request: the work is committed before
@@ -356,6 +508,8 @@ class ReplicaWorker:
         self._thread = threading.Thread(target=self.run, name="replica-exchange", daemon=True)
         self._sources = ThreadPoolExecutor(max_workers=2, thread_name_prefix="source-operation")
         self._pending: dict[str, Future[None]] = {}
+        self._last_sync: dict[str, float] = {}
+        self._warmup_passes: dict[str, int] = {}
 
     def start(self) -> None:
         """Begin local provider-folder exchange without making network requests"""
@@ -377,6 +531,10 @@ class ReplicaWorker:
                     del self._pending[identity]
             with _lock:
                 libraries = list(_handles)
+            for key in list(self._last_sync):
+                if key not in libraries:
+                    del self._last_sync[key]
+                    self._warmup_passes.pop(key, None)
             for library_id in libraries:
                 if self._stop.is_set():
                     return
@@ -384,8 +542,26 @@ class ReplicaWorker:
                     # Hand queued file work to its own lane before the metadata pass,
                     # which on a network share can take a large part of a second
                     self._submit_sources(library_id)
-                    exchange(library_id)
-                    busy = pending(library_id) or busy
+                    queued_now = pending(library_id)
+                    if queued_now:
+                        drain_local(library_id)
+                    if _needs_full_exchange(library_id, self._last_sync.get(library_id, 0.0)):
+                        exchange(library_id)
+                        self._last_sync[library_id] = time.monotonic()
+                    warming = _is_warming_up(library_id)
+                    if warming:
+                        passes = self._warmup_passes.get(library_id, 0) + 1
+                        self._warmup_passes[library_id] = passes
+                    else:
+                        passes = 0
+                        self._warmup_passes.pop(library_id, None)
+                    with _lock:
+                        mocked_handle = _handles.get(library_id) is None
+                    busy = (
+                        (queued_now if mocked_handle else pending(library_id))
+                        or (warming and passes < 64)
+                        or busy
+                    )
                 except (DomainError, OSError):
                     continue
 

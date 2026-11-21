@@ -446,6 +446,47 @@ export function useSetFileTag(library: string) {
         },
       )
     },
+    onMutate: (input) => {
+      const assignedKey = ['catalog-file-tags', library, input.fileId, '', true] as const
+      void client.cancelQueries({ queryKey: assignedKey })
+      const prev = client.getQueryData<MembershipPage>(assignedKey)
+      const targetId = 'choice' in input ? input.choice.id : input.target
+      const assign = 'choice' in input ? (input.assigned ?? !input.choice.assigned) : input.assigned
+      const knownName =
+        'choice' in input
+          ? input.choice.name
+          : (client
+              .getQueryData<{ id: string; name: string }[]>(['catalog-navigation', library, 'tags'])
+              ?.find((item) => item.id === targetId)?.name ??
+            prev?.items.find((item) => item.id === targetId)?.name ??
+            targetId)
+      client.setQueryData<MembershipPage>(assignedKey, (current) => {
+        if (!current) return current
+        if (assign) {
+          if (current.items.some((item) => item.id === targetId)) return current
+          return {
+            ...current,
+            items: [
+              ...current.items,
+              {
+                id: targetId,
+                name: knownName,
+                parent_id: null,
+                path: [knownName],
+                assigned: true,
+                held: false,
+                observed: {},
+              },
+            ],
+          }
+        }
+        return { ...current, items: current.items.filter((item) => item.id !== targetId) }
+      })
+      return { assignedKey, prev }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.prev !== undefined) client.setQueryData(context.assignedKey, context.prev)
+    },
     onSettled: () => invalidateFileAnnotations(client, library),
   })
 }

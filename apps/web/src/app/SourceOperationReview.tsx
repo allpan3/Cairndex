@@ -11,6 +11,9 @@ import {
   type Version,
 } from '../api/sourceOperations'
 
+const CONTENT_QUERY = (query: { queryKey: readonly unknown[] }) =>
+  !['auth-status', 'libraries', 'library-ownership'].includes(String(query.queryKey[0]))
+
 export function SourceOperationReview({
   library,
   operation,
@@ -37,7 +40,7 @@ export function SourceOperationReview({
     setError('')
     try {
       await sourceRequest(library, `/${operation}${path}`, method, body)
-      await cache.invalidateQueries()
+      await cache.invalidateQueries({ predicate: CONTENT_QUERY })
     } catch (reason) {
       setError((reason as Error).message)
     } finally {
@@ -50,7 +53,7 @@ export function SourceOperationReview({
     try {
       await sourceRequest(library, `/${operation}`, 'DELETE')
       onPrepare({ ...request, operation: operationId() })
-      await cache.invalidateQueries()
+      await cache.invalidateQueries({ predicate: CONTENT_QUERY })
     } catch (reason) {
       setError((reason as Error).message)
     } finally {
@@ -71,7 +74,7 @@ export function SourceOperationReview({
   const value = job.data
   const retained = value?.result?.retained_versions as Record<string, Version> | undefined
   useEffect(() => {
-    if (value?.state === 'succeeded') void cache.invalidateQueries()
+    if (value?.state === 'succeeded') void cache.invalidateQueries({ predicate: CONTENT_QUERY })
   }, [cache, value?.state])
   const reviewed = value?.review as {
     source?: string

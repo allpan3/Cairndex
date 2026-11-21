@@ -53,8 +53,8 @@ def get_media_access(
     with registry_access.session() as registry:
         library = services.get_library(registry, library_id)
         root = Path(library.root_path)
-        manifest = read_manifest(root)
-        if manifest.replica is not None:
+        is_replica = service.is_open(library_id) or read_manifest(root).replica is not None
+        if is_replica:
             authorize_library(
                 registry,
                 library_id=library_id,

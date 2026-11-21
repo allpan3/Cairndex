@@ -307,18 +307,38 @@ export function CatalogFileAnnotations({
             }}
             onConfirm={(name) => {
               const current = captureRequestScope()
+              const targetId = renaming.id
+              const fileTagsKey = ['catalog-file-tags', library, file, '', true] as const
+              const prevFileTags = client.getQueryData<typeof assignedQuery.data>(fileTagsKey)
+              const navKey = ['catalog-navigation', library, 'tags'] as const
+              const prevNav = client.getQueryData<{ id: string; name: string }[]>(navKey)
+              client.setQueryData<typeof prevFileTags>(fileTagsKey, (old) =>
+                old
+                  ? {
+                      ...old,
+                      items: old.items.map((item) =>
+                        item.id === targetId ? { ...item, name } : item,
+                      ),
+                    }
+                  : old,
+              )
+              client.setQueryData<typeof prevNav>(navKey, (old) =>
+                old?.map((item) => (item.id === targetId ? { ...item, name } : item)),
+              )
+              setRenaming(null)
               setRenameBusy(true)
               setRenameError('')
-              void rename(library, 'tags', renaming.id, name)
+              void rename(library, 'tags', targetId, name)
                 .then(async () => {
                   current()
-                  setRenaming(null)
                   await invalidateFileAnnotations(client, library)
                 })
                 .catch((reason: Error) => {
                   try {
                     current()
-                    setRenameError(reason.message)
+                    if (prevFileTags !== undefined) client.setQueryData(fileTagsKey, prevFileTags)
+                    if (prevNav !== undefined) client.setQueryData(navKey, prevNav)
+                    setTagError(reason.message)
                   } catch {
                     /* The prior library owns this reply. */
                   }

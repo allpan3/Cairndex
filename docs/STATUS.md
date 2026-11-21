@@ -108,6 +108,18 @@ filtering (`album_version: 2`, `inspector_version: 2`, `browse_version: 18`),
 `catalog_search` FTS5 indexing on file notes/sources, and `has_starred_files`
 library/Smart Collection filtering.
 
+SMB responsiveness, optimistic UI updates, and portable media previews are
+implemented on `perf/smb-responsiveness-and-previews`: replica object scans read
+existing `.cairndex/replica/objects` shards via `scandir`, local catalog and
+grouping/discovery commands drain without waiting on periodic SMB transport
+ticks, Grouping **Accept selected** reuses recorded candidate fingerprints and
+batches candidate/group checks with parallel generation verification, cached
+thumbnails bypass derivative worker admission while keeping `no-store` HTTP
+headers and client-side session cover blobs, UI mutations apply optimistically
+with rollback, the global top sweep bar is removed, and portable Moment hover
+previews plus on-demand video scrub previews work across desktop and SMB
+remounts. See [performance measurements](performance.md#smb-responsiveness-and-grouping-accept-2026-11-21).
+
 ## Merged audit, SMB and incoming-files work
 
 The audit, SMB and incoming-files work is merged into `main`, and its original
