@@ -90,6 +90,9 @@ npm run test:e2e:fullstack # real-backend tests; requires uv sync + ffmpeg
 npm run build             # production SPA build
 ```
 
+Local runs save an HTML report and exit on failure. Open it with
+`npx playwright show-report` from `apps/web`.
+
 CI keeps the frontend job Node-only and runs `@fullstack` Playwright tests in a
 separate job that provisions the locked backend environment and ffmpeg.
 
