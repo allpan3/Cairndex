@@ -336,6 +336,9 @@ composition, drafts and prepared choices scoped to the conflict under review, an
 and keeps `CatalogOrdinaryBrowser` mounted (and viewer state suspended) so
 returning restores the exact collection, search, Bundle Album, File Browser
 folder, Unbundled queue, or viewer context. Rejected versions stay in history.
+
+![Reviewing a deletion and a competing edit in a synthetic bundle](screenshots/selected-item-conflict-review.png)
+
 Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
 local derivatives in the private cache; missing artwork leaves metadata usable.
 File pages retain catalog order. Selecting one file checks its local bytes and

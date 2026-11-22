@@ -210,6 +210,14 @@
       ],
       "purpose": "Document a collection drop reported with its Undo in the Bundle Browser",
       "provenance": "Playwright capture of a fresh synthetic playable library at 1300 by 800 pixels in the approved macOS VM. Reviewed edge to edge with no owner media, paths, account data, notifications or desktop content"
+    },
+    {
+      "sha256": "1f42164618ca20bd6562ce170c98f7653502b21088fa9014e2927aebd1237206",
+      "paths": [
+        "docs/screenshots/selected-item-conflict-review.png"
+      ],
+      "purpose": "Illustrate a reviewed bundle deletion competing with a metadata edit.",
+      "provenance": "Playwright capture from two disposable synthetic libraries using the packaged application. The full frame was visually checked and ancillary PNG metadata removed."
     }
   ],
   "vendored_trees": []
