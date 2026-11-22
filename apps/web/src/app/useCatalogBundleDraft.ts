@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { CatalogJobError, operationId, runJob, type Entity, type Save } from '../api/catalog'
+import { bundleLockKey, fileLockKey, withCatalogWriteLock } from '../api/catalogWriteQueue'
 import { captureRequestScope } from '../api/requestScope'
 import { useCatalogDraft } from './useCatalogDraft'
 
@@ -172,6 +173,28 @@ export function useCatalogBundleDraft(
     setError('')
     setMessage('Saving…')
   }
+  function lockKeys(state: Draft) {
+    const keys = [bundleLockKey(library, entity.id)]
+    const units = [
+      ...Object.keys(state.inputs),
+      ...Object.keys(state.observed),
+      ...(state.pending?.request.changes.map((changeItem) => changeItem.unit) ?? []),
+    ]
+    for (const unit of units) {
+      const match = /^asset_files\/([^/]+)\/\$alive$/.exec(unit)
+      if (match?.[1]) keys.push(fileLockKey(library, match[1]))
+    }
+    const cover = state.inputs[`asset_bundles/${entity.id}/cover_file_id`]
+    if (cover && cover !== 'null') {
+      try {
+        const target: unknown = JSON.parse(cover)
+        if (typeof target === 'string' && target) keys.push(fileLockKey(library, target))
+      } catch {
+        /* Invalid cover text is handled inside save validation. */
+      }
+    }
+    return keys
+  }
   async function save() {
     if (running.current || blocked || !storage.isCurrent()) return
     if (!latest.current.pending && !Object.keys(latest.current.inputs).length) return
@@ -180,70 +203,77 @@ export function useCatalogBundleDraft(
     setError('')
     let saved = false
     try {
-      scope.current()
-      let current = latest.current
-      if (!current.pending && !Object.keys(current.inputs).length) return
-      if (!current.pending) {
-        const reviewedConflict = Object.values(entity.fields).some(
-          (field) =>
-            field.held &&
-            (field.unit in current.inputs || field.unit.endsWith('/$alive')) &&
-            field.basis.every((revision) => current.observed[field.unit]?.includes(revision)),
-        )
-        if (reviewedConflict)
-          throw new Error('Review the competing values before replacing this metadata.')
-        const alive = entity.fields.$alive!.unit
-        const values = { ...current.inputs, [alive]: 'true' }
-        const cover = values[`asset_bundles/${entity.id}/cover_file_id`]
-        if (cover && cover !== 'null') {
-          const reference = `asset_files/${JSON.parse(cover)}/$alive`
-          if (!current.observed[reference]?.length)
-            throw new Error('Select the cover file again to read its current metadata.')
-          values[reference] = 'true'
+      await withCatalogWriteLock(lockKeys(latest.current), async () => {
+        scope.current()
+        let current = latest.current
+        if (!current.pending && !Object.keys(current.inputs).length) return
+        if (!current.pending) {
+          const reviewedConflict = Object.values(entity.fields).some(
+            (field) =>
+              field.held &&
+              (field.unit in current.inputs || field.unit.endsWith('/$alive')) &&
+              field.basis.every((revision) => current.observed[field.unit]?.includes(revision)),
+          )
+          if (reviewedConflict)
+            throw new Error('Review the competing values before replacing this metadata.')
+          const alive = entity.fields.$alive!.unit
+          const values = { ...current.inputs, [alive]: 'true' }
+          const cover = values[`asset_bundles/${entity.id}/cover_file_id`]
+          if (cover && cover !== 'null') {
+            const reference = `asset_files/${JSON.parse(cover)}/$alive`
+            if (!current.observed[reference]?.length)
+              throw new Error('Select the cover file again to read its current metadata.')
+            values[reference] = 'true'
+          }
+          const request: Save = {
+            changes: Object.entries(values).map(([unit, value]) => ({
+              unit,
+              value,
+              basis: current.observed[unit]!,
+            })),
+            parents: current.parents,
+            resolve: false,
+            recover: false,
+          }
+          current = {
+            ...current,
+            pending: { operation: operationId(), request, inputs: current.inputs },
+          }
+          persist(current)
         }
-        const request: Save = {
-          changes: Object.entries(values).map(([unit, value]) => ({
-            unit,
-            value,
-            basis: current.observed[unit]!,
-          })),
-          parents: current.parents,
-          resolve: false,
-          recover: false,
+        const pending = current.pending!
+        const job = await runJob(library, 'save', pending.request, pending.operation)
+        const event = job.result?.event
+        if (!event) throw new Error('The save receipt is unavailable. Retry the retained request.')
+        if (!storage.isCurrent()) return
+        for (const change of pending.request.changes) {
+          const previous = acknowledged.current[change.unit]
+          acknowledged.current[change.unit] = {
+            event,
+            value: change.value,
+            // Polling can lag more than one autosave. Recognize every superseded
+            // own basis, while keeping a genuinely new peer basis untouched.
+            bases: [...new Set([...(previous?.bases ?? []), JSON.stringify(change.basis)])],
+          }
         }
-        current = {
-          ...current,
-          pending: { operation: operationId(), request, inputs: current.inputs },
+        const next = latest.current
+        const inputs = { ...next.inputs }
+        const observed = { ...next.observed }
+        for (const change of pending.request.changes) {
+          observed[change.unit] = [event]
+          if (inputs[change.unit] === pending.inputs[change.unit]) delete inputs[change.unit]
         }
-        persist(current)
-      }
-      const pending = current.pending!
-      const job = await runJob(library, 'save', pending.request, pending.operation)
-      const event = job.result?.event
-      if (!event) throw new Error('The save receipt is unavailable. Retry the retained request.')
-      if (!storage.isCurrent()) return
-      for (const change of pending.request.changes) {
-        const previous = acknowledged.current[change.unit]
-        acknowledged.current[change.unit] = {
-          event,
-          value: change.value,
-          // Polling can lag more than one autosave. Recognize every superseded
-          // own basis, while keeping a genuinely new peer basis untouched.
-          bases: [...new Set([...(previous?.bases ?? []), JSON.stringify(change.basis)])],
-        }
-      }
-      const next = latest.current
-      const inputs = { ...next.inputs }
-      const observed = { ...next.observed }
-      for (const change of pending.request.changes) {
-        observed[change.unit] = [event]
-        if (inputs[change.unit] === pending.inputs[change.unit]) delete inputs[change.unit]
-      }
-      // Advance only this save's units. A refresh must not advance other draft bases.
-      persist({ inputs, observed, parents: [...new Set([...next.parents, event])], pending: null })
-      saved = true
-      setMessage(Object.keys(inputs).length ? 'Saving…' : 'Saved')
-      refresh()
+        // Advance only this save's units. A refresh must not advance other draft bases.
+        persist({
+          inputs,
+          observed,
+          parents: [...new Set([...next.parents, event])],
+          pending: null,
+        })
+        saved = true
+        setMessage(Object.keys(inputs).length ? 'Saving…' : 'Saved')
+        refresh()
+      })
     } catch (reason) {
       if (!storage.isCurrent()) return
       if (reason instanceof CatalogJobError) persist({ ...latest.current, pending: null })

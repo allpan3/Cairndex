@@ -49,6 +49,12 @@ export const FIELDS: FieldDef[] = [
   { field: 'date_added', label: 'Date added', kind: 'date', operators: ['gte', 'lte', 'gt', 'lt'] },
   { field: 'has_cover', label: 'Has cover', kind: 'bool', operators: ['equals'] },
   { field: 'has_missing', label: 'Has missing file', kind: 'bool', operators: ['equals'] },
+  {
+    field: 'has_starred_files',
+    label: 'Has starred file',
+    kind: 'bool',
+    operators: ['equals'],
+  },
 ]
 
 export const OP_LABELS: Record<string, string> = {

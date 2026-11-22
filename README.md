@@ -38,7 +38,8 @@ agents working in this repository.
 - Library Create/Open, separate per-server access protection, Release/Reopen,
   private snapshots and explicit recovery review.
 - Reviewed Update, stable file identity, metadata browsing and editing,
-  collections, tags, structured filters and retained drafts.
+  collections, tags, Open Bundle per-file stars/tags/notes/source URLs,
+  structured filters and retained drafts.
 - Local media observation, image/video playback and scoped library/server
   navigation.
 - Reviewed source Copy, Rename, Move, Replace, Trash, New Folder and conditional Undo,
@@ -52,7 +53,7 @@ and production deployment remain separate owner-triggered actions.
 Mapped desktop Open, Reveal and file drag-out are restored. Add Files and file drops
 use reviewed copies with explicit Apply. Recent's Date Opened sort uses private
 local opening history; Size uses this device's observations. Folder pagination,
-file note/source UI, cross-device resume, owner-media playback diagnosis and
+cross-device resume, owner-media playback diagnosis and
 production registration repair remain deferred. Cross-device iCloud delivery,
 offline delivery, hydration, conflicts, large-scale use and power-loss safety
 are not qualified. See [STATUS](docs/STATUS.md) for local build checks, the

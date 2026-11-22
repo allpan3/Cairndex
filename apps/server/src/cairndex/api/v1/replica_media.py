@@ -20,7 +20,7 @@ from cairndex.replicas.catalog.album import CatalogAlbumPage, album, revision, v
 from cairndex.replicas.catalog.projection import read_row
 from cairndex.replicas.catalog.schemas import CatalogJob
 from cairndex.replicas.maintenance import MaintenanceIntent
-from cairndex.replicas.media import ReplicaMedia, catalog_file
+from cairndex.replicas.media import ReplicaMedia, catalog_file, file_annotations
 from cairndex.replicas.protocol import ReplicaError, Token
 from cairndex.replicas.service import wake
 
@@ -170,11 +170,22 @@ def playlist(
                 )
             ]
 
+        page_ids = ids[:limit]
+        starred_ids, tags_by_file = file_annotations(db, page_ids)
+
         return ReplicaPlaylist(
             bundle_id=bundle_id,
             title=bundle["title"] or "Media",
             cursor=cursor[0] if cursor else None,
-            files=[FileRead.model_validate(catalog_file(db, identity)) for identity in ids[:limit]],
+            files=[
+                FileRead.model_validate(catalog_file(db, identity)).model_copy(
+                    update={
+                        "starred": identity in starred_ids,
+                        "tag_ids": tags_by_file.get(identity, []),
+                    }
+                )
+                for identity in page_ids
+            ],
             directories=[
                 DirectoryMemberRead.model_validate(row)
                 for row in related("bundle_directory_members")
@@ -193,8 +204,23 @@ def album_page(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     expected_revision: str | None = None,
+    starred_only: bool = False,
+    tag_ids: Annotated[list[Token] | None, Query(max_length=50)] = None,
+    include_descendants: bool = True,
+    tag_mode: Literal["any", "all"] = "any",
 ) -> CatalogAlbumPage:
-    return album(media, bundle_id, directory_id, offset, limit, expected_revision)
+    return album(
+        media,
+        bundle_id,
+        directory_id,
+        offset,
+        limit,
+        expected_revision,
+        starred_only=starred_only,
+        tag_ids=tag_ids,
+        include_descendants=include_descendants,
+        tag_mode=tag_mode,
+    )
 
 
 @router.post("/bundles/{bundle_id}/opened", status_code=204)
@@ -220,6 +246,7 @@ def local_file(file_id: str, media: Media) -> LocalMediaRead:
     progress = media.progress(file_id, asset.quick_fingerprint)
     with media.store.connection(readonly=True) as db:
         row = db.execute("SELECT error FROM local_media WHERE file_id=?", (file_id,)).fetchone()
+        starred_ids, tags_by_file = file_annotations(db, [file_id])
     message = row[0] if row else None
     video = None
     if available and asset.media_kind == MediaKind.VIDEO and meta:
@@ -241,7 +268,12 @@ def local_file(file_id: str, media: Media) -> LocalMediaRead:
             ],
         )
     return LocalMediaRead(
-        file=FileRead.model_validate(asset),
+        file=FileRead.model_validate(asset).model_copy(
+            update={
+                "starred": file_id in starred_ids,
+                "tag_ids": tags_by_file.get(file_id, []),
+            }
+        ),
         generation=asset.quick_fingerprint,
         state="available" if available else "unavailable",
         message=message

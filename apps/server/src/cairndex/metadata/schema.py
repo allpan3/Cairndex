@@ -24,6 +24,8 @@ FIELDS = {
     ),
     "asset_bundle_tags": "bundle_id tag_id",
     "asset_bundle_collections": "bundle_id collection_id sort_order",
+    "asset_file_stars": "file_id",
+    "asset_file_tags": "file_id tag_id",
     "moment_tags": "moment_id tag_id",
     "tag_group_memberships": "group_id tag_id sort_order",
     "plans.grouping_plans": "status stem_modes input_digest",
@@ -41,6 +43,8 @@ FIELDS = {
 EDGES = {
     "asset_bundle_tags": ("bundle_id", "tag_id"),
     "asset_bundle_collections": ("bundle_id", "collection_id"),
+    "asset_file_stars": ("file_id",),
+    "asset_file_tags": ("file_id", "tag_id"),
     "moment_tags": ("moment_id", "tag_id"),
     "tag_group_memberships": ("group_id", "tag_id"),
 }

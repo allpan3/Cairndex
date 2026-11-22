@@ -1,18 +1,19 @@
-import type { BundleSummary } from '../api/client'
+import type { BundleSummary, FileRead } from '../api/client'
 import type { LayoutMode } from './types'
 
-export interface PlacedCard {
-  item: BundleSummary
+export interface PlacedCard<T = BundleSummary> {
+  item: T
   x: number
   width: number
 }
 
-export interface Row {
+export interface Row<T = BundleSummary> {
   height: number
-  cards: PlacedCard[]
+  cards: PlacedCard<T>[]
 }
 
-const GAP = 10
+export const ROW_GAP = 10
+const GAP = ROW_GAP
 // Room reserved under a Card-layout cover for its title + sub line, plus the
 // card's 1px border. A reservation rather than a measurement: the frame's shape
 // is CSS's (`.card--framed .card__thumb`), so a couple of spare pixels here show
@@ -91,14 +92,24 @@ function aspect(item: BundleSummary): number {
   return CARD_COVER_ASPECT
 }
 
-/** Pack bundle summaries into virtualizable rows for the given layout. */
-export function computeRows(
-  items: BundleSummary[],
+/** Probed width/height ratio for Justified album tiles, clamped to sensible bounds. */
+export function albumFileAspect(file?: FileRead | null): number {
+  const meta = (file?.tech_metadata ?? {}) as Record<string, unknown>
+  const width = typeof meta.width === 'number' ? meta.width : 0
+  const height = typeof meta.height === 'number' ? meta.height : 0
+  if (width > 0 && height > 0) return Math.max(0.25, Math.min(4, width / height))
+  return CARD_COVER_ASPECT
+}
+
+/** Pack items into virtualizable rows for Card (`grid`), Justified, or List layout. */
+export function packRows<T>(
+  items: T[],
   layout: LayoutMode,
   containerWidth: number,
   zoom: number,
   showCardDetails = true,
-): Row[] {
+  aspectOf: (item: T) => number = () => CARD_COVER_ASPECT,
+): Row<T>[] {
   if (containerWidth <= 0 || items.length === 0) return []
 
   if (layout === 'list') {
@@ -114,7 +125,7 @@ export function computeRows(
     const cols = Math.max(1, Math.floor((containerWidth + GAP) / (cardW + GAP)))
     const actualW = (containerWidth - (cols - 1) * GAP) / cols
     const cardH = actualW / CARD_COVER_ASPECT + (showCardDetails ? META_HEIGHT : 0)
-    const rows: Row[] = []
+    const rows: Row<T>[] = []
     for (let i = 0; i < items.length; i += cols) {
       const slice = items.slice(i, i + cols)
       rows.push({
@@ -128,8 +139,8 @@ export function computeRows(
   // Justified: each row is stretched to fill the width, so the only choice the
   // layout makes is where to break. It aims every row at `targetH`.
   const targetH = zoom * JUSTIFIED_TARGET_FRACTION
-  const rows: Row[] = []
-  let current: BundleSummary[] = []
+  const rows: Row<T>[] = []
+  let current: T[] = []
   let aspectSum = 0
 
   /** The height a row of these items would take, stretched to the full width. */
@@ -152,8 +163,8 @@ export function computeRows(
       rowH = Math.min(rowH, above ? above.height - GAP : Infinity, targetH)
     }
     let x = 0
-    const cards: PlacedCard[] = current.map((item) => {
-      const w = rowH * aspect(item)
+    const cards: PlacedCard<T>[] = current.map((item) => {
+      const w = rowH * aspectOf(item)
       const card = { item, x, width: w }
       x += w + GAP
       return card
@@ -164,8 +175,9 @@ export function computeRows(
   }
 
   for (const item of items) {
+    const itemAspect = aspectOf(item)
     current.push(item)
-    aspectSum += aspect(item)
+    aspectSum += itemAspect
     const rowH = heightFor(aspectSum, current.length)
     if (rowH > targetH) continue // still room for more before the row is full
 
@@ -175,17 +187,28 @@ export function computeRows(
     // undershot — measured at 74-100% of the target, which is why the view read
     // as too small however far the slider was pushed (owner, 2026-08-23).
     const withoutH =
-      current.length > 1 ? heightFor(aspectSum - aspect(item), current.length - 1) : Infinity
+      current.length > 1 ? heightFor(aspectSum - itemAspect, current.length - 1) : Infinity
     if (Math.abs(withoutH - targetH) < Math.abs(rowH - targetH)) {
       current.pop()
-      aspectSum -= aspect(item)
+      aspectSum -= itemAspect
       flush(false)
       current.push(item)
-      aspectSum += aspect(item)
+      aspectSum += itemAspect
     } else {
       flush(false)
     }
   }
   flush(true)
   return rows
+}
+
+/** Pack bundle summaries into virtualizable rows for the given layout. */
+export function computeRows(
+  items: BundleSummary[],
+  layout: LayoutMode,
+  containerWidth: number,
+  zoom: number,
+  showCardDetails = true,
+): Row[] {
+  return packRows(items, layout, containerWidth, zoom, showCardDetails, aspect)
 }

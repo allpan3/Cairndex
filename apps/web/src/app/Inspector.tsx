@@ -52,7 +52,7 @@ import { usePersistentState } from '../state/usePersistentState'
 import { useSessionState } from '../state/useSessionState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
-import { IconChevron, IconGrip, IconPlay, IconPlus } from './icons'
+import { IconChevron, IconGrip, IconImage, IconPlay, IconPlus } from './icons'
 import { InspectorSection } from './InspectorSection'
 import { Moments } from './Moments'
 import { OverlayScrollbar } from './OverlayScrollbar'
@@ -1160,7 +1160,7 @@ export function FileList({
                 if (f.id !== coverId) update.mutate({ cover_file_id: f.id })
               }}
             >
-              ★
+              <IconImage />
             </button>
           )}
           {playable && onPlayFile && (

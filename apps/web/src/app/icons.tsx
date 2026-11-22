@@ -451,3 +451,12 @@ export const IconCopy = () => (
     <path d="M16 8V4H4v12h4" />
   </Svg>
 )
+
+export const IconStar = ({ filled = false }: { filled?: boolean }) => (
+  <Svg>
+    <polygon
+      points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+      fill={filled ? 'currentColor' : 'none'}
+    />
+  </Svg>
+)

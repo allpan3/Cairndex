@@ -330,6 +330,7 @@ export function CatalogOrdinaryBrowser(props: {
     }
   })
   const status = useReplicaStatus(props.library).data
+  const fileMetadataEnabled = props.inspectorEnabled && (status?.inspector_version ?? 0) >= 2
   const bundleMoves = (status?.selection_version ?? 0) >= 2 && !props.blocked
   const folderCollections = (status?.browse_version ?? 0) >= 7 && !props.blocked
   const tagManagement = (status?.browse_version ?? 0) >= 8 && !props.blocked
@@ -634,7 +635,13 @@ export function CatalogOrdinaryBrowser(props: {
             <CatalogUnbundledBrowser
               library={props.library}
               libraryName={libraryName}
+              editor={props.editor}
+              metadataEnabled={fileMetadataEnabled}
+              blocked={props.blocked}
               onReview={props.onReview}
+              onReviewConflict={props.onReviewConflict}
+              onFilterTag={filterFromChip}
+              onOpenFile={props.onOpenFile}
               onNotice={setNotice}
               hostFiles={hostFiles}
               onHostPath={setUnbundledHostPath}
@@ -715,6 +722,13 @@ export function CatalogOrdinaryBrowser(props: {
                       }}
                       locatable={Boolean(file.bundle_id && !file.unbundled)}
                       onRename={rename}
+                      editor={props.editor}
+                      metadataEnabled={fileMetadataEnabled}
+                      blocked={props.blocked}
+                      onReview={props.onReview}
+                      onReviewConflict={props.onReviewConflict}
+                      onFilterTag={filterFromChip}
+                      onPlayMoment={props.onOpenFile}
                     />
                     {!file.linked && status?.path_media_version !== 1 && (
                       <p>Update the server to preview unindexed files.</p>

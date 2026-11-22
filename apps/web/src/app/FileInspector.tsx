@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import {
   formatBitrate,
@@ -39,6 +39,8 @@ export function FileInspector({
   locateLabel,
   onLocate,
   locateDisabled = false,
+  headerAction,
+  children,
 }: {
   entry: FileFacts | null
   hostLabels: HostLabels
@@ -53,6 +55,9 @@ export function FileInspector({
   onLocate?: (relativePath: string) => void
   /** Shown but unavailable, for a file that is not in a bundle yet */
   locateDisabled?: boolean
+  /** Inline action beside the filename header (e.g. file star button). */
+  headerAction?: ReactNode
+  children?: ReactNode
 }) {
   const [editing, setEditing] = useState(false)
   // Abandon any in-progress edit when the selection changes underneath it —
@@ -130,39 +135,43 @@ export function FileInspector({
   return (
     <aside className="inspector" data-tauri-drag-region>
       <OverlayScrollbar />
-      {editing ? (
-        <NameEditor
-          key={entry.relativePath}
-          className="edit inspector__title-edit"
-          initial={entry.name}
-          label={`Rename ${entry.name}`}
-          validate={renameError}
-          onSubmit={(name) => {
-            const result =
-              name.trim() && name.trim() !== entry.name
-                ? onRename?.(entry.relativePath, name.trim())
-                : undefined
-            if (result) return result.then(() => setEditing(false))
-            setEditing(false)
-          }}
-          onCancel={() => setEditing(false)}
-        />
-      ) : (
-        <div
-          className="inspector__title"
-          {...drag}
-          title={
-            canRename
-              ? 'Double-click to rename'
-              : drag.draggable
-                ? 'Drag to copy this file out'
-                : undefined
-          }
-          onDoubleClick={canRename ? startEditing : undefined}
-        >
-          {entry.name}
-        </div>
-      )}
+      <div className="inspector__title-row">
+        {editing ? (
+          <NameEditor
+            key={entry.relativePath}
+            className="edit inspector__title-edit"
+            initial={entry.name}
+            label={`Rename ${entry.name}`}
+            validate={renameError}
+            onSubmit={(name) => {
+              const result =
+                name.trim() && name.trim() !== entry.name
+                  ? onRename?.(entry.relativePath, name.trim())
+                  : undefined
+              if (result) return result.then(() => setEditing(false))
+              setEditing(false)
+            }}
+            onCancel={() => setEditing(false)}
+          />
+        ) : (
+          <div
+            className="inspector__title"
+            {...drag}
+            title={
+              canRename
+                ? 'Double-click to rename'
+                : drag.draggable
+                  ? 'Drag to copy this file out'
+                  : undefined
+            }
+            onDoubleClick={canRename ? startEditing : undefined}
+          >
+            {entry.name}
+          </div>
+        )}
+        {headerAction}
+      </div>
+      {children}
       <dl className="file-meta">
         {rows.map(([k, v]) => (
           <div className="file-meta__row" key={k}>

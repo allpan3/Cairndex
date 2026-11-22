@@ -11,7 +11,8 @@ import { usePersistentState } from '../state/usePersistentState'
  */
 const STORAGE_KEY = 'cairndex.inspectorFolded'
 
-export type InspectorSectionId = 'notes' | 'tags' | 'collections' | 'moments' | 'files'
+export type InspectorSectionId =
+  'notes' | 'file-notes' | 'tags' | 'file-tags' | 'collections' | 'moments' | 'files'
 
 /** Fold state for every section, as `{ [id]: true }` for the folded ones. */
 export function useFoldedSections() {

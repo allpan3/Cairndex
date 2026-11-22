@@ -36,6 +36,28 @@ class CatalogSelectionRead(StrictModel):
     items: list[CatalogSelectionItem]
 
 
+class CatalogFileSelectionRequest(StrictModel):
+    ids: list[Token] = Field(min_length=1, max_length=100)
+
+    @field_validator("ids")
+    @classmethod
+    def unique(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("Select each file once")
+        return value
+
+
+class CatalogFileSelectionItem(StrictModel):
+    id: str
+    starred: bool
+    observed: dict[str, list[str]]
+    held: bool
+
+
+class CatalogFileSelectionRead(StrictModel):
+    items: list[CatalogFileSelectionItem]
+
+
 class CatalogBulkMembershipRequest(CatalogSelectionRequest):
     family: MembershipFamily
     after: str = Field(default="", max_length=256)
@@ -103,6 +125,33 @@ def selection(store: CatalogStore, request: CatalogSelectionRequest) -> CatalogS
                 )
             )
         return CatalogSelectionRead(items=items)
+
+
+def file_selection(
+    store: CatalogStore, request: CatalogFileSelectionRequest
+) -> CatalogFileSelectionRead:
+    with store.connection(readonly=True) as db:
+        builder = Preview(store, db)
+        items = []
+        for identity in request.ids:
+            if read_row(db, "asset_files", identity) is None:
+                raise ReplicaError("A selected file is unavailable; refresh the selection")
+            bases, held = observed(
+                builder,
+                [
+                    key("asset_files", identity, "$alive"),
+                    key("asset_file_stars", identity, "$alive"),
+                ],
+            )
+            items.append(
+                CatalogFileSelectionItem(
+                    id=identity,
+                    starred=read_row(db, "asset_file_stars", identity) is not None,
+                    observed=bases,
+                    held=held,
+                )
+            )
+        return CatalogFileSelectionRead(items=items)
 
 
 def choices(

@@ -27,8 +27,11 @@ from cairndex.replicas.catalog.browse import (
 )
 from cairndex.replicas.catalog.bulk import CatalogBulkStage, CatalogBulkStaged, CatalogBulkUnchanged
 from cairndex.replicas.catalog.inspector import (
+    CatalogFileStarRead,
     CatalogMembershipPage,
     MembershipFamily,
+    file_star,
+    file_tags,
     memberships,
     moment_tags,
 )
@@ -55,9 +58,12 @@ from cairndex.replicas.catalog.schemas import (
 from cairndex.replicas.catalog.selection import (
     CatalogBulkMembershipPage,
     CatalogBulkMembershipRequest,
+    CatalogFileSelectionRead,
+    CatalogFileSelectionRequest,
     CatalogSelectionRead,
     CatalogSelectionRequest,
     choices,
+    file_selection,
     selection,
 )
 from cairndex.replicas.catalog.store import CatalogStore
@@ -284,6 +290,31 @@ def bulk_unchanged(
     limit: Annotated[int, Query(ge=1, le=bulk.PAGE)] = bulk.PAGE,
 ) -> CatalogBulkUnchanged:
     return bulk.unchanged(store, operation, start, limit)
+
+
+@router.post("/files/selection", response_model=CatalogFileSelectionRead)
+def selected_files(
+    payload: CatalogFileSelectionRequest, store: Catalog
+) -> CatalogFileSelectionRead:
+    return file_selection(store, payload)
+
+
+@router.get("/files/{file_id}/star", response_model=CatalogFileStarRead)
+def read_file_star(file_id: Token, store: Catalog) -> CatalogFileStarRead:
+    return file_star(store, file_id)
+
+
+@router.get("/files/{file_id}/tags", response_model=CatalogMembershipPage)
+def file_tag_choices(
+    file_id: Token,
+    store: Catalog,
+    after: Cursor = "",
+    limit: Limit = 30,
+    q: Annotated[str, Query(max_length=1000)] = "",
+    assigned: bool = False,
+    target: Token | None = None,
+) -> CatalogMembershipPage:
+    return file_tags(store, file_id, after, limit, q, assigned, target)
 
 
 @router.post("/files/unbundled", response_model=CatalogUnbundledPage)

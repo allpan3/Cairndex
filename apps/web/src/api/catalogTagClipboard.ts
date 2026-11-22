@@ -1,6 +1,7 @@
 import { catalog } from './catalog'
 import { SELECTION_REQUEST } from './catalogBulk'
 import { setBulkMembership } from './catalogOrganize'
+import { bundleLockKey, withCatalogWriteLock } from './catalogWriteQueue'
 import { captureRequestScope, getConnectionScopeKey, requestScopeVersion } from './requestScope'
 import type { components } from './schema'
 
@@ -40,27 +41,32 @@ export async function pasteCatalogTags(library: string, ids: string[]): Promise<
   const tags = copiedCatalogTags(library)
   if (!tags.length) return 0
   const current = captureRequestScope()
-  for (const target of tags) {
-    current()
-    // A larger selection adds each tag as a bulk operation, one after another
-    if (ids.length > SELECTION_REQUEST) {
-      await setBulkMembership(library, ids, 'tags', { id: target, observed: {} }, true)
-      continue
-    }
-    const page = await catalog<BulkPage>(library, '/bundles/selection/memberships', 'POST', {
-      ids,
-      family: 'tags',
-      target,
-    })
-    current()
-    const choice = page.items.find((item) => item.id === target)
-    if (!choice || choice.held)
-      throw new Error(
-        'A copied tag is unavailable or needs metadata review. Earlier additions are retained.',
-      )
-    if (choice.assigned_count !== ids.length)
-      await setBulkMembership(library, ids, 'tags', choice, true)
-    current()
-  }
-  return tags.length
+  return withCatalogWriteLock(
+    ids.map((id) => bundleLockKey(library, id)),
+    async () => {
+      for (const target of tags) {
+        current()
+        // A larger selection adds each tag as a bulk operation, one after another
+        if (ids.length > SELECTION_REQUEST) {
+          await setBulkMembership(library, ids, 'tags', { id: target, observed: {} }, true)
+          continue
+        }
+        const page = await catalog<BulkPage>(library, '/bundles/selection/memberships', 'POST', {
+          ids,
+          family: 'tags',
+          target,
+        })
+        current()
+        const choice = page.items.find((item) => item.id === target)
+        if (!choice || choice.held)
+          throw new Error(
+            'A copied tag is unavailable or needs metadata review. Earlier additions are retained.',
+          )
+        if (choice.assigned_count !== ids.length)
+          await setBulkMembership(library, ids, 'tags', choice, true)
+        current()
+      }
+      return tags.length
+    },
+  )
 }

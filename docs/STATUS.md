@@ -98,6 +98,16 @@ open in a compact dialog with readable alternatives. Structural conflicts retain
 full review. Confirmed saves survive inspector remounts, and explicit conflict
 choices advance only their covered local drafts.
 
+Per-file curation is implemented under [ADR-0043](adr/0043-file-stars-tags-and-notes.md):
+Bundle Browser cards (plus `⌘↓` / `Alt+↓`) open directly into the bundle Album,
+and files across the bundle file list, album, viewer rail, and File Browser
+support binary Star toggles (`asset_file_stars`), hierarchical file Tags
+(`asset_file_tags` with one-way propagation to confirmed parent bundles), Note,
+and Source URL editing with conflict review, server-side album star/tag
+filtering (`album_version: 2`, `inspector_version: 2`, `browse_version: 18`),
+`catalog_search` FTS5 indexing on file notes/sources, and `has_starred_files`
+library/Smart Collection filtering.
+
 ## Merged audit, SMB and incoming-files work
 
 The audit, SMB and incoming-files work is merged into `main`, and its original
@@ -432,7 +442,7 @@ is not an owner-NAS or full-UI Update benchmark.
 - Provider/cloud delivery, offline delivery, hydration, conflicts, large-scale use
   and physical power-loss safety remain unqualified. Do not downgrade private
   stores after the derived search-layout replacement.
-- File Browser folder pagination, file note/source UI, cross-device resume,
+- File Browser folder pagination, cross-device resume,
   owner-media playback diagnosis and production registration repair remain
   deferred. [The restoration audit](restoration-audit.md) records the boundaries.
 - Release tags and production deployment remain separate owner-triggered actions.

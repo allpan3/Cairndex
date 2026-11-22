@@ -91,6 +91,37 @@ def catalog_file(db: sqlite3.Connection, identity: str) -> AssetFile:
     )
 
 
+def file_annotations(
+    db: sqlite3.Connection, file_ids: list[str]
+) -> tuple[set[str], dict[str, list[str]]]:
+    """Batch-load per-file star state and sorted tag IDs from committed catalog rows."""
+    unique = list(dict.fromkeys(file_ids))
+    if not unique:
+        return set(), {}
+    encoded = json.dumps(unique)
+    starred = {
+        row[0]
+        for row in db.execute(
+            "SELECT entity FROM catalog_rows WHERE family='asset_file_stars' "
+            "AND entity IN (SELECT value FROM json_each(?))",
+            (encoded,),
+        )
+    }
+    tags_by_file: dict[str, list[str]] = {}
+    for file_id, tag_id in db.execute(
+        "SELECT json_extract(c.body, '$.file_id'), json_extract(c.body, '$.tag_id') "
+        "FROM catalog_references r "
+        "JOIN catalog_rows c ON c.family='asset_file_tags' AND c.entity=substr(r.source, 17) "
+        "JOIN catalog_rows t ON t.family='tags' AND t.entity=json_extract(c.body, '$.tag_id') "
+        "WHERE r.target IN (SELECT 'asset_files/' || value FROM json_each(?)) "
+        "AND r.source >= 'asset_file_tags/' AND r.source < 'asset_file_tags0' "
+        "ORDER BY json_extract(t.body, '$.name'), json_extract(c.body, '$.tag_id')",
+        (encoded,),
+    ):
+        tags_by_file.setdefault(file_id, []).append(tag_id)
+    return starred, tags_by_file
+
+
 # A narrow adapter reads authored rows and writes only explicitly private observation tables
 class ReplicaMedia:
     # The store already validates the descriptor and private-directory identity

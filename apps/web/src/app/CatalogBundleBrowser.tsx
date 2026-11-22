@@ -295,6 +295,7 @@ export function CatalogBundleBrowser({
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647))
   const [album, setAlbum] = useState<{ id: string; scope: string; file?: LocatedFile } | null>(null)
   const [albumFile, setAlbumFile] = useState<string | null>(null)
+  const [zoomPreview, setZoomPreview] = useState<number | null>(null)
   const [bulkRetained, setBulkRetained] = useState(() => pendingBulkSave(library, editor))
   const [deleting, setDeleting] = useState<string[] | null>(null)
   const [cleaning, setCleaning] = useState(false)
@@ -564,9 +565,17 @@ export function CatalogBundleBrowser({
       onOpen(id)
       return
     }
+    select(id, { shiftKey: false, metaKey: false, ctrlKey: false })
     setAlbum({ id, scope })
     setAlbumFile(null)
   }
+  const filterFromAlbum = onFilterTag
+    ? (id: string) => {
+        setAlbum(null)
+        setAlbumFile(null)
+        onFilterTag(id)
+      }
+    : undefined
   function select(id: string, modifiers: SelectionModifiers) {
     let ids = new Set([id])
     if (selectionEnabled && modifiers.shiftKey) {
@@ -957,9 +966,11 @@ export function CatalogBundleBrowser({
   const refresh = () => {
     void browse.refetch()
     if (single) void detail.refetch()
-    // A selection's snapshot read before this save holds the bases the save
-    // replaced, so a bulk change made from it would be refused as stale
+    // A selection or membership snapshot read before this save holds the bases
+    // the save replaced, so subsequent bulk or chip changes must read the new ones.
     void client.invalidateQueries({ queryKey: ['catalog-selection', library] })
+    void client.invalidateQueries({ queryKey: ['catalog-memberships', library] })
+    void client.invalidateQueries({ queryKey: ['catalog-bulk-memberships', library] })
   }
   return (
     <div
@@ -1004,6 +1015,22 @@ export function CatalogBundleBrowser({
           !foldersFolded && pickedFolders.scope === scope && folderIds.size > 0
             ? pickedFolders.active
             : null
+        const mac = /Mac|iPhone|iPad/.test(navigator.platform)
+        if (
+          (mac ? event.metaKey && !event.altKey : event.altKey && !event.metaKey) &&
+          !event.ctrlKey &&
+          !event.shiftKey &&
+          event.key === 'ArrowDown' &&
+          albumEnabled &&
+          !albumId &&
+          !peek.item
+        ) {
+          if (!folderActive && single) {
+            event.preventDefault()
+            openAlbum(single)
+          }
+          return
+        }
         const from = folderActive
           ? `collection:${folderActive}`
           : active
@@ -1102,7 +1129,11 @@ export function CatalogBundleBrowser({
           onSearch={setSearch}
           prefs={prefs}
           onPrefs={setPrefs}
-          onZoomPreview={(zoom) => navigation.current?.previewZoom?.(zoom)}
+          albumOpen={Boolean(albumId)}
+          onZoomPreview={(zoom) => {
+            setZoomPreview(zoom)
+            navigation.current?.previewZoom?.(zoom)
+          }}
           sort={activeSort}
           order={activeOrder}
           onSort={changeSort}
@@ -1122,6 +1153,7 @@ export function CatalogBundleBrowser({
           }
           adHocFilters={filters}
           onAdHocFilters={onFilters}
+          allowStarredFiles={(status?.browse_version ?? 0) >= 18}
           facetContext={{
             view: selection.view,
             collectionId: selection.collectionId,
@@ -1211,6 +1243,7 @@ export function CatalogBundleBrowser({
             onSelect={select}
             onMarqueeSelect={many}
             onOpen={onOpen}
+            onOpenAlbum={albumEnabled ? openAlbum : undefined}
             contextMenuOpen={menu.state !== null}
             onContextMenu={bundleMenu}
             onEmptyContextMenu={emptyMenu}
@@ -1301,12 +1334,16 @@ export function CatalogBundleBrowser({
             key={albumId}
             library={library}
             bundle={albumId}
+            blocked={blocked}
             initialFile={album?.file ?? null}
             layout={prefs.layout}
-            zoom={prefs.zoom}
+            zoom={zoomPreview ?? prefs.zoom}
+            showCardDetails={prefs.showCardDetails ?? true}
             onBack={() => {
+              const closed = albumId
               setAlbum(null)
               setAlbumFile(null)
+              if (closed) requestAnimationFrame(() => navigation.current?.focus(closed))
             }}
             onOpen={(file) => onOpenFile(albumId, file)}
             onSelectFile={setAlbumFile}
@@ -1314,6 +1351,8 @@ export function CatalogBundleBrowser({
             onOpenDirectory={onOpenDirectory}
             onRename={onRenameFile}
             onSourceAction={onSourceAction}
+            onReview={onReview}
+            onReviewConflict={onReviewConflict}
             hostFiles={hostFiles}
           />
         )}
@@ -1386,11 +1425,11 @@ export function CatalogBundleBrowser({
           onRenameFile={onRenameFile}
           summary={items.find((item) => item.id === detail.data.id)}
           onOpenCollection={onOpenCollection}
-          onFilterTag={onFilterTag}
+          onFilterTag={filterFromAlbum}
           onLocateFile={onLocateFile}
           onOpenDirectory={onOpenDirectory}
           onOpen={() => onOpen(detail.data.id)}
-          onOpenFile={(file) => onOpenFile(detail.data.id, file)}
+          onOpenFile={(file, time) => onOpenFile(detail.data.id, file, time)}
           moments={
             <CatalogBundleMoments
               library={library}

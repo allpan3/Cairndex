@@ -59,6 +59,59 @@ def moment_tags(
     )
 
 
+class CatalogFileStarRead(StrictModel):
+    file_id: str
+    starred: bool
+    observed: dict[str, list[str]]
+    held: bool
+
+
+def file_star(store: "CatalogStore", file_id: str) -> CatalogFileStarRead:
+    """Read one file's star state and exact observed lifetime bases."""
+    with store.connection(readonly=True) as db:
+        if read_row(db, "asset_files", file_id) is None:
+            raise ReplicaError("File is unavailable")
+        units = [
+            key("asset_files", file_id, "$alive"),
+            key("asset_file_stars", file_id, "$alive"),
+        ]
+        observed = {unit: [tip["event"] for tip in store.tips(db, unit)] for unit in units}
+        held = any(
+            db.execute("SELECT 1 FROM catalog_holds WHERE unit=?", (unit,)).fetchone()
+            for unit in units
+        )
+        return CatalogFileStarRead(
+            file_id=file_id,
+            starred=read_row(db, "asset_file_stars", file_id) is not None,
+            observed=observed,
+            held=held,
+        )
+
+
+def file_tags(
+    store: "CatalogStore",
+    file: str,
+    after: str,
+    limit: int,
+    search: str,
+    assigned: bool,
+    target: str | None = None,
+) -> CatalogMembershipPage:
+    """Tag choices for one file; adding to a confirmed bundle file propagates to the bundle."""
+    return choices(
+        store,
+        "asset_files",
+        file,
+        "tags",
+        "asset_file_tags",
+        after,
+        limit,
+        search,
+        assigned,
+        target,
+    )
+
+
 def choices(
     store: "CatalogStore",
     owner_family: str,
@@ -72,13 +125,14 @@ def choices(
     target: str | None = None,
 ) -> CatalogMembershipPage:
     """Search all destinations before pagination, with exact edge and lifetime bases."""
+    unavailable = {
+        "asset_bundles": "Bundle is unavailable",
+        "asset_files": "File is unavailable",
+        "moments": "Moment is unavailable",
+    }
     with store.connection(readonly=True) as db:
         if read_row(db, owner_family, owner) is None:
-            raise ReplicaError(
-                "Bundle is unavailable"
-                if owner_family == "asset_bundles"
-                else "Moment is unavailable"
-            )
+            raise ReplicaError(unavailable[owner_family])
         rows = db.execute(
             "SELECT c.entity,c.body FROM catalog_rows c WHERE c.family=? AND c.entity>? "
             "AND instr(lower(json_extract(c.body,'$.name')),lower(?))>0 "

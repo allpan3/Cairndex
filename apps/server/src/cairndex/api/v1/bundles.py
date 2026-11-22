@@ -66,10 +66,11 @@ def _thumbnail_response(path: object) -> FileResponse:
     return FileResponse(str(path), media_type=thumbnails.thumbnail_media_type(Path(str(path))))
 
 
-# Add incomplete watch progress to file rows without per-file queries
+# Add incomplete watch progress and per-file annotations to file rows without per-file queries
 def _file_reads(db: LibrarySession, files: list[AssetFile]) -> list[FileRead]:
     file_ids = [asset_file.id for asset_file in files]
     progress_by_file = progress_service.progress_for_files(db, file_ids)
+    starred_ids, tags_by_file = service.file_annotations(db, file_ids)
     return [
         FileRead.model_validate(asset_file).model_copy(
             update={
@@ -80,7 +81,9 @@ def _file_reads(db: LibrarySession, files: list[AssetFile]) -> list[FileRead]:
                     progress_by_file[asset_file.id].completed
                     if asset_file.id in progress_by_file
                     else None,
-                )
+                ),
+                "starred": asset_file.id in starred_ids,
+                "tag_ids": tags_by_file.get(asset_file.id, []),
             }
         )
         for asset_file in files

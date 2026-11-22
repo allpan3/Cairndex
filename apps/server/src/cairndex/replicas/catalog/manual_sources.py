@@ -91,10 +91,10 @@ def prepare(store: CatalogStore, root: Path, command: dict[str, Any]) -> dict[st
         if len({file["path"] for file in observed}) != len(observed):
             raise ReplicaError("Select each file once")
         builder = Preview(store, db)
-        builder.bundle_files(command | {"files": selected.file_ids}, new_files=fresh)
+        recover = builder.bundle_files(command | {"files": selected.file_ids}, new_files=fresh)
         for file in observed[len(selected.file_ids) :]:
             builder.put(key("asset_files", file["id"], "$content"), file["evidence"])
-        receipt = builder.receipt()
+        receipt = builder.receipt(recover=recover)
         validate_preview(store, db, receipt)
         return receipt | {"sources": observed}
 

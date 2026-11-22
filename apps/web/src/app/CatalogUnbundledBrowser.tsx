@@ -15,7 +15,13 @@ import { factsFromEntry } from './fileFacts'
 export function CatalogUnbundledBrowser({
   library,
   libraryName,
+  editor,
+  metadataEnabled = false,
+  blocked = false,
   onReview,
+  onReviewConflict,
+  onFilterTag,
+  onOpenFile,
   onNotice,
   hostFiles,
   onHostPath,
@@ -27,7 +33,13 @@ export function CatalogUnbundledBrowser({
 }: {
   library: string
   libraryName: string
+  editor?: string
+  metadataEnabled?: boolean
+  blocked?: boolean
   onReview: () => void
+  onReviewConflict?: (unit: string) => void
+  onFilterTag?: (id: string) => void
+  onOpenFile?: (bundleId: string, fileId: string, time?: number) => void
   onNotice: (notice: CatalogNotice) => void
   hostFiles?: LibraryHostFiles
   onHostPath?: (path: string | null) => void
@@ -97,6 +109,13 @@ export function CatalogUnbundledBrowser({
             entry={file}
             hostFiles={hostFiles}
             onRename={onRename}
+            editor={editor}
+            metadataEnabled={metadataEnabled}
+            blocked={blocked}
+            onReview={onReview}
+            onReviewConflict={onReviewConflict}
+            onFilterTag={onFilterTag}
+            onPlayMoment={onOpenFile}
           />
         </aside>
       ) : (

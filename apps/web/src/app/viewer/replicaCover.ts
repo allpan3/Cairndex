@@ -1,4 +1,5 @@
 import { catalog, operationId, runJob, type Entity, type Save } from '../../api/catalog'
+import { fileLockKey, withCatalogWriteLock } from '../../api/catalogWriteQueue'
 
 /**
  * Write a portable library file's cover-frame offset, or clear it with `null`.
@@ -14,21 +15,27 @@ export async function saveCoverTime(
   time: number | null,
   duration: number | null,
 ): Promise<void> {
-  const entity = await catalog<Entity>(library, `/entities/asset_files/${fileId}`)
-  const field = entity.fields.cover_time
-  const alive = entity.fields.$alive
-  if (!field || !alive) throw new Error('This file’s cover can’t be changed here.')
-  if (field.held) throw new Error('Review this file’s competing cover values first.')
-  const request: Save = {
-    changes: [
-      { unit: field.unit, value: JSON.stringify(coverOffset(time, duration)), basis: field.basis },
-      { unit: alive.unit, value: 'true', basis: alive.basis },
-    ],
-    parents: entity.parents,
-    resolve: false,
-    recover: false,
-  }
-  await runJob(library, 'save', request, operationId())
+  return withCatalogWriteLock([fileLockKey(library, fileId)], async () => {
+    const entity = await catalog<Entity>(library, `/entities/asset_files/${fileId}`)
+    const field = entity.fields.cover_time
+    const alive = entity.fields.$alive
+    if (!field || !alive) throw new Error('This file’s cover can’t be changed here.')
+    if (field.held) throw new Error('Review this file’s competing cover values first.')
+    const request: Save = {
+      changes: [
+        {
+          unit: field.unit,
+          value: JSON.stringify(coverOffset(time, duration)),
+          basis: field.basis,
+        },
+        { unit: alive.unit, value: 'true', basis: alive.basis },
+      ],
+      parents: entity.parents,
+      resolve: false,
+      recover: false,
+    }
+    await runJob(library, 'save', request, operationId())
+  })
 }
 
 /**

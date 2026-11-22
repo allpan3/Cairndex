@@ -34,6 +34,8 @@ export interface ReplicaOpen {
 export interface ReplicaInspectorControls {
   /** The moments section, inside this viewer's moment source and player actions. */
   moments: ReactNode
+  /** Currently playing/displayed indexed file ID, if any. */
+  currentFileId?: string | null
   /** Show another file of the bundle in this viewer. */
   onOpenFile: (fileId: string) => void
   hostFiles: LibraryHostFiles
@@ -211,12 +213,22 @@ export function ReplicaViewer({
         bundleId: momentBundle,
         inspector: renderInspector(momentBundle, {
           moments: showMoments ? <Moments bundleId={momentBundle} files={momentFiles} /> : null,
+          currentFileId: selected && !unlinked ? selected : null,
           onOpenFile: setPicked,
           hostFiles,
         }),
       }
     return showMoments ? { kind: 'moments', bundleId: momentBundle, files: momentFiles } : null
-  }, [hostFiles, momentBundle, momentFiles, momentsEnabled, renderInspector, pathObservation])
+  }, [
+    hostFiles,
+    momentBundle,
+    momentFiles,
+    momentsEnabled,
+    renderInspector,
+    pathObservation,
+    selected,
+    unlinked,
+  ])
   useEffect(() => {
     const owner = folder ? observation?.file.bundle_id : bundleId
     if (!owner || !selected || unlinked) return

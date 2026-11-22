@@ -16,6 +16,7 @@ export function ShortcutReference() {
         <Shortcut label="Extend selection" keys="Shift + Arrow keys" />
         <Shortcut label="First / last loaded item" keys="Home / End" />
         <Shortcut label="Select all items" keys={`${command}A`} />
+        <Shortcut label="Open bundle" keys={mac ? '⌘↓' : 'Alt+↓'} />
         <Shortcut label="Undo the last organizing change" keys={`${command}Z`} />
         <Shortcut label="Quick preview / close it" keys="Space" />
         <Shortcut label="Previous / next in the preview" keys="Arrow keys" />

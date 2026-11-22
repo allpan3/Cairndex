@@ -236,6 +236,9 @@ class FileRead(BaseModel):
     resume_position: float | None = None
     # True when the app can preview/play this linked file in the web viewer
     supported: bool = False
+    # Authoritative per-file star and tag memberships, batch-loaded on read
+    starred: bool = False
+    tag_ids: list[str] = Field(default_factory=list)
     # Normalized ffprobe output (dimensions/duration/codecs/streams), or null
     # until the file has been probed (Phase 2 scanner/probe jobs).
     tech_metadata: dict[str, Any] | None

@@ -7,6 +7,7 @@ import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard, type BundleCardItem } from './BundleCard'
 import { CoverImage } from './CoverImage'
 import { dragBadgeLabel, draggedCovers, setCoversDragImage } from './dragBadge'
+import { IconLayers } from './icons'
 import { computeRows, type PlacedCard, type Row } from './layout'
 import type { DropTarget } from './dnd'
 import { DRAG_BUNDLES, sameTarget, seamFor } from './dnd'
@@ -61,6 +62,7 @@ interface BrowserProps {
   // mouseup) with the full resulting selection — replaces selectedIds wholesale.
   onMarqueeSelect: (ids: string[]) => void
   onOpen: (id: string) => void
+  onOpenAlbum?: (id: string) => void
   onContextMenu: (id: string, e: React.MouseEvent) => void
   contextMenuOpen?: boolean
   // Right-click on empty space (not on a card/row) — e.g. to create a bundle.
@@ -152,6 +154,7 @@ export function Browser(props: BrowserProps) {
     selectedIds,
     onSelect,
     onOpen,
+    onOpenAlbum,
     onContextMenu,
     onMarqueeSelect,
     onReorder,
@@ -733,6 +736,7 @@ export function Browser(props: BrowserProps) {
                               selected={selectedIds.has(c.item.id)}
                               onSelect={onSelect}
                               onOpen={onOpen}
+                              onOpenAlbum={onOpenAlbum}
                               onContextMenu={onContextMenu}
                               dragProps={dragProps(c.item.id)}
                             />
@@ -755,6 +759,7 @@ export function Browser(props: BrowserProps) {
                                 showMeta={layout === 'grid' && showCardDetails}
                                 onSelect={onSelect}
                                 onOpen={onOpen}
+                                onOpenAlbum={onOpenAlbum}
                                 onContextMenu={onContextMenu}
                                 previewDisabled={
                                   dragId !== null ||
@@ -822,6 +827,7 @@ function ListRow({
   selected,
   onSelect,
   onOpen,
+  onOpenAlbum,
   onContextMenu,
   dragProps,
 }: {
@@ -830,6 +836,7 @@ function ListRow({
   selected: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
+  onOpenAlbum?: (id: string) => void
   onContextMenu: (id: string, e: React.MouseEvent) => void
   dragProps?: React.HTMLAttributes<HTMLDivElement> & { draggable?: boolean }
 }) {
@@ -854,7 +861,37 @@ function ListRow({
       <div className="list-row__thumb">
         {item.has_cover && <CoverImage src={thumbnailUrl(item.id, item.cover_key)} />}
       </div>
-      <div className="list-row__title">{item.title ?? 'Untitled'}</div>
+      <div className="list-row__title">
+        <span className="list-row__name">{item.title ?? 'Untitled'}</span>
+        {onOpenAlbum && (
+          <button
+            type="button"
+            className={
+              item.file_count > 1 ? 'list-row__open' : 'list-row__open list-row__open--hover'
+            }
+            aria-label={
+              item.file_count > 1 ? `Open bundle (${item.file_count} files)` : 'Open bundle'
+            }
+            title="Open bundle"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenAlbum(item.id)
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.stopPropagation()
+                onOpenAlbum(item.id)
+              }
+            }}
+          >
+            <IconLayers />
+            {item.file_count > 1 && <span>{item.file_count}</span>}
+          </button>
+        )}
+      </div>
       <span className="list-cell">{formatDimensions(item.width, item.height)}</span>
       <span className="list-cell">{item.extension ?? '—'}</span>
       <span className="list-cell">

@@ -338,6 +338,8 @@ def test_transfer_with_moments_subtitles_and_concurrent_order(catalog_pair):
         ("moments", "moment-one"),
         ("subtitle_tracks", "track-one"),
         ("asset_bundle_tags", "bundle-000000~tags-child"),
+        ("asset_file_stars", "file-video"),
+        ("asset_file_tags", "file-video~tags-child"),
         ("asset_bundle_collections", "bundle-000000~collections-child"),
         ("moment_tags", "moment-one~tags-child"),
         ("tag_group_memberships", "group-one~tags-child"),
@@ -444,6 +446,8 @@ def test_create_boolean_edge_and_delete_reference(catalog_pair):
         ("moments", "moment-one"),
         ("subtitle_tracks", "track-one"),
         ("asset_bundle_tags", "bundle-000000~tags-child"),
+        ("asset_file_stars", "file-video"),
+        ("asset_file_tags", "file-video~tags-child"),
         ("asset_bundle_collections", "bundle-000000~collections-child"),
         ("moment_tags", "moment-one~tags-child"),
         ("tag_group_memberships", "group-one~tags-child"),
@@ -836,6 +840,8 @@ def test_creation_all_families(catalog_pair, family):
     else:
         if "bundle_id" in row:
             row["bundle_id"] = "bundle-000002"
+        elif family == "asset_file_stars":
+            row["file_id"] = "file-subtitle"
         else:
             row["tag_id"] = "tags-root"
     submit(a, preview(a, {"action": "create", "family": family, "row": row}), "create")
@@ -1048,3 +1054,66 @@ def test_confirmed_draft_retry_does_not_rewrite_and_reused_revision_is_refused(c
         with pytest.raises(ReplicaError, match="newer editor draft"):
             store.draft("draft-retry", other_owner, 2, other_body)
     assert store.drafts(owner)["items"][0]["body"] == {"text": "New generation"}
+
+
+def test_file_star_and_tag_guards_conflicts_and_cascade_recovery(catalog_pair):
+    _, a, b = catalog_pair
+    # Missing live file guard rejects direct star creation without asset_files/{id}/$alive
+    with pytest.raises(ReplicaError, match="observed live basis"):
+        save(
+            a,
+            [UnitChange(unit="asset_file_stars/file-subtitle/$alive", value="true", basis=[])],
+            "missing-guard",
+        )
+    # Concurrent same-pair creation converges cleanly for file stars and file tags
+    star_cmd = {
+        "action": "create",
+        "family": "asset_file_stars",
+        "row": {"file_id": "file-subtitle"},
+    }
+    tag_cmd = {
+        "action": "create",
+        "family": "asset_file_tags",
+        "row": {"file_id": "file-subtitle", "tag_id": "tags-root"},
+    }
+    submit(a, preview(a, star_cmd), "star-a")
+    submit(b, preview(b, star_cmd), "star-b")
+    submit(a, preview(a, tag_cmd), "tag-a")
+    submit(b, preview(b, tag_cmd), "tag-b")
+    exchange(a, b)
+    assert value(a, "asset_file_stars", "file-subtitle", "$alive") is True
+    assert value(b, "asset_file_stars", "file-subtitle", "$alive") is True
+    assert value(a, "asset_file_tags", "file-subtitle~tags-root", "$alive") is True
+    assert value(b, "asset_file_tags", "file-subtitle~tags-root", "$alive") is True
+
+    # Deleting a file cascades to its star and tags, and branch recovery restores both
+    submit(
+        a,
+        preview(a, {"action": "delete", "family": "asset_files", "entity": "file-video"}),
+        "del",
+    )
+    exchange(a, b)
+    assert value(b, "asset_file_stars", "file-video", "$alive") is False
+    assert value(b, "asset_file_tags", "file-video~tags-child", "$alive") is False
+    submit(a, recover_preview(a, a.descriptor.genesis, "asset_files", "file-video"), "recover")
+    exchange(a, b)
+    assert value(b, "asset_file_stars", "file-video", "$alive") is True
+    assert value(b, "asset_file_tags", "file-video~tags-child", "$alive") is True
+
+
+def test_file_star_concurrent_with_file_delete_surfaces_hold(catalog_pair):
+    _, a, b = catalog_pair
+    star_row = {"file_id": "file-subtitle"}
+    submit(
+        a,
+        preview(a, {"action": "create", "family": "asset_file_stars", "row": star_row}),
+        "star-subtitle",
+    )
+    submit(
+        b,
+        preview(b, {"action": "delete", "family": "asset_files", "entity": "file-subtitle"}),
+        "delete-subtitle",
+    )
+    exchange(a, b)
+    assert len(a.entity("asset_files", "file-subtitle")["fields"]["$alive"]["candidates"]) == 2
+    assert len(b.entity("asset_files", "file-subtitle")["fields"]["$alive"]["candidates"]) == 2

@@ -7,10 +7,10 @@ import type { components } from '../api/schema'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import type { BundleMemberChange } from '../api/catalogBundleMembers'
+import { FileAnnotationConflictError, useToggleFileStar } from '../api/catalogFiles'
 import { collapsePrefixLengths } from './distinctNames'
 import { IconChevron, IconFolder, IconGrip } from './icons'
 import { InspectorSection } from './InspectorSection'
-import { CatalogFileDetails } from './CatalogFileDetails'
 import { CatalogBundleFileRow } from './CatalogBundleFileRow'
 import { useCatalogBundleMembers } from './useCatalogBundleMembers'
 import { TargetContextMenu } from './ContextMenu'
@@ -27,11 +27,14 @@ type Props = {
   bundle: string
   cover: string | null
   blocked: boolean
+  editor?: string
   fileCount?: number
   onCover: (file: string | null, reference?: Entity) => void
   onOpen: (file: string) => void
   onAddFiles?: () => void
   onReview?: () => void
+  onReviewConflict?: (unit: string) => void
+  onFilterTag?: (id: string) => void
   onLocateFile?: (path: string) => void
   onOpenDirectory?: (path: string) => void
   hostFiles?: LibraryHostFiles
@@ -101,8 +104,12 @@ function FilePage(
   const [open, setOpen] = useState(new Set<string>())
   const [coverBusy, setCoverBusy] = useState(false)
   const [error, setError] = useState('')
+  const [starConflict, setStarConflict] = useState<string | null>(null)
   const sheet = useLocalContactSheet(library, setError)
-  const exportEnabled = useReplicaStatus(library).data?.export_version === 1
+  const replicaStatus = useReplicaStatus(library).data
+  const exportEnabled = replicaStatus?.export_version === 1
+  const inspectorVersion = replicaStatus?.inspector_version ?? 0
+  const starFile = useToggleFileStar(library)
   const menu = useContextMenu()
   const [menuRow, setMenuRow] = useState<string | null>(null)
   const root = useRef<HTMLDivElement>(null)
@@ -318,7 +325,7 @@ function FilePage(
         {items.map((item, index) => (
           <div key={item.id}>
             <div
-              className={`file-row${selected === item.id ? ' file-row--selected' : ''}${dragging === item.id ? ' file-row--dragging' : ''}`}
+              className={`file-row${selected === item.id ? ' file-row--selected' : ''}${dragging === item.id ? ' file-row--dragging' : ''}${item.file?.starred ? ' file-row--starred' : ''}`}
               role="listitem"
               data-member-id={item.id}
               data-drop={
@@ -424,6 +431,28 @@ function FilePage(
                   }}
                   onCover={() => void toggleCover(item.id)}
                   onOpen={() => props.onOpen(item.id)}
+                  onStar={
+                    inspectorVersion >= 2
+                      ? () => {
+                          const targetFile = item.file!
+                          setError('')
+                          setStarConflict(null)
+                          starFile.mutate(
+                            { ids: [targetFile.id], starred: !targetFile.starred },
+                            {
+                              onError: (reason) => {
+                                setStarConflict(
+                                  reason instanceof FileAnnotationConflictError
+                                    ? reason.unit
+                                    : null,
+                                )
+                                setError((reason as Error).message)
+                              },
+                            },
+                          )
+                        }
+                      : undefined
+                  }
                 />
               ) : (
                 <button
@@ -464,14 +493,6 @@ function FilePage(
           </div>
         ))}
       </div>
-      {selected && files.some((file) => file.id === selected) && (
-        <CatalogFileDetails
-          key={selected}
-          library={library}
-          file={selected}
-          hostFiles={props.hostFiles}
-        />
-      )}
       {(offset > 0 || page.data?.next_offset != null) && (
         <div className="catalog-files__pages">
           {offset > 0 && (
@@ -486,7 +507,22 @@ function FilePage(
           )}
         </div>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert">
+          <span>{error}</span>{' '}
+          {starConflict && (props.onReviewConflict || props.onReview) && (
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() =>
+                props.onReviewConflict ? props.onReviewConflict(starConflict) : props.onReview?.()
+              }
+            >
+              Review Conflict
+            </button>
+          )}
+        </p>
+      )}
       <TargetContextMenu
         state={menu.state}
         target={menu.state ? items.find((row) => row.id === menuRow) : undefined}

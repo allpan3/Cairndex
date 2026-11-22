@@ -458,7 +458,7 @@ export function CatalogWorkspace({
                     library={libraryId}
                     bundle={bundleId}
                     editor={editor}
-                    inspectorEnabled={state?.inspector_version === 1}
+                    inspectorEnabled={(state?.inspector_version ?? 0) >= 1}
                     blocked={!state?.ready || Boolean(state?.blocked)}
                     onFilterTag={
                       !reviewMode
@@ -544,8 +544,8 @@ export function CatalogWorkspace({
           }}
           library={libraryId}
           editor={editor}
-          albumEnabled={state.album_version === 1}
-          inspectorEnabled={state.inspector_version === 1}
+          albumEnabled={(state.album_version ?? 0) >= 1}
+          inspectorEnabled={(state.inspector_version ?? 0) >= 1}
           sourceOperationsEnabled={state.source_operations_version === 1}
           selectionEnabled={(state.selection_version ?? 0) >= 1}
           systemViewsEnabled={state.system_views_version === 1}

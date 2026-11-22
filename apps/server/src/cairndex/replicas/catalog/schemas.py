@@ -18,6 +18,8 @@ Family = Literal[
     "subtitle_tracks",
     "asset_bundle_tags",
     "asset_bundle_collections",
+    "asset_file_stars",
+    "asset_file_tags",
     "moment_tags",
     "tag_group_memberships",
 ]

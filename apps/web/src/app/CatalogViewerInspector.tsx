@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { catalog, type Entity } from '../api/catalog'
@@ -24,6 +24,7 @@ export function CatalogViewerInspector({
   onReview,
   onReviewConflict,
   moments,
+  currentFileId = null,
   onOpenFile,
   hostFiles,
   onFilterTag,
@@ -41,6 +42,8 @@ export function CatalogViewerInspector({
   onReviewConflict?: (unit: string) => void
   /** The moments section, with the viewer's moment source and player actions. */
   moments: ReactNode
+  /** Currently playing/displayed indexed file ID, if any. */
+  currentFileId?: string | null
   /** Show another file of this bundle in the viewer. */
   onOpenFile: (file: string) => void
   hostFiles?: LibraryHostFiles
@@ -49,8 +52,12 @@ export function CatalogViewerInspector({
   onOpenDirectory?: (path: string) => void
   onOpenCollection?: (id: string) => void
 }) {
+  const [tab, setTab] = useState<'bundle' | 'file'>('bundle')
   const queryClient = useQueryClient()
   const status = useReplicaStatus(library).data
+  const fileTabEnabled =
+    inspectorEnabled && (status?.inspector_version ?? 0) >= 2 && Boolean(currentFileId)
+  const activeTab = fileTabEnabled ? tab : 'bundle'
   const summary = useQuery({
     queryKey: ['catalog-bundle-summary', library, bundle],
     queryFn: () =>
@@ -72,29 +79,57 @@ export function CatalogViewerInspector({
     )
   return (
     <CatalogQueryContext value={library}>
-      <CatalogBundleInspector
-        library={library}
-        entity={detail.data}
-        editor={editor}
-        inspectorEnabled={inspectorEnabled}
-        blocked={blocked}
-        // The browser under the viewer shows the saved title and cover when it returns
-        refresh={() => {
-          void detail.refetch()
-          if (status?.bundle_summary_version === 1) void summary.refetch()
-          void queryClient.invalidateQueries({ queryKey: ['catalog-browse', library] })
-        }}
-        onReview={onReview}
-        onReviewConflict={onReviewConflict}
-        onOpenFile={onOpenFile}
-        hostFiles={hostFiles}
-        onFilterTag={onFilterTag}
-        onLocateFile={onLocateFile}
-        onOpenDirectory={onOpenDirectory}
-        onOpenCollection={onOpenCollection}
-        summary={summary.data && { ...summary.data, size_known: summary.data.total_size != null }}
-        moments={moments}
-      />
+      <div className="viewer-inspector-wrap">
+        {fileTabEnabled && (
+          <div className="viewer-inspector-tabs" role="tablist" aria-label="Inspector target">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'bundle'}
+              className={activeTab === 'bundle' ? 'is-active' : ''}
+              onClick={() => setTab('bundle')}
+            >
+              Bundle
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'file'}
+              className={activeTab === 'file' ? 'is-active' : ''}
+              onClick={() => setTab('file')}
+            >
+              File
+            </button>
+          </div>
+        )}
+        <CatalogBundleInspector
+          library={library}
+          entity={detail.data}
+          editor={editor}
+          inspectorEnabled={inspectorEnabled}
+          blocked={blocked}
+          albumFile={activeTab === 'file' ? currentFileId : null}
+          // The browser under the viewer shows the saved title and cover when it returns
+          refresh={() => {
+            void detail.refetch()
+            if (status?.bundle_summary_version === 1) void summary.refetch()
+            void queryClient.invalidateQueries({ queryKey: ['catalog-browse', library] })
+            void queryClient.invalidateQueries({ queryKey: ['catalog-selection', library] })
+            void queryClient.invalidateQueries({ queryKey: ['catalog-memberships', library] })
+            void queryClient.invalidateQueries({ queryKey: ['catalog-bulk-memberships', library] })
+          }}
+          onReview={onReview}
+          onReviewConflict={onReviewConflict}
+          onOpenFile={(file) => onOpenFile(file)}
+          hostFiles={hostFiles}
+          onFilterTag={onFilterTag}
+          onLocateFile={onLocateFile}
+          onOpenDirectory={onOpenDirectory}
+          onOpenCollection={onOpenCollection}
+          summary={summary.data && { ...summary.data, size_known: summary.data.total_size != null }}
+          moments={moments}
+        />
+      </div>
     </CatalogQueryContext>
   )
 }

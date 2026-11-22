@@ -45,6 +45,7 @@ from cairndex.persistence.models import (
     Tag,
     asset_bundle_collections,
     asset_bundle_tags,
+    asset_file_stars,
 )
 from cairndex.services.hierarchy import descendant_ids
 
@@ -243,6 +244,19 @@ def _has_cover_expr() -> Bool:
     )
 
 
+def _has_starred_files_expr() -> Bool:
+    return AssetBundle.id.in_(
+        select(AssetFile.bundle_id)
+        .select_from(
+            AssetFile.__table__.join(
+                asset_file_stars,
+                asset_file_stars.c.file_id == AssetFile.id,
+            )
+        )
+        .where(AssetFile.bundle_id.isnot(None))
+    )
+
+
 # Portable bundles answer these from authored rows and this serving instance's
 # private observations, in the same SQLite connection as the catalog projection.
 # Each is correlated to the query-local ``asset_bundles`` relation and never reads
@@ -370,6 +384,11 @@ def _compile_predicate(session: FilterContext, node: PredicateNode) -> Bool:
             raise ValidationError("has_cover only supports 'equals'")
         cover = _catalog_cover() if isinstance(session, CatalogFilterContext) else _has_cover_expr()
         return cover if _as_bool(v) else not_(cover)
+    if field == "has_starred_files":
+        if o != "equals":
+            raise ValidationError("has_starred_files only supports 'equals'")
+        starred = _has_starred_files_expr()
+        return starred if _as_bool(v) else not_(starred)
     if field == "has_missing":
         if o != "equals":
             raise ValidationError("has_missing only supports 'equals'")

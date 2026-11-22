@@ -31,7 +31,13 @@ def descendants(db: sqlite3.Connection, family: str, identities: list[str]) -> l
 
 # These query-local relations expose authored columns only. They do not create a
 # legacy database, ORM session, or a second projection that can diverge on edits.
-TABLES = ("asset_bundles", "asset_files", "asset_bundle_tags", "asset_bundle_collections")
+TABLES = (
+    "asset_bundles",
+    "asset_files",
+    "asset_bundle_tags",
+    "asset_bundle_collections",
+    "asset_file_stars",
+)
 RELATIONS = ",".join(
     family
     + " AS (SELECT "

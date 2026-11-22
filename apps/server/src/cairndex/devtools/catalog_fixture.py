@@ -165,6 +165,8 @@ def create_disposable(*, parent: Path | None = None, bundles: int = 125) -> Disp
                 )
         insert_row(db, "tag_groups", synthetic_row("tag_groups", "group-one"))
         insert_row(db, "asset_bundle_tags", {"bundle_id": "bundle-000000", "tag_id": "tags-child"})
+        insert_row(db, "asset_file_stars", {"file_id": "file-video"})
+        insert_row(db, "asset_file_tags", {"file_id": "file-video", "tag_id": "tags-child"})
         insert_row(
             db,
             "asset_bundle_collections",

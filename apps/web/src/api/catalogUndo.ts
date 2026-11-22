@@ -3,6 +3,7 @@
 // ordinary guarded change: it reads current bases first, like any other.
 import { catalog } from './catalog'
 import { setBulkMembership } from './catalogOrganize'
+import { bundleLockKey, withCatalogWriteLock } from './catalogWriteQueue'
 import type { components } from './schema'
 
 type Choices = components['schemas']['CatalogBulkMembershipPage']
@@ -84,8 +85,16 @@ export async function plannedChange(
 export async function reverseChanges(library: string, changes: MembershipChange[]): Promise<void> {
   for (const change of [...changes].reverse()) {
     if (!change.ids.length) continue
-    const choice = await readChoice(library, change.ids, change.family, change.target)
-    if (choice.assigned_count === (change.assigned ? 0 : change.ids.length)) continue
-    await setBulkMembership(library, change.ids, change.family, choice, !change.assigned)
+    await withCatalogWriteLock(
+      [
+        ...change.ids.map((id) => bundleLockKey(library, id)),
+        `${library}:${change.family}/${change.target}`,
+      ],
+      async () => {
+        const choice = await readChoice(library, change.ids, change.family, change.target)
+        if (choice.assigned_count === (change.assigned ? 0 : change.ids.length)) return
+        await setBulkMembership(library, change.ids, change.family, choice, !change.assigned)
+      },
+    )
   }
 }

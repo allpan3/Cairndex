@@ -30,7 +30,7 @@ class CatalogStore(CatalogStorage):
 
         family, entity, field = split_key(unit)
         value = json.loads(raw)
-        if field == "$alive" and (value is False or "~" not in entity):
+        if field == "$alive" and value is False:
             return set()
         result = {key(family, entity, "$alive")} if entity != "_" and field != "$alive" else set()
         cells = value if field in COMPOSITES.get(family, {}) else {field: value}
@@ -46,11 +46,12 @@ class CatalogStore(CatalogStorage):
                         key(foreign.column.table.name, cell, "$alive")
                         for foreign in column.foreign_keys
                     )
-            # Composite edge identity columns are references even though they are immutable
-            if "~" in entity:
-                from cairndex.replicas.catalog.model import IDENTITIES
+            # Composite edges and single-PK presence tables carry immutable reference keys
+            from cairndex.replicas.catalog.model import IDENTITIES
 
-                for column_name, cell in zip(IDENTITIES[family], entity.split("~"), strict=True):
+            parts = entity.split("~")
+            if entity != "_" and len(parts) == len(IDENTITIES[family]):
+                for column_name, cell in zip(IDENTITIES[family], parts, strict=True):
                     column = Base.metadata.tables[family].c[column_name]
                     result.update(
                         key(foreign.column.table.name, cell, "$alive")

@@ -6,6 +6,7 @@ import { formatDimensions, formatDuration } from '../lib/format'
 import { CoverImage } from './CoverImage'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
+import { IconLayers } from './icons'
 import { useBundleFileDropTarget, type BundleFileDropHandler } from './useBundleFileDropTarget'
 
 /**
@@ -24,6 +25,7 @@ interface BundleCardProps {
   showMeta: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
+  onOpenAlbum?: (id: string) => void
   onContextMenu: (id: string, e: React.MouseEvent) => void
   previewDisabled?: boolean
   /**
@@ -40,6 +42,7 @@ export function BundleCard({
   showMeta,
   onSelect,
   onOpen,
+  onOpenAlbum,
   onContextMenu,
   previewDisabled = false,
   onDropFiles,
@@ -136,10 +139,45 @@ export function BundleCard({
         {!item.has_missing && item.extension && (
           <span className="card__badge">{item.extension}</span>
         )}
-        {item.file_count > 1 && (
-          <span className="card__badge" style={{ left: 'auto', right: 6 }}>
-            {item.file_count}
-          </span>
+        {onOpenAlbum ? (
+          <button
+            type="button"
+            className={
+              item.file_count > 1
+                ? 'card__badge card__open card__open--count'
+                : 'card__badge card__open card__open--hover'
+            }
+            aria-label={
+              item.file_count > 1 ? `Open bundle (${item.file_count} files)` : 'Open bundle'
+            }
+            title="Open bundle"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenAlbum(item.id)
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onDragStart={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.stopPropagation()
+                onOpenAlbum(item.id)
+              }
+            }}
+          >
+            <IconLayers />
+            {item.file_count > 1 && <span>{item.file_count}</span>}
+          </button>
+        ) : (
+          item.file_count > 1 && (
+            <span className="card__badge" style={{ left: 'auto', right: 6 }}>
+              {item.file_count}
+            </span>
+          )
         )}
         {isVideo && item.duration ? (
           <span className="card__dur">{formatDuration(item.duration)}</span>

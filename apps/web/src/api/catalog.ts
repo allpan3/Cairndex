@@ -50,6 +50,8 @@ export const FAMILIES: Record<string, string> = {
   subtitle_tracks: 'Subtitle selections',
   asset_bundle_tags: 'Bundle tags',
   asset_bundle_collections: 'Collection membership',
+  asset_file_stars: 'File stars',
+  asset_file_tags: 'File tags',
   moment_tags: 'Moment tags',
   tag_group_memberships: 'Tag group membership',
 }

@@ -68,6 +68,7 @@ product brief's "Filter expression contract")
 | `date_added`, `date_modified`, `date_imported` | `gt`, `gte`, `lt`, `lte`, `between` |
 | `availability` (missing/offline) | `equals` |
 | `has_cover`, `has_subtitles` | `equals` (boolean) |
+| `has_starred_files` | `equals` (boolean) |
 | `file_role` | `contains_any` |
 
 This table will move into generated/tested documentation (e.g. derived from
@@ -92,12 +93,15 @@ exactly this set.
 | `rating` (also) | `is_null` | boolean (`true` = unrated, `rating IS NULL`) |
 | `date_added` | `gt`, `gte`, `lt`, `lte`, `between` | ISO-8601 string |
 | `tags`, `collections` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) | list of ids |
-| `has_cover`, `has_missing` | `equals` | boolean |
+| `has_cover`, `has_missing`, `has_starred_files` | `equals` | boolean |
 
 A portable library answers `size_bytes` and `has_missing` from the serving
 instance's private observations and leaves them unknown (no match, also under
-`not`) for bundles with members it has not observed. `has_cover` there follows
-the card's authored artwork rule. See [`replica-catalog.md`](replica-catalog.md).
+`not`) for bundles with members it has not observed. `has_cover` follows the
+card's authored artwork rule, and `has_starred_files` checks authored
+`asset_file_stars` rows (`EXISTS`), matching bundles that contain at least one
+starred file across both the toolbar's `Starred files` chip and Smart
+Collections. See [`replica-catalog.md`](replica-catalog.md).
 
 ### Rating values are stars, in half-star steps
 

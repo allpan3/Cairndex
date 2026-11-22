@@ -10,6 +10,31 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Open Bundle and per-file stars, tags, notes, and filtering
+  ([ADR-0043](docs/adr/0043-file-stars-tags-and-notes.md)).** Bundle Browser cards
+  show an **Open bundle** corner trigger (always visible with file count on
+  multi-file bundles, hover/focus on single-file bundles, plus List-row trigger
+  and `⌘↓` / `Alt+↓` shortcut) that opens straight into the bundle's Album view,
+  where **Card** (including **Card details**), **Justified**, and **List** layouts
+  all apply. Individual files support an instantaneous optimistic binary **Star**
+  (`asset_file_stars`) in the inspector file list, Album tiles/rows, File
+  Inspector title bar, and viewer rail (**Bundle / File** tabs) — including
+  Star/Unstar context-menu bulk actions — alongside File Inspector sections for
+  **Tags** (`asset_file_tags`, sharing the `TagPickerPanel` tree and propagating
+  one way to confirmed parent bundles without polluting `provisional` staging
+  bundles, and preserving stars/tags across moved-file repair, transfers, and
+  grouping commits), **Moments** (scoped to the selected video file), **Note**,
+  and **Source** URL with causal-basis save/retry and conflict review.
+  `GET .../media/bundles/{id}/album` supports `starred_only`, `tag_ids`,
+  `include_descendants`, and `tag_mode` (`any`/`all`) filtering (flattening
+  collapsed directory members when filtered and returning `tag_names`), `FileRead`
+  adds `starred` and `tag_ids`, `POST .../catalog/files/selection`,
+  `GET .../catalog/files/{id}/star`, and `GET .../catalog/files/{id}/tags` expose
+  observed causal bases and `file_stars` / `file_tag` previews, full-text search
+  indexes `asset_files.note` and `source`, and the Bundle Browser toolbar's
+  `Starred files` chip plus Smart Collections support the `has_starred_files`
+  boolean predicate.
+
 - Empty browse states offer a relevant action: clear search or filters, show
   subcollection contents, browse all bundles or update the library. Empty File
   Browser folders offer Create folder when permitted, otherwise Refresh files.
@@ -108,8 +133,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
     files.
   - *Inspectors:* v0.2.1's layout, with the cover and ▶ Play, title, rating, Files and
     Date Added, tag and collection chips with × and tree pickers, and **Files in
-    bundle** listing each file's kind, size, dimensions and duration, with ★ to choose
-    the cover. A multi-selection shows **N bundles selected** with one title field, one
+    bundle** listing each file's kind, size, dimensions and duration, with an
+    artwork toggle to choose the cover and a star toggle for individual files. A
+    multi-selection shows **N bundles selected** with one title field, one
     rating and the chips every selected bundle has. Title, notes, rating and cover save
     automatically, and an interrupted save is kept and retried, even after a reload.
     **Review Conflicts** opens a compact dialog with readable versions of each
@@ -202,7 +228,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   app uses them to choose what to offer; an older server keeps the earlier behavior.
   - `browse_version`: 3 Manual and File Count sorts; 4 card facts; 5 Delete Bundle; 6
     manual order; 7 New Collection from Folder; 8 All Tags; 9 manual bundling; 10 counts
-    and collection covers; 17 Unbundled sorted over the whole queue.
+    and collection covers; 17 Unbundled sorted over the whole queue; 18 per-file
+    stars/tags (`FileRead.starred`, `FileRead.tag_ids`), FTS5 file notes/sources,
+    and `has_starred_files`.
+  - `album_version`: 1 bundle album pages; 2 server-side `starred_only`, `tag_ids`,
+    `include_descendants`, and `tag_mode` filtering with `tag_names` and flattened
+    filtered directory members.
+  - `inspector_version`: 1 guarded cover/scalar editing; 2 per-file Star, Tags,
+    Note, and Source editing (`/files/selection`, `/files/{id}/star`,
+    `/files/{id}/tags`, `file_stars`, and `file_tag`).
   - `selection_version`: 2 card drags and Remove from This Collection; 3 the selection's
     own destinations; 5 batched changes above 100 bundles; 6 paged Select All keys.
   - `moments_version`: 1 authoring; 2 tags; 3 hover previews; 4 moments in the browser
@@ -291,6 +325,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Hyphenated filename identifiers stay intact during grouping and stem
+  widening/narrowing.** Shared bundle titles keep a complete token-aligned prefix
+  such as `CLIP-100` (across `CLIP-100 - HDR.mp4`, `CLIP-100-cover.jpg`, and
+  `CLIP-100.srt`) instead of trimming back across the internal hyphen to `CLIP`,
+  and sidecar fallback matches the longest unique token prefix shared with a
+  single video group so sibling `CLIP-100` and `CLIP-200` items in one folder
+  keep their covers and subtitles instead of splitting into separate bundles.
 - **A superseded transcode seek no longer restarts the encoder at its old
   position.** An abandoned HLS segment request is checked against the latest
   seek before it restarts an encoder. Dragging the seek bar or a clip-range handle

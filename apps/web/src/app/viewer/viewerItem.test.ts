@@ -25,6 +25,7 @@ function file(overrides: Partial<FileRead> = {}): FileRead {
     availability: 'available',
     quick_fingerprint: '123:456',
     cover_time: null,
+    starred: false,
     supported: true,
     tech_metadata: { width: 1600, height: 1000 },
     created_at: '2026-01-01T00:00:00Z',

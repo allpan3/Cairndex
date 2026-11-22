@@ -10,6 +10,7 @@ import {
   selectionKey,
 } from '../api/catalogBulk'
 import { commit } from '../api/catalogOrganize'
+import { bundleLockKey, withCatalogWriteLock } from '../api/catalogWriteQueue'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { components } from '../api/schema'
 import { formatBytes } from '../lib/format'
@@ -32,8 +33,21 @@ const empty = {
   applying: '',
   label: '',
 }
-// Every view that shows a selected bundle's title or rating
-const AFFECTED = ['catalog-browse', 'catalog-detail', 'catalog-selection', 'catalog-view-counts']
+// Every view that shows a selected bundle's title, rating, or chips
+const AFFECTED = [
+  'catalog-browse',
+  'catalog-detail',
+  'catalog-selection',
+  'catalog-view-counts',
+  'catalog-memberships',
+  'catalog-bulk-memberships',
+]
+
+function sameRevisionSet(a?: string[], b?: string[]): boolean {
+  if (!a || !b || a.length !== b.length) return false
+  const right = new Set(b)
+  return a.every((rev) => right.has(rev))
+}
 
 /**
  * v0.2.1's inspector for several bundles: one title for all of them, one
@@ -118,10 +132,49 @@ export function CatalogMultiBundleInspector({
     setError('')
     setMessage('')
     try {
-      await commit(library, JSON.parse(intent.command), intent.operation)
-      draft.update(empty)
-      setMessage('Saved here')
-      for (const key of AFFECTED) await client.invalidateQueries({ queryKey: [key, library] })
+      const command = JSON.parse(intent.command) as {
+        ids?: string[]
+        field?: string
+        observed?: Record<string, string[]>
+      } & Record<string, unknown>
+      const lockKeys = (command.ids ?? ids).map((id) => bundleLockKey(library, id))
+      await withCatalogWriteLock(lockKeys, async ({ waited }) => {
+        let activeCommand: Record<string, unknown> = command
+        if (
+          waited &&
+          !large &&
+          Array.isArray(command.ids) &&
+          command.ids.length > 0 &&
+          command.field &&
+          command.observed
+        ) {
+          const fresh = await catalog<Snapshot>(library, '/bundles/selection', 'POST', {
+            ids: command.ids,
+          })
+          if (!fresh.items.some((item) => item.held) && fresh.items.length === command.ids.length) {
+            const byId = new Map(fresh.items.map((item) => [item.id, item]))
+            const fieldUnchanged = command.ids.every((id) => {
+              const item = byId.get(id)
+              if (!item) return false
+              const fieldUnit = `asset_bundles/${id}/${command.field}`
+              return sameRevisionSet(command.observed?.[fieldUnit], item.observed[fieldUnit])
+            })
+            if (fieldUnchanged) {
+              const nextObserved = { ...command.observed }
+              for (const id of command.ids) {
+                const aliveUnit = `asset_bundles/${id}/$alive`
+                const freshAlive = byId.get(id)?.observed[aliveUnit]
+                if (freshAlive) nextObserved[aliveUnit] = freshAlive
+              }
+              activeCommand = { ...command, observed: nextObserved }
+            }
+          }
+        }
+        await commit(library, activeCommand, intent.operation)
+        draft.update(empty)
+        setMessage('Saved here')
+        for (const key of AFFECTED) await client.invalidateQueries({ queryKey: [key, library] })
+      })
     } catch (reason) {
       // The server refused it, so there is nothing left to retry
       if (reason instanceof CatalogJobError) draft.update(empty)
@@ -146,15 +199,41 @@ export function CatalogMultiBundleInspector({
     setMessage('')
     setUnchanged([])
     try {
-      await runBulk(
-        library,
-        items.map((item) => ({
-          id: item.id,
-          observed: Object.fromEntries(reviewed(item.observed, field)),
-        })),
-        { action: 'bulk', field, value },
+      await withCatalogWriteLock(
+        items.map((item) => bundleLockKey(library, item.id)),
+        async ({ waited }) => {
+          let targets = items.map((item) => ({
+            id: item.id,
+            observed: Object.fromEntries(reviewed(item.observed, field)),
+          }))
+          if (waited && items.length > 0) {
+            const fresh = await readSelection(
+              library,
+              items.map((item) => item.id),
+            )
+            const byId = new Map(fresh.items.map((item) => [item.id, item]))
+            targets = targets.map((entry) => {
+              const latest = byId.get(entry.id)
+              const fieldUnit = `asset_bundles/${entry.id}/${field}`
+              const aliveUnit = `asset_bundles/${entry.id}/$alive`
+              if (
+                latest &&
+                !latest.held &&
+                sameRevisionSet(entry.observed[fieldUnit], latest.observed[fieldUnit]) &&
+                latest.observed[aliveUnit]
+              ) {
+                return {
+                  id: entry.id,
+                  observed: { ...entry.observed, [aliveUnit]: latest.observed[aliveUnit] },
+                }
+              }
+              return entry
+            })
+          }
+          await runBulk(library, targets, { action: 'bulk', field, value })
+          setMessage('Saved here')
+        },
       )
-      setMessage('Saved here')
     } catch (reason) {
       if (reason instanceof CatalogBulkIncomplete) setUnchanged(reason.unchanged)
       setError((reason as Error).message)

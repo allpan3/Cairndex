@@ -1,6 +1,7 @@
 import { beforeEach } from 'vitest'
 
 import '@testing-library/jest-dom/vitest'
+import { resetCatalogWriteLocks } from '../api/catalogWriteQueue'
 
 // jsdom has no layout engine, so ResizeObserver (used by the virtualized
 // browser to measure its width) is undefined. Stub it so components mount;
@@ -67,7 +68,10 @@ Object.defineProperty(globalThis, 'localStorage', {
   } satisfies Storage,
 })
 
-beforeEach(() => testStorage.clear())
+beforeEach(() => {
+  testStorage.clear()
+  resetCatalogWriteLocks()
+})
 
 // Dialog layout and focus trapping are exercised in Playwright; jsdom tracks open state
 HTMLDialogElement.prototype.showModal ??= function () {

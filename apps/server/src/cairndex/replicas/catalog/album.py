@@ -10,7 +10,8 @@ from pydantic import Field
 from cairndex.api.schemas.bundles import DirectoryMemberRead, FileRead
 from cairndex.core.errors import ConflictError, NotFoundError
 from cairndex.replicas.catalog.projection import read_row
-from cairndex.replicas.media import ReplicaMedia, catalog_file
+from cairndex.replicas.catalog.query import descendants
+from cairndex.replicas.media import ReplicaMedia, catalog_file, file_annotations
 from cairndex.replicas.protocol import StrictModel
 from cairndex.scanning.media_types import HIDDEN_NAMES, is_hidden_relative_path
 
@@ -31,6 +32,8 @@ class CatalogAlbumPage(StrictModel):
     next_offset: int | None
     observed: dict[str, list[str]] = Field(default_factory=dict)
     editable: bool = False
+    # Names of tags present on visible files anywhere in the bundle (Album v2)
+    tag_names: dict[str, str] = Field(default_factory=dict)
 
 
 def visible(path: str) -> str:
@@ -55,6 +58,11 @@ def album(
     offset: int,
     limit: int,
     expected_revision: str | None,
+    *,
+    starred_only: bool = False,
+    tag_ids: list[str] | None = None,
+    include_descendants: bool = True,
+    tag_mode: Literal["any", "all"] = "any",
 ) -> CatalogAlbumPage:
     with media.store.connection(readonly=True) as db:
         bundle = read_row(db, "asset_bundles", bundle_id)
@@ -81,6 +89,28 @@ def album(
             db.execute("SELECT 1 FROM catalog_holds WHERE unit=?", (unit,)).fetchone()
             for unit in units
         )
+        # Map every tag present on visible files across the entire bundle, even across pages
+        tag_names = {
+            row[0]: row[1]
+            for row in db.execute(
+                "SELECT DISTINCT json_extract(e.body,'$.tag_id') AS tag_id,"
+                "json_extract(t.body,'$.name') AS name "
+                "FROM catalog_placements p "
+                "JOIN catalog_rows f ON f.family=p.family AND f.entity=p.entity "
+                "JOIN catalog_references r ON r.target='asset_files/'||f.entity "
+                "JOIN catalog_rows e ON e.family='asset_file_tags' "
+                "AND r.source>='asset_file_tags/' AND r.source<'asset_file_tags0' "
+                "AND e.entity=substr(r.source,17) "
+                "JOIN catalog_rows t ON t.family='tags' "
+                "AND t.entity=json_extract(e.body,'$.tag_id') "
+                "WHERE p.owner=? AND f.family='asset_files' AND "
+                + visible("json_extract(f.body,'$.relative_path')")
+                + " ORDER BY name, tag_id",
+                (owner,),
+            )
+        }
+        unique_tags = list(dict.fromkeys(tag_ids or []))
+        filtering = bool(starred_only or unique_tags)
         params: list[str | int] = [owner]
         files = (
             "SELECT c.entity AS entity,c.body,'file' AS kind,"
@@ -89,9 +119,35 @@ def album(
             "ON c.family=p.family AND c.entity=p.entity "
             "WHERE p.owner=? AND c.family='asset_files' AND " + visible(path)
         )
+        if starred_only:
+            files += (
+                " AND EXISTS (SELECT 1 FROM catalog_rows fs "
+                "WHERE fs.family='asset_file_stars' AND fs.entity=c.entity)"
+            )
+        if unique_tags:
+            groups = (
+                [
+                    descendants(db, "tags", [tag]) if include_descendants else [tag]
+                    for tag in unique_tags
+                ]
+                if tag_mode == "all"
+                else [descendants(db, "tags", unique_tags) if include_descendants else unique_tags]
+            )
+            for group in groups:
+                if not group:
+                    files += " AND 0=1"
+                    break
+                files += (
+                    " AND EXISTS (SELECT 1 FROM catalog_rows ft, json_each(?) t "
+                    "WHERE ft.family='asset_file_tags' AND ft.entity=c.entity||'~'||t.value)"
+                )
+                params.append(json.dumps(group))
         if directory:
             files += f" AND {path}>=? AND {path}<?"
             params.extend([directory["directory_path"] + "/", directory["directory_path"] + "0"])
+            relation = files
+        elif filtering:
+            # Filtered views flatten collapsed folders so matching inner files surface directly
             relation = files
         else:
             files += (
@@ -131,13 +187,19 @@ def album(
                     (owner, json.dumps(directory_ids)),
                 ).fetchall()
             )
-        local = _observations(db, [row["entity"] for row in rows if row["kind"] == "file"])
+        file_ids = [row["entity"] for row in rows if row["kind"] == "file"]
+        local = _observations(db, file_ids)
+        starred_ids, tags_by_file = file_annotations(db, file_ids)
         items = [
             CatalogAlbumItem(
                 id=row["entity"],
                 kind=row["kind"],
                 file=FileRead.model_validate(catalog_file(db, row["entity"])).model_copy(
                     update=local.get(row["entity"], {})
+                    | {
+                        "starred": row["entity"] in starred_ids,
+                        "tag_ids": tags_by_file.get(row["entity"], []),
+                    }
                 )
                 if row["kind"] == "file"
                 else None,
@@ -158,6 +220,7 @@ def album(
             next_offset=offset + len(items) if offset + len(items) < total else None,
             observed=observed,
             editable=editable,
+            tag_names=tag_names,
         )
 
 

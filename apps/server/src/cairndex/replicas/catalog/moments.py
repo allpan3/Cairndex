@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from cairndex.api.schemas.bundles import FileRead
 from cairndex.api.schemas.moments import MomentRead
-from cairndex.replicas.media import catalog_file
+from cairndex.replicas.media import catalog_file, file_annotations
 
 
 class CatalogMomentPage(BaseModel):
@@ -44,13 +44,20 @@ def bundle_moments(
         row["tag_ids"] = [tag for tag, _ in tags]
         names.update({tag: name for tag, name in tags})
         items.append(MomentRead.model_validate(row))
-    files = [catalog_file(db, file) for file in sorted({item.file_id for item in items})]
+    file_ids = sorted({item.file_id for item in items})
+    files = [catalog_file(db, file) for file in file_ids]
+    starred_ids, tags_by_file = file_annotations(db, file_ids)
     return CatalogMomentPage(
         items=items,
         next_offset=offset + limit if len(rows) > limit else None,
         tag_names=names,
         files=[
-            FileRead.model_validate(file)
+            FileRead.model_validate(file).model_copy(
+                update={
+                    "starred": file.id in starred_ids,
+                    "tag_ids": tags_by_file.get(file.id, []),
+                }
+            )
             for file in sorted(files, key=lambda file: (file.sequence, file.id))
         ],
     )

@@ -4,7 +4,7 @@ import { expect, test, vi } from 'vitest'
 
 import { InspectorToggle, SidebarToggle } from './PanelToggles'
 import { Toolbar } from './Toolbar'
-import type { AdHocFilters, FacetContext } from './adHocFilters'
+import { emptyAdHocFilters, type AdHocFilters, type FacetContext } from './adHocFilters'
 import { DEFAULT_PREFS } from './types'
 
 const filters: AdHocFilters = {
@@ -21,7 +21,12 @@ const facetContext: FacetContext = {
 }
 
 function renderToolbar(
-  overrides: { onReshuffle?: () => void; leading?: ReactNode; trailing?: ReactNode } = {},
+  overrides: {
+    onReshuffle?: () => void
+    leading?: ReactNode
+    trailing?: ReactNode
+    onAdHocFilters?: (next: AdHocFilters) => void
+  } = {},
 ) {
   render(
     <Toolbar
@@ -122,4 +127,66 @@ test('the panel toggles bookend the row, beside the panels they govern', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Toggle Inspector' }))
   expect(onSidebar).toHaveBeenCalledTimes(1)
   expect(onInspector).toHaveBeenCalledTimes(1)
+})
+
+test('Starred files filter chip is gated on allowStarredFiles and toggles hasStarredFiles', () => {
+  const onAdHocFilters = vi.fn()
+  renderToolbar({ onAdHocFilters })
+  fireEvent.click(screen.getByRole('button', { name: 'Filters' }))
+  expect(screen.queryByRole('button', { name: 'Filter by starred files' })).not.toBeInTheDocument()
+
+  const activeFilters: AdHocFilters = { ...emptyAdHocFilters(), hasStarredFiles: true }
+  const { rerender } = render(
+    <Toolbar
+      title="All"
+      total={10}
+      search=""
+      onSearch={vi.fn()}
+      prefs={DEFAULT_PREFS}
+      onPrefs={vi.fn()}
+      sort="manual"
+      order="asc"
+      onSort={vi.fn()}
+      perCollectionSort={false}
+      onPerCollectionSort={vi.fn()}
+      adHocFilters={emptyAdHocFilters()}
+      onAdHocFilters={onAdHocFilters}
+      allowStarredFiles
+      facetContext={facetContext}
+    />,
+  )
+  fireEvent.click(screen.getAllByRole('button', { name: 'Filters' }).at(-1)!)
+  const chip = screen.getByRole('button', { name: 'Filter by starred files' })
+  expect(chip).toHaveAttribute('aria-pressed', 'false')
+  fireEvent.click(chip)
+  expect(onAdHocFilters).toHaveBeenLastCalledWith({
+    ...emptyAdHocFilters(),
+    hasStarredFiles: true,
+  })
+
+  rerender(
+    <Toolbar
+      title="All"
+      total={10}
+      search=""
+      onSearch={vi.fn()}
+      prefs={DEFAULT_PREFS}
+      onPrefs={vi.fn()}
+      sort="manual"
+      order="asc"
+      onSort={vi.fn()}
+      perCollectionSort={false}
+      onPerCollectionSort={vi.fn()}
+      adHocFilters={activeFilters}
+      onAdHocFilters={onAdHocFilters}
+      allowStarredFiles
+      facetContext={facetContext}
+    />,
+  )
+  expect(screen.getByRole('button', { name: 'Filter by starred files' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
+  expect(onAdHocFilters).toHaveBeenLastCalledWith(emptyAdHocFilters())
 })

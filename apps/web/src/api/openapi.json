@@ -1407,6 +1407,13 @@
             "title": "Revision",
             "type": "string"
           },
+          "tag_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Tag Names",
+            "type": "object"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -2531,6 +2538,113 @@
           "components"
         ],
         "title": "CatalogField",
+        "type": "object"
+      },
+      "CatalogFileSelectionItem": {
+        "additionalProperties": false,
+        "properties": {
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "observed": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Observed",
+            "type": "object"
+          },
+          "starred": {
+            "title": "Starred",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "starred",
+          "observed",
+          "held"
+        ],
+        "title": "CatalogFileSelectionItem",
+        "type": "object"
+      },
+      "CatalogFileSelectionRead": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogFileSelectionItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CatalogFileSelectionRead",
+        "type": "object"
+      },
+      "CatalogFileSelectionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "CatalogFileSelectionRequest",
+        "type": "object"
+      },
+      "CatalogFileStarRead": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "observed": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Observed",
+            "type": "object"
+          },
+          "starred": {
+            "title": "Starred",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_id",
+          "starred",
+          "observed",
+          "held"
+        ],
+        "title": "CatalogFileStarRead",
         "type": "object"
       },
       "CatalogIdPage": {
@@ -6166,10 +6280,22 @@
             "description": "File origin preserved verbatim, including non-HTTP strings such as magnet: or ed2k:",
             "title": "Source"
           },
+          "starred": {
+            "default": false,
+            "title": "Starred",
+            "type": "boolean"
+          },
           "supported": {
             "default": false,
             "title": "Supported",
             "type": "boolean"
+          },
+          "tag_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tag Ids",
+            "type": "array"
           },
           "tech_metadata": {
             "anyOf": [
@@ -25377,6 +25503,8 @@
                 "subtitle_tracks",
                 "asset_bundle_tags",
                 "asset_bundle_collections",
+                "asset_file_stars",
+                "asset_file_tags",
                 "moment_tags",
                 "tag_group_memberships"
               ],
@@ -25480,6 +25608,8 @@
                 "subtitle_tracks",
                 "asset_bundle_tags",
                 "asset_bundle_collections",
+                "asset_file_stars",
+                "asset_file_tags",
                 "moment_tags",
                 "tag_group_memberships"
               ],
@@ -25957,6 +26087,8 @@
                 "subtitle_tracks",
                 "asset_bundle_tags",
                 "asset_bundle_collections",
+                "asset_file_stars",
+                "asset_file_tags",
                 "moment_tags",
                 "tag_group_memberships"
               ],
@@ -26088,6 +26220,8 @@
                 "subtitle_tracks",
                 "asset_bundle_tags",
                 "asset_bundle_collections",
+                "asset_file_stars",
+                "asset_file_tags",
                 "moment_tags",
                 "tag_group_memberships"
               ],
@@ -26282,6 +26416,90 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/replica/catalog/files/selection": {
+      "post": {
+        "operationId": "selected_files_api_v1_libraries__library_id__replica_catalog_files_selection_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogFileSelectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogFileSelectionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Selected Files",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/replica/catalog/files/unbundled": {
       "post": {
         "operationId": "unbundled_files_api_v1_libraries__library_id__replica_catalog_files_unbundled_post",
@@ -26445,6 +26663,235 @@
           }
         },
         "summary": "Unbundled File Keys",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/files/{file_id}/star": {
+      "get": {
+        "operationId": "read_file_star_api_v1_libraries__library_id__replica_catalog_files__file_id__star_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogFileStarRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read File Star",
+        "tags": [
+          "replica-catalog"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/catalog/files/{file_id}/tags": {
+      "get": {
+        "operationId": "file_tag_choices_api_v1_libraries__library_id__replica_catalog_files__file_id__tags_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 256,
+              "title": "After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 1000,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assigned",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Assigned",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMembershipPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "File Tag Choices",
         "tags": [
           "replica-catalog"
         ]
@@ -30751,6 +31198,61 @@
                 }
               ],
               "title": "Expected Revision"
+            }
+          },
+          {
+            "in": "query",
+            "name": "starred_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Starred Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag_ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                    "type": "string"
+                  },
+                  "maxItems": 50,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Ids"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_descendants",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Descendants",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag_mode",
+            "required": false,
+            "schema": {
+              "default": "any",
+              "enum": [
+                "any",
+                "all"
+              ],
+              "title": "Tag Mode",
+              "type": "string"
             }
           },
           {

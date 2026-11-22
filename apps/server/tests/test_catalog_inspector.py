@@ -40,7 +40,7 @@ def commit(store, result, operation):
 @pytest.mark.parametrize("family", ["tags", "collections"])
 def test_membership_remove_restore_and_stale_review(api, family):  # noqa: F811
     client, base, store = api
-    assert client.get(base + "/replica/status").json()["inspector_version"] == 1
+    assert client.get(base + "/replica/status").json()["inspector_version"] == 2
     target = f"{family}-child"
     path = base + f"/replica/catalog/bundles/bundle-000000/memberships/{family}"
     assert client.get(path + "?assigned=true").json()["items"][0]["id"] == target
