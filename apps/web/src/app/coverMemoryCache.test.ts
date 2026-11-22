@@ -32,7 +32,7 @@ test('caps concurrent cover fetches at 4 and drops unmounted queued cards withou
         signal: init?.signal ?? undefined,
         resolve: () => {
           active -= 1
-          resolve(new Response(new Blob(['img']), { status: 200 }))
+          resolve(new Response('img', { headers: { 'Content-Type': 'image/png' } }))
         },
       })
     })
