@@ -113,10 +113,11 @@ implemented on `perf/smb-responsiveness-and-previews`: replica object scans read
 existing `.cairndex/replica/objects` shards via `scandir`, local catalog and
 grouping/discovery commands drain without waiting on periodic SMB transport
 ticks, Grouping **Accept selected** reuses recorded candidate fingerprints and
-batches candidate/group checks with parallel generation verification, cached
-thumbnails bypass derivative worker admission while keeping `no-store` HTTP
-headers and client-side session cover blobs, UI mutations apply optimistically
-with rollback, the global top sweep bar is removed, portable Moment hover
+batches candidate/group checks with parallel generation verification.
+The grid fetches at most four covers at once. Cached thumbnail lookups run off
+the server event loop so bundle details can load during a slow SMB source check.
+Bundle tag and collection chips update after the server confirms the change.
+Other metadata edits apply optimistically with rollback, the global top sweep bar is removed, portable Moment hover
 previews plus on-demand video scrub previews work across desktop and SMB
 remounts, span Moments open with an armed range loop from Browser/File
 inspectors and play continuously without re-seeking on status/storyboard polls,

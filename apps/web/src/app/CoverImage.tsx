@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { canCacheCoverBlobs, fetchCoverBlobUrl, getCachedCoverBlobUrl } from './coverMemoryCache'
+import { acquireCoverBlobUrl, canCacheCoverBlobs, getCachedCoverBlobUrl } from './coverMemoryCache'
 
 /**
  * A card's cover, decoded off the main thread and faded in over one neutral
@@ -28,7 +28,8 @@ export function CoverImage({ src }: { src: string }) {
   useEffect(() => {
     if (!useBlobs || getCachedCoverBlobUrl(src)) return
     let cancelled = false
-    void fetchCoverBlobUrl(src).then((objectUrl) => {
+    const handle = acquireCoverBlobUrl(src)
+    void handle.promise.then((objectUrl) => {
       if (cancelled) return
       if (!objectUrl) {
         setFailed(src)
@@ -38,6 +39,7 @@ export function CoverImage({ src }: { src: string }) {
     })
     return () => {
       cancelled = true
+      handle.release()
     }
   }, [src, useBlobs])
 

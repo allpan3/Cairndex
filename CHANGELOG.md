@@ -256,13 +256,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 - **Instant local-first UI updates, faster SMB responsiveness, and cached cover
   delivery.** Metadata edits across Bundle Browser, inspectors, All Tags, Moments,
   and Grouping Review — including bundle and multi-bundle titles, star ratings,
-  cover choices, collection create/rename/delete/reorder, bundle and file tag or
-  collection toggles, tag/group management, moment comments, and grouping row
-  edits — now update the UI immediately and reconcile in the background with
-  automatic rollback on failure. Cached thumbnails and previews bypass the
-  transcode worker limiter on cache hits and stay in a bounded in-memory session
-  cover cache across virtualized scrolling and view switches without weakening
-  `Cache-Control: private, no-store` or symlink fencing. Local catalog, grouping,
+  cover choices, collection create/rename/delete/reorder, file tags, tag/group
+  management, moment comments, and grouping row edits — now update the UI
+  immediately and reconcile in the background with automatic rollback on
+  failure. Bundle tag and collection chips reflect confirmed membership changes.
+  The grid loads up to four covers at once and cancels requests when their last
+  card leaves the view. The inspector can load bundle details while the server
+  checks thumbnail sources on SMB. Cached thumbnails retain their source checks
+  and `Cache-Control: private, no-store` headers. Local catalog, grouping,
   and discovery steps drain directly without blocking behind periodic SMB
   transport scans, replica object discovery scans only existing shard directories
   instead of probing 256 shard paths per tick, and **Accept selected** in

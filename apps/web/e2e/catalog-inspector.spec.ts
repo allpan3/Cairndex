@@ -40,9 +40,28 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     })
     const page = await context.newPage()
     await proxyApi(page, backend.baseUrl)
-    await page.goto('/')
-    await page.getByRole('option').filter({ hasText: 'Synthetic playback' }).click()
     const inspector = page.getByRole('complementary', { name: 'Bundle inspector' })
+    const coverRequest = '**/bundles/*/thumbnail*'
+    let releaseCovers!: () => void
+    const coversHeld = new Promise<void>((resolve) => {
+      releaseCovers = resolve
+    })
+    await page.route(coverRequest, async (route) => {
+      await coversHeld
+      await route.fallback()
+    })
+    try {
+      const requested = page.waitForRequest(coverRequest)
+      await page.goto('/')
+      await requested
+      await page.getByRole('option').filter({ hasText: 'Synthetic playback' }).click()
+      await expect(inspector.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
+        'Synthetic playback',
+      )
+    } finally {
+      releaseCovers()
+      await page.unroute(coverRequest)
+    }
     await expect(inspector.getByRole('img', { name: 'Bundle cover' })).toBeVisible()
     await expect
       .poll(() =>

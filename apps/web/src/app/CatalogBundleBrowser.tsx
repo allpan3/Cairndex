@@ -687,6 +687,7 @@ export function CatalogBundleBrowser({
     enabled: Boolean(single),
     queryFn: () => catalog<Entity>(library, `/entities/asset_bundles/${single}`),
     refetchInterval: 2000,
+    retry: 1,
   })
   const albumTitle =
     detail.data?.id === albumId
@@ -1458,13 +1459,20 @@ export function CatalogBundleBrowser({
           <div className="state">
             {detail.error
               ? 'Bundle details are unavailable.'
-              : single
-                ? 'Loading bundle details…'
-                : 'Select a bundle to see its details.'}
+              : detail.data && single
+                ? 'That bundle is no longer available.'
+                : single
+                  ? 'Loading bundle details…'
+                  : 'Select a bundle to see its details.'}
           </div>
           {detail.error && (
             <button className="btn" onClick={() => void detail.refetch()}>
               Try Again
+            </button>
+          )}
+          {!detail.error && detail.data?.has_conflicts && (
+            <button className="btn" onClick={onReview}>
+              Review Conflicts
             </button>
           )}
         </aside>

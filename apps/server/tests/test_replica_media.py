@@ -3,6 +3,8 @@
 import hashlib
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 
 import pytest
 
@@ -713,3 +715,31 @@ def test_cached_thumbnail_fast_path_serves_and_rejects_symlink_escape(
             candidate.symlink_to(outside)
     escaped = client.get(base + "/bundles/bundle-000001/thumbnail")
     assert escaped.status_code == 404
+
+
+def test_inspector_loads_while_cover_source_check_is_blocked(media_api, monkeypatch):
+    from cairndex.replicas import media_cache
+
+    client, base, *_ = media_api
+    entered = Event()
+    release = Event()
+    lookup = media_cache.cached_thumbnail
+
+    def stalled_lookup(*args, **kwargs):
+        entered.set()
+        assert release.wait(15), "cover was never released"
+        return lookup(*args, **kwargs)
+
+    monkeypatch.setattr(media_cache, "cached_thumbnail", stalled_lookup)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        cover = workers.submit(client.get, base + "/bundles/bundle-000001/thumbnail")
+        try:
+            assert entered.wait(5)
+            detail = workers.submit(
+                client.get, base + "/replica/catalog/entities/asset_bundles/bundle-000001"
+            ).result(timeout=5)
+            assert detail.status_code == 200
+            assert detail.json()["fields"]["$alive"]["value"] == "true"
+        finally:
+            release.set()
+        assert cover.result(timeout=10).status_code == 200

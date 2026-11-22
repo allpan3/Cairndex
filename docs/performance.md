@@ -273,7 +273,7 @@ sequential read bandwidth across `open`, `stat`, `lstat`, `scandir`, `fsync`,
 | Idle 4 s background window | 1,667 SMB syscalls (1,590 `open`s) | **77 SMB syscalls** (11 `open`s, **−95.4%**) | — |
 | 24 cached thumbnails (8-way burst) | 669.4 ms wall / 1,344 SMB ops | **315.0 ms** cold (**105.4 ms** p50) / 409 SMB ops | **0 ms** on warm scroll / view switch (`coverMemoryCache`) |
 | Single-bundle rename (`save` job) | 2,637.4 ms median | **126.9 ms** (**20.8× faster**) | **0 ms** (optimistic draft + browse patch) |
-| Tag / collection toggle (`preview` + `commit`) | 5,654.0 ms median | **258.4 ms** (**21.9× faster**) | **0 ms** (optimistic chip + tree patch) |
+| Tag / collection toggle (`preview` + `commit`) | 5,654.0 ms median | **258.4 ms** (**21.9× faster**) | 0 ms in the measured build. The current inspector displays confirmed membership after the save. |
 | Grouping **Accept selected** (12 bundles / 36 files) | 75,416.9 ms cold / 37,842 SMB syscalls (~3.0 s warm SMB) | **1,431.0 ms** / **646 SMB syscalls** (**52.7× faster**, **−98.3% ops**) | Adaptive 25–40 ms status poll (`<250 ms` on LAN SMB) |
 
 Why SMB felt sluggish despite `280 MB/s` sequential bandwidth: SMB throughput

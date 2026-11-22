@@ -7,6 +7,7 @@ so a collection created in one library is invisible to another.
 from pathlib import Path
 from typing import Annotated
 
+from anyio import to_thread
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
@@ -181,17 +182,21 @@ async def get_collection_thumbnail(collection_id: str, access: MediaAccessDep) -
         from cairndex.replicas.catalog.inspector import collection_cover
         from cairndex.replicas.media_cache import cached_thumbnail, thumbnail
 
-        with access.replica.store.connection(readonly=True) as catalog:
-            selected = collection_cover(catalog, collection_id)
-        if selected is None:
-            raise NotFoundError(f"collection {collection_id!r} has no cover")
-        hit = cached_thumbnail(access.replica, selected["id"])
+        def lookup_cached_collection() -> tuple[str, Path | None]:
+            assert access.replica is not None
+            with access.replica.store.connection(readonly=True) as catalog:
+                selected = collection_cover(catalog, collection_id)
+            if selected is None:
+                raise NotFoundError(f"collection {collection_id!r} has no cover")
+            return str(selected["id"]), cached_thumbnail(access.replica, selected["id"])
+
+        selected_id, hit = await to_thread.run_sync(lookup_cached_collection)
         if hit is not None:
             return FileResponse(hit, headers={"Cache-Control": "private, no-store"})
 
         def generate_replica() -> Path:
             assert access.replica is not None
-            return thumbnail(access.replica, selected["id"])
+            return thumbnail(access.replica, selected_id)
 
         try:
             path_hit = await run_derivative(generate_replica)

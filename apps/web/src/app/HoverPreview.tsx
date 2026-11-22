@@ -126,7 +126,7 @@ export function HoverPreview({
   useEffect(() => {
     const fileId = source?.fileId
     if (!pointerInside || !source?.needsProbe || !catalogLibrary || !fileId) return
-    const timer = window.setTimeout(() => setProbeArmedFor(fileId), 120)
+    const timer = window.setTimeout(() => setProbeArmedFor(fileId), 300)
     return () => window.clearTimeout(timer)
   }, [catalogLibrary, pointerInside, source?.fileId, source?.needsProbe])
   const storyboardUrl =
@@ -193,6 +193,10 @@ export function HoverPreview({
       data-hover-preview-state={active ? phase : 'inactive'}
       data-hover-preview-mode={mode}
       {...bind}
+      onPointerLeave={() => {
+        setProbeArmedFor(null)
+        bind.onPointerLeave()
+      }}
     >
       {children}
       {showImage && (
