@@ -5127,6 +5127,11 @@ export interface components {
             file_count: number;
             grouping_state: components["schemas"]["GroupingState"];
             /**
+             * Has Conflicts
+             * @default false
+             */
+            has_conflicts: boolean;
+            /**
              * Has Missing
              * @default false
              */
@@ -5201,6 +5206,8 @@ export interface components {
             };
             /** Has Conflicts */
             has_conflicts: boolean;
+            /** Held Membership Unit */
+            held_membership_unit?: string | null;
             /** Id */
             id: string;
             /** Observed */

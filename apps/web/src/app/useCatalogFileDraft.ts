@@ -28,6 +28,10 @@ function decode(data: string, identity: string): Draft {
       case 'note':
       case 'source':
         return decoded === null || typeof decoded === 'string'
+      case 'display_title':
+        return guard && (decoded === null || typeof decoded === 'string')
+      case 'cover_time':
+        return guard && (decoded === null || typeof decoded === 'number')
       case '$alive':
         return guard && decoded === true
       default:
@@ -237,6 +241,35 @@ export function useCatalogFileDraft(
     }
   }
 
+  function acceptResolution(
+    values: Record<string, string>,
+    bases: Record<string, string[]>,
+    event: string,
+  ) {
+    if (!storage.isCurrent() || running.current || latest.current.pending) return
+    const next = latest.current
+    const inputs = { ...next.inputs }
+    const observed = { ...next.observed }
+    for (const [unit, value] of Object.entries(values)) {
+      if (!unit.startsWith(`asset_files/${entity.id}/`)) continue
+      const field = unit.split('/')[2]
+      if (!field || !['note', 'source', 'display_title', 'cover_time', '$alive'].includes(field))
+        continue
+      acknowledged.current[unit] = {
+        event,
+        value,
+        bases: [
+          ...new Set([...(acknowledged.current[unit]?.bases ?? []), JSON.stringify(bases[unit])]),
+        ],
+      }
+      delete inputs[unit]
+      observed[unit] = [event]
+    }
+    persist({ ...next, inputs, observed, parents: [...new Set([...next.parents, event])] })
+    setError('')
+    setMessage(Object.keys(inputs).length ? 'Saving…' : 'Saved')
+  }
+
   const autoSave = useEffectEvent(() => {
     if (!blocked && (!error || latest.current.pending)) void save()
   })
@@ -253,6 +286,7 @@ export function useCatalogFileDraft(
     draft,
     change,
     save,
+    acceptResolution,
     busy,
     error: error || (dirty ? storage.error : ''),
     message,

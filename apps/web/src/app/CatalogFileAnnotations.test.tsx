@@ -311,7 +311,19 @@ test('File note and source save causally with $alive and retain drafts in localS
   expect(await screen.findByRole('status')).toHaveTextContent('Saved')
 })
 
-test('Conflicting file note renders Review Conflicts action targeting asset_files note unit', async () => {
+test('Conflicting file note resolves in place via Conflicting Edits and hands structural scopes to onReviewConflict', async () => {
+  const conflictedNote = fileEntity(true)
+  conflictedNote.fields.note = {
+    unit: 'asset_files/file-1/note',
+    value: JSON.stringify('Alpha note'),
+    basis: ['rev-note-a', 'rev-note-b'],
+    candidates: [
+      { value: JSON.stringify('Alpha note'), revisions: ['rev-note-a'] },
+      { value: JSON.stringify('Beta note'), revisions: ['rev-note-b'] },
+    ],
+    held: 'Concurrent alternatives require a complete structural choice',
+    components: {},
+  }
   vi.mocked(catalog).mockImplementation(async (_library, path) => {
     if (path.startsWith('/drafts')) return { items: [] } as never
     if (path === '/files/file-1/star')
@@ -322,14 +334,92 @@ test('Conflicting file note renders Review Conflicts action targeting asset_file
         observed: { 'asset_file_stars/file-1/$alive': ['rev-star'] },
       } as never
     if (path.startsWith('/files/file-1/tags')) return { items: [], next_cursor: null } as never
-    if (path === '/entities/asset_files/file-1') return fileEntity(true) as never
+    if (path === '/entities/asset_files/file-1') return conflictedNote as never
+    if (path === '/history?unit=asset_files%2Ffile-1%2Fnote')
+      return { scope: ['asset_files/file-1/note'] } as never
     throw new Error(`Unexpected catalog path ${path}`)
   })
+  const onReview = vi.fn()
   const onReviewConflict = vi.fn()
-  setup({ onReviewConflict })
+  const first = setup({ onReview, onReviewConflict })
   const reviewBtn = await screen.findByRole('button', { name: 'Review Conflicts' })
   fireEvent.click(reviewBtn)
-  expect(onReviewConflict).toHaveBeenCalledWith('asset_files/file-1/note')
+
+  const dialog = await screen.findByRole('dialog', { name: 'Conflicting Edits' })
+  expect(onReview).not.toHaveBeenCalled()
+  expect(onReviewConflict).not.toHaveBeenCalled()
+  const noteGroup = within(dialog).getByRole('group', { name: 'Note' })
+  expect(within(noteGroup).getByText('Alpha note')).toBeVisible()
+  expect(within(noteGroup).getByText('Beta note')).toBeVisible()
+
+  vi.mocked(runJob)
+    .mockResolvedValueOnce({
+      id: 'preview-note',
+      action: 'preview',
+      state: 'succeeded',
+      receipt: 'preview-note-receipt',
+      result: {
+        changes: [
+          {
+            unit: 'asset_files/file-1/note',
+            value: JSON.stringify('Beta note'),
+            basis: ['rev-note-a', 'rev-note-b'],
+          },
+        ],
+      },
+      error: null,
+    } as unknown as Job)
+    .mockResolvedValueOnce({
+      id: 'commit-note',
+      action: 'commit_preview',
+      state: 'succeeded',
+      receipt: null,
+      result: { event: 'rev-note-resolved' } as Job['result'],
+      error: null,
+    })
+
+  fireEvent.click(within(noteGroup).getByRole('radio', { name: /Beta note/ }))
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Keep Selected' }))
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog', { name: 'Conflicting Edits' })).toBeNull(),
+  )
+  expect(screen.getByRole('textbox', { name: 'File note' })).toHaveValue('Beta note')
+  first.unmount()
+
+  // Structural $content conflict hands off via Open Full Review… to onReviewConflict
+  const structuralEntity = fileEntity(false)
+  structuralEntity.has_conflicts = true
+  structuralEntity.fields.$content = {
+    unit: 'asset_files/file-1/$content',
+    value: '{"sha256":"aaa"}',
+    basis: ['rev-c1', 'rev-c2'],
+    candidates: [
+      { value: '{"sha256":"aaa"}', revisions: ['rev-c1'] },
+      { value: '{"sha256":"bbb"}', revisions: ['rev-c2'] },
+    ],
+    held: 'Concurrent alternatives require a complete structural choice',
+    components: {},
+  }
+  vi.mocked(catalog).mockImplementation(async (_library, path) => {
+    if (path.startsWith('/drafts')) return { items: [] } as never
+    if (path === '/files/file-1/star')
+      return {
+        file_id: 'file-1',
+        starred: false,
+        held: false,
+        observed: { 'asset_file_stars/file-1/$alive': ['rev-star'] },
+      } as never
+    if (path.startsWith('/files/file-1/tags')) return { items: [], next_cursor: null } as never
+    if (path === '/entities/asset_files/file-1') return structuralEntity as never
+    if (path === '/history?unit=asset_files%2Ffile-1%2F%24content')
+      return { scope: ['asset_files/file-1/$content'] } as never
+    throw new Error(`Unexpected catalog path ${path}`)
+  })
+  setup({ onReview, onReviewConflict })
+  fireEvent.click(await screen.findByRole('button', { name: 'Review Conflicts' }))
+  const fullReviewBtn = await screen.findByRole('button', { name: 'Open Full Review…' })
+  fireEvent.click(fullReviewBtn)
+  expect(onReviewConflict).toHaveBeenCalledWith('asset_files/file-1/$content')
 })
 
 test('Star button stays disabled while a stale invalidated star query is refetching', async () => {

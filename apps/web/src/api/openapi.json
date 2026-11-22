@@ -1998,6 +1998,11 @@
           "grouping_state": {
             "$ref": "#/components/schemas/GroupingState"
           },
+          "has_conflicts": {
+            "default": false,
+            "title": "Has Conflicts",
+            "type": "boolean"
+          },
           "has_missing": {
             "default": false,
             "title": "Has Missing",
@@ -2293,6 +2298,17 @@
           "has_conflicts": {
             "title": "Has Conflicts",
             "type": "boolean"
+          },
+          "held_membership_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Membership Unit"
           },
           "id": {
             "title": "Id",

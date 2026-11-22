@@ -321,6 +321,7 @@ export function CatalogBundleInspector({
             family={family}
             blocked={blocked}
             onReview={onReview}
+            onReviewConflict={onReviewConflict}
             onOpenCollection={onOpenCollection}
             onFilterTag={onFilterTag}
           />

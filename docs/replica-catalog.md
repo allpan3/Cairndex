@@ -244,8 +244,8 @@ An already observed conflict requires explicit metadata review.
 | System views | All, Recent (including local Date Opened order), Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Cross-device resume remains separate; Trash uses the source-operation journal |
 | Search | Private FTS5 over the complete eligible catalog before pagination (`browse_version: 18` indexes `asset_files.note` and `source`) | Representative large-library performance qualification |
 | Sort and filters | Title, rating and Date Added; with `browse_version: 3`, Manual and File Count; with `browse_version: 11`, local Size, Date Modified and Date Opened; with `browse_version: 18`, `has_starred_files`; stable ID ties; existing structured AST, tag/rating/starred-files facets and Smart Collection execution | Unknown size/opening values sort last; unsupported request fields/sorts return 422 |
-| Inspector | Shared browser/viewer title, notes, rating, cover, memberships, moments and file controls; guarded ordering, removal and folder rows; with `inspector_version: 2`, per-file Star, Tags, Note, Source URL and bulk file star/tag selection controls; local summaries | Complete conflicts/history use Metadata Review; file conflicts open per-field and structural review |
-| Conflict/history | Existing complete choice, history and recovery controls under Metadata review | Common inspector conflict indicators do not replace complete structural review |
+| Inspector | Shared browser/viewer title, notes, rating, cover, memberships, moments and file controls; guarded ordering, removal and folder rows; with `inspector_version: 2`, per-file Star, Tags, Note, Source URL and bulk file star/tag selection controls; local summaries | Advanced catalog/history editing uses Metadata Review; ordinary scalar conflicts resolve in place and structural/membership conflicts open focused per-item review |
+| Conflict/history | In-place **Conflicting Edits** modal for bundle/file scalar fields, focused per-item **Conflict Review** for structural/lifetime/membership holds with browser-context preservation, and full catalog/history/recovery under **Metadata Review** | Common inspector conflict indicators never bypass causal bases or explicit deletion recovery |
 | File Browser | Shared File Browser through `/replica/media/directory`, paginated indexed `/replica/catalog/files`, and scoped unindexed media opening; card hover preview for indexed videos this device inspected and the listing's stat finds unchanged | Provider hydration and physical-directory pagination remain separate |
 | Update/media | Phase-aware discovery, editable grouping, initial indexing, explicit bounded media passes and the shared viewer | Source operations use File Browser; provider hydration and cross-device resume remain unavailable |
 
@@ -291,10 +291,12 @@ a destination first reads that destination's current bases, and servers before
 selection version 2 keep a search list of the complete destination population.
 Picking a destination or removing a chip commits one stable pair at once: the preview retains the displayed edge and lifetime bases, refuses stale or
 held choices and clears any collection cover that needs the removed pair. A held
-choice opens Metadata review instead. Explicit Add can restore a removed pair but
-cannot restore a deleted bundle or destination. After a lost reply the chips show
-whether the change applied. Membership saves leave scalar drafts intact.
-Hierarchy edits remain in Metadata review.
+choice surfaces a **Review Conflict** alert and opens focused conflict review for
+that item and relationship rather than replacing the browser with the generic
+catalog editor. Explicit Add can restore a removed pair but cannot restore a
+deleted bundle or destination. After a lost reply the chips show whether the
+change applied. Membership saves leave scalar drafts intact. Hierarchy edits
+remain in Metadata Review.
 
 Cover selection uses the retained inspector draft and observed file lifetime. A
 file row's image icon chooses that file as cover (clicking the current cover
@@ -310,17 +312,30 @@ An explicit conflict choice replaces only the covered field drafts and advances
 their acknowledged bases; unrelated input remains intact.
 These controls require `inspector_version: 1`; older servers retain scalar editing
 and Metadata review without calls to unsupported inspector routes.
-**Review Conflicts** in the bundle, viewer and multi-bundle inspectors opens a
-dialog over the browser for those bundles. It reads each held field's complete
-structural scope once and shows title, rating, notes, cover and main-file
-versions as the inspector shows them, never as stored JSON. **Keep Selected**
+`CatalogBundleSummary` includes `has_conflicts` (covering held bundle fields and
+held bundle tag/collection edges, with a fast empty-holds check when the library
+has no conflicts), so healthy bundle context menus show no conflict warning and
+only conflicted selections offer **Review Conflicts**. The exact bundle read returns
+`held_membership_unit` for the next held tag or collection relationship, including
+one whose assignment is no longer visible. **Review Conflicts** in
+the bundle card menu, bundle/viewer/multi-bundle inspectors, and File Inspector
+opens a compact dialog over the active browser view. It reads each held field's
+complete structural scope once and shows bundle title, rating, notes, cover and
+main-file versions — as well as file title, note, source and cover-frame
+versions — as the inspector shows them, never as stored JSON. **Keep Selected**
 queues the existing `choose` preview with every scope unit and exactly the bases
 that were displayed, then commits its receipt as `commit_<job>`. A lost reply
-retries the same operation; a stale choice reloads the versions and
-uses a new one. A scope that includes `$alive`, `$members`, another object or any
-other field is summarized instead: **Open Full Review…** opens Metadata review on
-that object with its complete conflict review open, where composition and
-explicit recovery remain. Rejected versions stay in history.
+retries the same operation; a stale choice reloads the versions and uses a new
+one. A scope that includes `$alive`, `$members`, `$content`, a held membership
+edge, a Smart Collection filter, or another object opens focused per-item
+**Conflict Review** (`CatalogFocusedConflictReview`), which resolves companion
+held units, renders human-readable item and relationship labels without the
+15-family catalog list or unrelated objects, preserves structural JSON
+composition, drafts and prepared choices scoped to the conflict under review, and explicit deletion-recovery safeguards
+(`recover`), offers **Open in Metadata Review** for full catalog/history editing,
+and keeps `CatalogOrdinaryBrowser` mounted (and viewer state suspended) so
+returning restores the exact collection, search, Bundle Album, File Browser
+folder, Unbundled queue, or viewer context. Rejected versions stay in history.
 Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
 local derivatives in the private cache; missing artwork leaves metadata usable.
 File pages retain catalog order. Selecting one file checks its local bytes and

@@ -308,11 +308,18 @@ function FilePage(
         <p>No files in this {directory ? 'folder' : 'bundle'}.</p>
       )}
       {props.enabled && page.data && !page.data.editable && (
-        <p role="alert">
-          The file arrangement needs metadata review before it can be changed.
-          {props.onReview && (
-            <button className="btn" onClick={props.onReview}>
-              Open metadata review
+        <p className="catalog-inspector-conflict" role="alert">
+          <span>The file arrangement has conflicting edits.</span>{' '}
+          {(props.onReviewConflict || props.onReview) && (
+            <button
+              className="btn btn--sm"
+              onClick={() =>
+                props.onReviewConflict
+                  ? props.onReviewConflict(`asset_bundles/${bundle}/$members`)
+                  : props.onReview?.()
+              }
+            >
+              Review Conflicts
             </button>
           )}
         </p>

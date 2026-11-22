@@ -59,6 +59,7 @@ export function CatalogBundleMemberships({
   family,
   blocked,
   onReview,
+  onReviewConflict,
   onOpenCollection,
   onFilterTag,
 }: {
@@ -68,6 +69,7 @@ export function CatalogBundleMemberships({
   family: 'tags' | 'collections'
   blocked: boolean
   onReview: () => void
+  onReviewConflict?: (unit: string) => void
   onOpenCollection?: (id: string) => void
   onFilterTag?: (id: string) => void
 }) {
@@ -199,6 +201,20 @@ export function CatalogBundleMemberships({
     ...ids.map((bundleId) => bundleLockKey(library, bundleId)),
     `${library}:${family}/${targetId}`,
   ]
+  const edgeFamily = family === 'tags' ? 'asset_bundle_tags' : 'asset_bundle_collections'
+  const reviewTarget = (targetId?: string) => {
+    if (!onReviewConflict) {
+      onReview()
+      return
+    }
+    if (targetId) {
+      onReviewConflict(
+        single ? `${edgeFamily}/${single}~${targetId}/$alive` : `${family}/${targetId}/$alive`,
+      )
+      return
+    }
+    onReviewConflict(single ? `asset_bundles/${single}/$alive` : `${family}/_/$forest`)
+  }
   const verifyTargetUnchanged = async (
     read: ChipChoice & { observed: Observed },
     assign: boolean,
@@ -215,7 +231,7 @@ export function CatalogBundleMemberships({
         `This ${family === 'tags' ? 'tag' : 'collection'} is no longer in the library.`,
       )
     if (fresh.held) {
-      onReview()
+      reviewTarget(read.id)
       return 'reviewed'
     }
     const edgePrefix = family === 'tags' ? 'asset_bundle_tags/' : 'asset_bundle_collections/'
@@ -310,7 +326,7 @@ export function CatalogBundleMemberships({
             `This ${family === 'tags' ? 'tag' : 'collection'} is no longer in the library.`,
           )
         if (item.held) {
-          onReview()
+          reviewTarget(id)
           return
         }
         const uniform =
@@ -391,6 +407,7 @@ export function CatalogBundleMemberships({
     onToggle: pickTree,
     onCreated: (created: { id: string }) => pickTree(created.id, true),
   }
+  const heldChip = chips.find((chip) => chip.held) ?? null
   return (
     <InspectorSection id={family} title={TITLE[family]}>
       <CatalogChipPicker
@@ -404,7 +421,7 @@ export function CatalogBundleMemberships({
         loading={found.isPending}
         disabled={blocked || busy || clipboard.busy || !together}
         onToggle={toggle}
-        onReview={onReview}
+        onReview={(choice) => reviewTarget(choice?.id ?? heldChip?.id)}
         onOpenChip={family === 'collections' ? onOpenCollection : undefined}
         panel={
           !tree ? undefined : family === 'tags' ? (
@@ -494,6 +511,16 @@ export function CatalogBundleMemberships({
       )}
       {clipboard.message && <p role="status">{clipboard.message}</p>}
       {assigned.data?.next && <p className="catalog-chips-more">More {family} than shown.</p>}
+      {heldChip && (
+        <p className="catalog-inspector-conflict" role="alert">
+          <span>
+            {family === 'tags' ? 'Tag' : 'Collection'} “{heldChip.name}” has conflicting edits.
+          </span>{' '}
+          <button type="button" className="btn btn--sm" onClick={() => reviewTarget(heldChip.id)}>
+            Review Conflict
+          </button>
+        </p>
+      )}
       {(error || assigned.error || shared.error) && (
         <p role="alert">{error || `${TITLE[family]} are unavailable.`}</p>
       )}

@@ -7960,6 +7960,7 @@ code {
 }
 
 /* Bounded metadata workspace shares the application's palette and keyboard controls */
+.focused-conflict-workspace,
 .replica-workspace {
   height: 100vh;
   overflow: auto;
@@ -8065,6 +8066,7 @@ code {
   color: var(--error);
 }
 @media (max-width: 650px) {
+  .focused-conflict-workspace,
   .replica-workspace {
     padding: 12px;
   }
@@ -8447,6 +8449,128 @@ code {
 .catalog-inspector-save {
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.catalog-ordinary-host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.catalog-ordinary-host[hidden] {
+  display: none;
+}
+
+.focused-conflict {
+  max-width: 780px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.focused-conflict__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.focused-conflict__titles {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.focused-conflict__titles h1 {
+  margin: 0;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.focused-conflict__card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-2, var(--surface));
+}
+.focused-conflict__card h3,
+.focused-conflict__card h2 {
+  margin: 0;
+}
+.focused-conflict__lead {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.focused-conflict__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.focused-conflict .conflict-review__field {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.focused-conflict__compose {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.focused-conflict__compose summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.focused-conflict__compose textarea {
+  width: 100%;
+  min-height: 64px;
+  margin-top: 6px;
+  font-family: monospace;
+}
+.focused-conflict__recover {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.focused-conflict__recover.is-needed {
+  border-color: var(--accent);
+}
+.focused-conflict__recover-hint {
+  color: var(--text-muted);
+}
+.focused-conflict__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.focused-conflict__prepared {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.focused-conflict__prepared h3,
+.focused-conflict__prepared p {
+  margin: 0;
+}
+.focused-conflict__changes {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
 }
 
 .catalog-ordinary-layout {

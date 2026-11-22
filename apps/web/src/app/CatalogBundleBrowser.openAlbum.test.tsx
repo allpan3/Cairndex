@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { catalog } from '../api/catalog'
 import { setActiveLibraryId } from '../api/client'
+import * as desktopMenu from '../desktop/useDesktopMenu'
 import { CatalogBundleBrowser } from './CatalogBundleBrowser'
 import { emptyAdHocFilters } from './adHocFilters'
 import type { CatalogCollections } from './useCatalogCollections'
@@ -134,7 +135,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function setup({ albumEnabled = true }: { albumEnabled?: boolean } = {}) {
+function setup({ albumEnabled = true, onScreen = true, viewerOpen = false } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
@@ -147,6 +148,8 @@ function setup({ albumEnabled = true }: { albumEnabled?: boolean } = {}) {
         editor="editor-1"
         inspectorEnabled
         albumEnabled={albumEnabled}
+        onScreen={onScreen}
+        viewerOpen={viewerOpen}
         selectionEnabled
         systemViewsEnabled
         blocked={false}
@@ -241,3 +244,160 @@ test('Toolbar Starred files chip is passed only when browse_version >= 18', asyn
     expect(screen.getByRole('button', { name: 'Filter by starred files' })).toBeInTheDocument(),
   )
 })
+
+test('Healthy bundle context menu hides conflict warnings while conflicted bundles open Conflicting Edits', async () => {
+  const onReview = vi.fn()
+  const onReviewConflict = vi.fn()
+  vi.mocked(catalog).mockImplementation(async (_library, path) => {
+    if (path === '/bundles/browse') {
+      return {
+        total: 2,
+        offset: 0,
+        limit: 50,
+        items: [
+          {
+            id: 'bundle-healthy',
+            title: 'Healthy bundle',
+            file_count: 1,
+            rating: 0,
+            cover_file_id: null,
+            has_conflicts: false,
+            date_added: '2026-01-01T00:00:00Z',
+          },
+          {
+            id: 'bundle-conflicted',
+            title: 'Conflicted bundle',
+            file_count: 1,
+            rating: 0,
+            cover_file_id: null,
+            has_conflicts: true,
+            date_added: '2026-01-02T00:00:00Z',
+          },
+        ],
+      } as never
+    }
+    if (path === '/entities/asset_bundles/bundle-healthy') {
+      return {
+        family: 'asset_bundles',
+        id: 'bundle-healthy',
+        fields: {
+          $alive: { unit: 'asset_bundles/bundle-healthy/$alive', value: 'true', basis: ['r1'] },
+          title: {
+            unit: 'asset_bundles/bundle-healthy/title',
+            value: '"Healthy bundle"',
+            basis: ['r1'],
+          },
+        },
+        observed: {},
+        parents: ['r1'],
+        has_conflicts: false,
+      } as never
+    }
+    if (path === '/entities/asset_bundles/bundle-conflicted') {
+      return {
+        family: 'asset_bundles',
+        id: 'bundle-conflicted',
+        fields: {
+          $alive: {
+            unit: 'asset_bundles/bundle-conflicted/$alive',
+            value: 'true',
+            basis: ['r1'],
+            candidates: [{ value: 'true', revisions: ['r1'] }],
+            held: null,
+            components: {},
+          },
+          title: {
+            unit: 'asset_bundles/bundle-conflicted/title',
+            value: '"Title A"',
+            basis: ['r1', 'r2'],
+            candidates: [
+              { value: '"Title A"', revisions: ['r1'] },
+              { value: '"Title B"', revisions: ['r2'] },
+            ],
+            held: 'Concurrent alternatives require a complete structural choice',
+            components: {},
+          },
+        },
+        observed: {},
+        parents: ['r1', 'r2'],
+        has_conflicts: true,
+      } as never
+    }
+    if (path === '/history?unit=asset_bundles%2Fbundle-conflicted%2Ftitle') {
+      return { scope: ['asset_bundles/bundle-conflicted/title'] } as never
+    }
+    return { items: [] } as never
+  })
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <CatalogBundleBrowser
+        library="library"
+        locateRequest={0}
+        selection={{ view: 'all', collectionId: null, smartCollectionId: null }}
+        filters={emptyAdHocFilters()}
+        onFilters={vi.fn()}
+        editor="editor-1"
+        inspectorEnabled
+        albumEnabled
+        selectionEnabled
+        systemViewsEnabled
+        blocked={false}
+        selected={null}
+        onSelect={vi.fn()}
+        onReview={onReview}
+        onReviewConflict={onReviewConflict}
+        onOpen={vi.fn()}
+        onOpenFile={vi.fn()}
+        collections={collections}
+        showSubContents={false}
+        onShowSubContents={vi.fn()}
+        onOpenCollection={vi.fn()}
+        onRenameCollection={vi.fn()}
+        dragItem={null}
+        onDragItem={vi.fn()}
+        bundleMovesEnabled
+        onNotice={vi.fn()}
+      />
+    </QueryClientProvider>,
+  )
+
+  const healthyCard = (await screen.findByText('Healthy bundle')).closest<HTMLElement>(
+    '[data-bundle-id="bundle-healthy"]',
+  )!
+  fireEvent.contextMenu(healthyCard)
+  expect(
+    screen.queryByRole('menuitem', { name: /Review metadata and conflicts/i }),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('menuitem', { name: /Review Conflicts/i })).not.toBeInTheDocument()
+  fireEvent.keyDown(window, { key: 'Escape' })
+
+  const conflictedCard = screen
+    .getByText('Conflicted bundle')
+    .closest<HTMLElement>('[data-bundle-id="bundle-conflicted"]')!
+  fireEvent.contextMenu(conflictedCard)
+  expect(
+    screen.queryByRole('menuitem', { name: /Review metadata and conflicts/i }),
+  ).not.toBeInTheDocument()
+  const reviewItem = screen.getByRole('menuitem', { name: 'Review Conflicts' })
+  fireEvent.click(reviewItem)
+
+  const dialog = await screen.findByRole('dialog', { name: 'Conflicting Edits' })
+  expect(dialog).toHaveTextContent('Title A')
+  expect(dialog).toHaveTextContent('Title B')
+  expect(onReview).not.toHaveBeenCalled()
+})
+
+test.each([false, true])(
+  'native New Bundle from another surface with review suspended=%s',
+  async (suspended) => {
+    const menu = vi.spyOn(desktopMenu, 'useDesktopMenu').mockImplementation(() => {})
+    setup({ onScreen: false, viewerOpen: suspended })
+    await screen.findByText('First bundle')
+    act(() => {
+      for (const [handle] of menu.mock.calls.slice()) handle('new-bundle')
+    })
+    expect(Boolean(screen.queryByRole('dialog', { name: 'Create empty bundle' }))).toBe(!suspended)
+  },
+)

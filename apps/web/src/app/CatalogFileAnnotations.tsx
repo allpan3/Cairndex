@@ -15,6 +15,7 @@ import { CatalogQueryContext } from '../api/catalogQuery'
 import { captureRequestScope } from '../api/requestScope'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import { CatalogChipPicker, type ChipChoice } from './CatalogChipPicker'
+import { CatalogConflictDialog } from './CatalogConflictDialog'
 import { TargetContextMenu } from './ContextMenu'
 import { InspectorSection } from './InspectorSection'
 import { PromptDialog } from './PromptDialog'
@@ -266,7 +267,13 @@ export function CatalogFileAnnotations({
             loading={foundQuery.isPending}
             disabled={blocked || setFileTag.isPending}
             onToggle={handleToggleChoice}
-            onReview={() => reviewUnit(activeTagConflictUnit ?? `asset_file_tags/${file}`)}
+            onReview={(choice) =>
+              reviewUnit(
+                choice
+                  ? `asset_file_tags/${file}~${choice.id}/$alive`
+                  : (activeTagConflictUnit ?? `asset_files/${file}/$alive`),
+              )
+            }
             panel={
               tree ? (
                 <TagPickerPanel
@@ -412,16 +419,12 @@ function CatalogFileFields({
   onReview?: () => void
   onReviewConflict?: (unit: string) => void
 }) {
+  const [reviewing, setReviewing] = useState(false)
   const draft = useCatalogFileDraft(library, entity, editor, refresh, blocked)
   const noteHeld = Boolean(entity.fields.note?.held)
   const sourceHeld = Boolean(entity.fields.source?.held)
   const aliveHeld = Boolean(entity.fields.$alive?.held)
   const hasConflict = Boolean(entity.has_conflicts || noteHeld || sourceHeld || aliveHeld)
-  const conflictUnit = entity.fields.note?.held
-    ? entity.fields.note.unit
-    : entity.fields.source?.held
-      ? entity.fields.source.unit
-      : (entity.fields.$alive?.unit ?? `asset_files/${entity.id}/note`)
 
   const note = (JSON.parse(draft.read('note')) as string | null) ?? ''
   const source = (JSON.parse(draft.read('source')) as string | null) ?? ''
@@ -431,16 +434,28 @@ function CatalogFileFields({
       {hasConflict && (
         <p className="catalog-inspector-conflict" role="alert">
           <span>This file has conflicting edits.</span>{' '}
-          {(onReviewConflict || onReview) && (
-            <button
-              type="button"
-              className="btn btn--sm"
-              onClick={() => (onReviewConflict ? onReviewConflict(conflictUnit) : onReview?.())}
-            >
-              Review Conflicts
-            </button>
-          )}
+          <button type="button" className="btn btn--sm" onClick={() => setReviewing(true)}>
+            Review Conflicts
+          </button>
         </p>
+      )}
+      {reviewing && (
+        <CatalogConflictDialog
+          library={library}
+          files={[entity.id]}
+          blocked={blocked || draft.busy || Boolean(draft.draft.pending)}
+          onClose={() => setReviewing(false)}
+          onResolved={(values, observed, event) => {
+            draft.acceptResolution(values, observed, event)
+            refresh()
+            window.dispatchEvent(new Event('cairndex:metadata-saved'))
+          }}
+          onAdvanced={(unit) => {
+            setReviewing(false)
+            if (onReviewConflict) onReviewConflict(unit)
+            else onReview?.()
+          }}
+        />
       )}
       {draft.error && (
         <p role="alert">

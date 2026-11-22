@@ -18,6 +18,7 @@ export function CatalogUnbundledBrowser({
   editor,
   metadataEnabled = false,
   blocked = false,
+  hidden = false,
   onReview,
   onReviewConflict,
   onFilterTag,
@@ -36,6 +37,7 @@ export function CatalogUnbundledBrowser({
   editor?: string
   metadataEnabled?: boolean
   blocked?: boolean
+  hidden?: boolean
   onReview: () => void
   onReviewConflict?: (unit: string) => void
   onFilterTag?: (id: string) => void
@@ -105,7 +107,7 @@ export function CatalogUnbundledBrowser({
         onRename={onRename}
         onSourceAction={onSourceAction}
       />
-      {file?.file_id ? (
+      {file?.file_id && !hidden ? (
         <aside className="inspector" aria-label="File inspector">
           <CatalogFileDetails
             key={file.file_id}

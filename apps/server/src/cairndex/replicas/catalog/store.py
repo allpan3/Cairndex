@@ -556,6 +556,8 @@ class CatalogStore(CatalogStorage):
             result = self.entity_in(db, family, identity)
             if not result["fields"]:
                 raise ReplicaError("Catalog identity is unavailable")
+            if family == "asset_bundles":
+                result["held_membership_unit"] = projection.held_bundle_membership(db, identity)
             return result
 
     # Retained values and structural scope are read independently from an editor's private draft

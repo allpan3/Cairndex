@@ -12,6 +12,7 @@ export type Field = {
 }
 export type Entity = {
   has_conflicts: boolean
+  held_membership_unit?: string | null
   family: string
   id: string
   fields: Record<string, Field>

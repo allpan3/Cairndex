@@ -198,3 +198,107 @@ test('Escape closes the review without saving', async () => {
   expect(props.onClose).toHaveBeenCalled()
   expect(runJob).not.toHaveBeenCalled()
 })
+
+test('file note and source conflicts resolve in place, and held bundle memberships surface full review', async () => {
+  const fileUnit = (name: string) => `asset_files/synthetic-file/${name}`
+  const fileField = (
+    name: string,
+    value: string | null,
+    candidates: string[],
+    held = true,
+  ): Field => ({
+    unit: fileUnit(name),
+    value,
+    basis: candidates.map((_, index) => `${name}-rev-${index}`),
+    candidates: candidates.map((raw, index) => ({
+      value: raw,
+      revisions: [`${name}-rev-${index}`],
+    })),
+    held: held ? 'Concurrent alternatives require a complete structural choice' : null,
+    components: {},
+  })
+  vi.mocked(catalog).mockImplementation(async (_library, path) => {
+    if (path === '/entities/asset_files/synthetic-file')
+      return {
+        family: 'asset_files',
+        id: 'synthetic-file',
+        has_conflicts: true,
+        fields: {
+          $alive: fileField('$alive', 'true', ['true'], false),
+          relative_path: fileField(
+            'relative_path',
+            '"clips/alpha.png"',
+            ['"clips/alpha.png"'],
+            false,
+          ),
+          note: fileField('note', '"First note"', ['"First note"', '"Second note"']),
+          source: fileField('source', 'null', ['null', '"https://synthetic.invalid/a"']),
+        },
+        observed: {},
+        parents: [],
+      } satisfies Entity as never
+    if (path.startsWith('/history?unit='))
+      return {
+        items: [],
+        next_cursor: null,
+        scope: [fileUnit('note'), fileUnit('source')],
+      } as never
+    if (path === '/entities/asset_bundles/tag-held-bundle')
+      return {
+        family: 'asset_bundles',
+        id: 'tag-held-bundle',
+        has_conflicts: false,
+        held_membership_unit: 'asset_bundle_tags/tag-held-bundle~tag-cobalt/$alive',
+        fields: {
+          $alive: field('$alive', 'true', ['true'], false),
+          title: field('title', '"Tag held bundle"', ['"Tag held bundle"'], false),
+        },
+        observed: {},
+        parents: [],
+      } satisfies Entity as never
+    if (path === '/entities/tags/tag-cobalt')
+      return {
+        family: 'tags',
+        id: 'tag-cobalt',
+        fields: { name: field('name', '"Cobalt"', ['"Cobalt"'], false) },
+        has_conflicts: false,
+        observed: {},
+        parents: [],
+      } satisfies Entity as never
+    throw new Error(`Unexpected request ${path}`)
+  })
+
+  const onClose = vi.fn()
+  const onResolved = vi.fn()
+  const onAdvanced = vi.fn()
+  render(
+    <CatalogConflictDialog
+      library="synthetic-library"
+      bundles={['tag-held-bundle']}
+      files={['synthetic-file']}
+      blocked={false}
+      onClose={onClose}
+      onResolved={onResolved}
+      onAdvanced={onAdvanced}
+    />,
+  )
+
+  const dialog = await screen.findByRole('dialog', { name: 'Conflicting Edits' })
+  const noteGroup = within(dialog).getByRole('group', { name: 'Note' })
+  const sourceGroup = within(dialog).getByRole('group', { name: 'Source' })
+  expect(within(sourceGroup).getByText('No source')).toBeVisible()
+  expect(within(dialog).getByText('Tag “Cobalt”')).toBeVisible()
+
+  vi.mocked(runJob)
+    .mockResolvedValueOnce(job('file-preview'))
+    .mockResolvedValueOnce(job('file-commit'))
+  fireEvent.click(within(noteGroup).getByRole('radio', { name: /Second note/ }))
+  fireEvent.click(
+    within(sourceGroup).getByRole('radio', { name: /https:\/\/synthetic\.invalid\/a/ }),
+  )
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Keep Selected' }))
+  await waitFor(() => expect(onResolved).toHaveBeenCalledOnce())
+
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Open Full Review…' }))
+  expect(onAdvanced).toHaveBeenCalledWith('asset_bundle_tags/tag-held-bundle~tag-cobalt/$alive')
+})

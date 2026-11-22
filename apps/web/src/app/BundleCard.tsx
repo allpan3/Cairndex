@@ -18,6 +18,7 @@ export type BundleCardItem = BundleSummary & {
   resume_storyboard_version?: string | null
   resume_generation?: string | null
   size_known?: boolean
+  has_conflicts?: boolean
 }
 
 interface BundleCardProps {

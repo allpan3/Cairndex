@@ -73,8 +73,28 @@ export function CatalogViewerInspector({
   if (!detail.data || detail.data.fields.$alive?.value !== 'true')
     return (
       <aside className="inspector" aria-label="Bundle inspector">
-        <p>{detail.error ? 'Bundle details are unavailable.' : 'Waiting for bundle details.'}</p>
+        <p>
+          {detail.error
+            ? 'Bundle details are unavailable.'
+            : detail.data
+              ? 'That bundle is no longer available.'
+              : 'Waiting for bundle details.'}
+        </p>
         {detail.error && <button onClick={() => void detail.refetch()}>Retry details</button>}
+        {!detail.error && detail.data?.has_conflicts && (
+          <button
+            className="btn"
+            onClick={() => {
+              const heldUnit =
+                Object.values(detail.data.fields).find((f) => f.held)?.unit ??
+                `asset_bundles/${bundle}/$alive`
+              if (onReviewConflict) onReviewConflict(heldUnit)
+              else onReview()
+            }}
+          >
+            Review Conflicts
+          </button>
+        )}
       </aside>
     )
   return (

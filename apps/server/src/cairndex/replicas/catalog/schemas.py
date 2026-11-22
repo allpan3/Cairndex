@@ -44,6 +44,7 @@ class CatalogField(StrictModel):
 # A snapshot carries exact lifetime/reference bases and the complete observed frontier
 class CatalogEntity(StrictModel):
     has_conflicts: bool
+    held_membership_unit: str | None = None
     family: str
     id: str
     fields: dict[str, CatalogField]

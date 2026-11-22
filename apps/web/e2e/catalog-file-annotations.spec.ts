@@ -565,7 +565,7 @@ test('concurrent replica edits hold and surface review for file note, tag, and s
       return page.getByRole('complementary', { name: 'File inspector', exact: true })
     }
 
-    // 1. Concurrent File Note edits -> hold + Review Conflicts -> Prepare choice -> Apply
+    // 1. Concurrent File Note edits -> hold + Review Conflicts -> Conflicting Edits modal in place
     const inspectorA = await openAlphaInAlbum(a)
     const inspectorB = await openAlphaInAlbum(b)
     for (const [page, text] of [
@@ -584,19 +584,21 @@ test('concurrent replica edits hold and surface review for file note, tag, and s
       timeout: 30_000,
     })
     await inspectorA.getByRole('button', { name: 'Review Conflicts', exact: true }).click()
-    const review = a.getByRole('region', { name: 'Complete conflict review', exact: true })
-    await expect(review.getByText('Replica A file note', { exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
-    await expect(review.getByText('Replica B file note', { exact: true })).toBeVisible()
-    await review.getByRole('radio', { name: /Replica A file note/ }).check()
-    await review.getByRole('button', { name: 'Prepare choice', exact: true }).click()
-    await a.getByRole('button', { name: 'Apply reviewed operation', exact: true }).click()
-    await expect(a.getByRole('textbox', { name: 'Note', exact: true })).toHaveValue(
+    const conflictDialog = a.getByRole('dialog', { name: 'Conflicting Edits', exact: true })
+    await expect(conflictDialog).toBeVisible({ timeout: 30_000 })
+    await expect(a.getByRole('navigation', { name: 'Catalog families' })).toHaveCount(0)
+    await expect(conflictDialog.getByText('Replica A file note', { exact: true })).toBeVisible()
+    await expect(conflictDialog.getByText('Replica B file note', { exact: true })).toBeVisible()
+    await conflictDialog.getByRole('radio', { name: /Replica A file note/ }).check()
+    await conflictDialog.getByRole('button', { name: 'Keep Selected', exact: true }).click()
+    await expect(conflictDialog).toHaveCount(0)
+    await expect(inspectorA.getByRole('textbox', { name: 'File note', exact: true })).toHaveValue(
       'Replica A file note',
       { timeout: 30_000 },
     )
-    await a.getByRole('button', { name: 'Bundle Browser', exact: true }).click()
+    // Open Bundle Album and selected file remain intact without re-navigating
+    const listingA = a.getByRole('list', { name: 'Album items', exact: true })
+    await expect(listingA).toBeVisible()
 
     await exchangeReplicas(roots[0], roots[1])
     await expect
@@ -615,9 +617,8 @@ test('concurrent replica edits hold and surface review for file note, tag, and s
       )
       .toBe(true)
 
-    // 2. Concurrent File Tag add (A) vs Tag delete (B) -> "Tag “Blue” has conflicting edits." -> Review Conflict
-    const inspectorA2 = await openAlphaInAlbum(a)
-    const fileTags = inspectorA2.locator('[data-section="file-tags"]')
+    // 2. Concurrent File Tag add (A) vs Tag delete (B) -> focused Conflict Review + recovery -> returns to open Album
+    const fileTags = inspectorA.locator('[data-section="file-tags"]')
     await fileTags.getByRole('button', { name: '+ Tag', exact: true }).click()
     const picker = a.getByRole('dialog', { name: 'Choose tags', exact: true })
     await picker.getByRole('textbox', { name: 'Search tags', exact: true }).fill('Blue')
@@ -639,17 +640,31 @@ test('concurrent replica edits hold and surface review for file note, tag, and s
       timeout: 30_000,
     })
     await fileTags.getByRole('button', { name: 'Review Conflict', exact: true }).click()
+    const review = a.getByRole('region', { name: 'Complete conflict review', exact: true })
     await expect(review).toBeVisible({ timeout: 30_000 })
-    await expect(review.getByText('file-alpha~tags-blue · $alive', { exact: true })).toBeVisible()
-    await expect(review.getByText('tags-blue · $alive', { exact: true })).toBeVisible()
-    await a.getByRole('button', { name: 'Bundle Browser', exact: true }).click()
+    await expect(
+      a.getByRole('heading', { name: 'Conflict Review · Tag “Blue” on “alpha.png”', exact: true }),
+    ).toBeVisible()
+    await expect(a.getByRole('navigation', { name: 'Catalog families' })).toHaveCount(0)
+    await expect(
+      review.getByRole('group', { name: 'Tag “Blue” on “alpha.png”', exact: true }),
+    ).toBeVisible()
+    const tagGroup = review.getByRole('group', { name: 'Tag “Blue”', exact: true })
+    await expect(tagGroup).toBeVisible()
+    await tagGroup.getByRole('radio', { name: /Keep in library/ }).check()
+    await review
+      .getByRole('checkbox', {
+        name: /Explicitly restore a deleted identity/,
+      })
+      .check()
+    await review.getByRole('button', { name: 'Prepare choice', exact: true }).click()
+    await a.getByRole('button', { name: 'Apply reviewed operation', exact: true }).click()
 
-    // 3. Concurrent File Star (A) vs File Delete (B) -> "This file star has conflicting edits." -> Review Conflict
-    await a
-      .locator('[data-bundle-id="bundle-multi"]')
-      .getByRole('button', { name: 'Open bundle (3 files)', exact: true })
-      .click()
-    const listingA = a.getByRole('list', { name: 'Album items', exact: true })
+    // Automatically returns to the open Bundle Album with file-alpha and restored Blue tag
+    await expect(listingA).toBeVisible({ timeout: 30_000 })
+    await expect(fileTags.getByRole('button', { name: 'Remove Blue', exact: true })).toBeVisible()
+
+    // 3. Concurrent File Star (A) vs File Delete (B) -> focused Conflict Review + explicit return to Album
     const betaA = listingA.locator('[data-file-id="file-beta"]')
     await expect(betaA).toBeVisible()
     await betaA.click()
@@ -672,7 +687,13 @@ test('concurrent replica edits hold and surface review for file note, tag, and s
       .filter({ hasText: 'This file star has conflicting edits.' })
     await starConflictAlert.getByRole('button', { name: 'Review Conflict', exact: true }).click()
     await expect(review).toBeVisible({ timeout: 30_000 })
-    await expect(review.getByText('file-beta · $alive', { exact: true }).first()).toBeVisible()
+    await expect(
+      a.getByRole('heading', { name: 'Conflict Review · Star on “beta.png”', exact: true }),
+    ).toBeVisible()
+    await expect(review.getByRole('group', { name: 'File “beta.png”', exact: true })).toBeVisible()
+    await a.getByRole('button', { name: '‹ Back to Bundle Album', exact: true }).click()
+    await expect(listingA).toBeVisible()
+    await expect(inspectorA3).toBeVisible()
   } finally {
     await Promise.all(contexts.map((context) => context.close()))
     await Promise.all(backends.map((backend) => stopBackend(backend.child)))

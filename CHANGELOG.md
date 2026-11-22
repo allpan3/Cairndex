@@ -128,9 +128,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
     bundle changed elsewhere since it was read is left as it was, and **Select
     Unchanged** selects those for review. Collection and tag changes save at once and
     are refused for review when another device changed them first. The card menu has
-    Play / View, Open Bundle, Locate in File Browser, Set as Collection Cover and Remove
-    from This Collection, and acts for the whole selection. None of this touches source
-    files.
+    Play / View, Open Bundle, Locate in File Browser, Set as Collection Cover, Remove
+    from This Collection, and **Review Conflicts** when a selected bundle has
+    competing edits. `CatalogBundleSummary.has_conflicts` controls the warning.
+    Bundle detail reads return `held_membership_unit` for a conflicted tag or
+    collection assignment, including one absent from the current list. These
+    actions apply to the selection and preserve source files.
   - *Inspectors:* v0.2.1's layout, with the cover and ▶ Play, title, rating, Files and
     Date Added, tag and collection chips with × and tree pickers, and **Files in
     bundle** listing each file's kind, size, dimensions and duration, with an
@@ -138,8 +141,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
     multi-selection shows **N bundles selected** with one title field, one
     rating and the chips every selected bundle has. Title, notes, rating and cover save
     automatically, and an interrupted save is kept and retried, even after a reload.
-    **Review Conflicts** opens a compact dialog with readable versions of each
-    conflicting value. Collections and File Browser files have their own inspectors.
+    **Review Conflicts** opens a compact dialog over the browser with readable
+    versions of conflicting bundle or file fields, while structural, deletion and
+    tag/collection/star conflicts open a focused review for that item (with
+    explicit recovery safeguards and **Open in Metadata Review**) and return to
+    the same browser, Bundle Album, File Browser or viewer view. Collections and
+    File Browser files have their own inspectors.
   - *Viewer:* double-click or Enter opens the viewer at this device's current file and
     position. Moments are back: `B`, Save Moment and the rail's `+` mark a frame or
     span; the rail plays, loops, comments, tags and deletes them, and shows a preview on

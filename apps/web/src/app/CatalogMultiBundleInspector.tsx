@@ -59,6 +59,7 @@ export function CatalogMultiBundleInspector({
   library,
   editor,
   ids,
+  conflictedIds = [],
   covers = [],
   fileCount,
   totalSize,
@@ -73,6 +74,7 @@ export function CatalogMultiBundleInspector({
   library: string
   editor: string
   ids: string[]
+  conflictedIds?: string[]
   covers?: BundleCardItem[]
   /** The selected cards' files together. */
   fileCount: number | null
@@ -115,6 +117,9 @@ export function CatalogMultiBundleInspector({
   })
   const items = snapshot.data?.items ?? []
   const held = items.some((item) => item.held)
+  const reviewIds = [
+    ...new Set([...items.filter((item) => item.held).map((item) => item.id), ...conflictedIds]),
+  ]
   const retained = Boolean(draft.body.operation)
   const locked = busy || blocked || retained || !snapshot.data || held
   useEffect(() => {
@@ -338,7 +343,7 @@ export function CatalogMultiBundleInspector({
           </button>
         </p>
       )}
-      {held && (
+      {reviewIds.length > 0 && (
         <p role="alert">
           <span>Some selected bundles have conflicting edits.</span>{' '}
           <button className="btn btn--sm" onClick={() => setReviewing(true)}>
@@ -349,7 +354,7 @@ export function CatalogMultiBundleInspector({
       {reviewing && (
         <CatalogConflictDialog
           library={library}
-          bundles={items.filter((item) => item.held).map((item) => item.id)}
+          bundles={reviewIds}
           blocked={blocked}
           onClose={() => setReviewing(false)}
           onResolved={() => {
@@ -410,6 +415,7 @@ export function CatalogMultiBundleInspector({
                 family={family}
                 blocked={blocked || retained}
                 onReview={onReview}
+                onReviewConflict={onReviewConflict}
                 onFilterTag={onFilterTag}
               />
             ))}

@@ -210,7 +210,7 @@ function Editor({
       )}
       {error && (
         <button className="btn" disabled={busy} onClick={onReview}>
-          Review metadata
+          Review Conflicts
         </button>
       )}
       {storage.copies.map((copy) => (
@@ -263,7 +263,7 @@ export function CatalogSmartCollectionEditor(props: {
         {opening.error && (
           <>
             <button onClick={() => void opening.refetch()}>Retry</button>
-            <button onClick={props.onReview}>Review metadata</button>
+            <button onClick={props.onReview}>Review Conflicts</button>
           </>
         )}
         <button onClick={close}>Close</button>

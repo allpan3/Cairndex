@@ -54,7 +54,25 @@ def test_search_follows_peer_conflicts_and_projection(tmp_path):
         assert entity["has_conflicts"]
         shown = json.loads(entity["fields"]["title"]["value"])
         assert page(store, q=shown).total == 1
-        assert page(store).total == 3
+        browsed = {item.id: item.has_conflicts for item in page(store).items}
+        assert browsed == {
+            "bundle-000000": False,
+            "bundle-000001": True,
+            "bundle-000002": False,
+        }
+
+
+def test_bundle_review_finds_a_held_relationship_outside_the_assigned_rows(tmp_path):
+    store = prepare_disposable(create_disposable(parent=tmp_path, bundles=3)).store
+    bundle = "bundle-000001"
+    edge = f"asset_bundle_tags/{bundle}~tags-child/$alive"
+    with store.connection() as db:
+        db.execute("INSERT INTO catalog_holds VALUES (?, 'Concurrent edits')", (edge,))
+    listed = {item.id: item.has_conflicts for item in page(store).items}
+    assert listed[bundle]
+    assert not listed["bundle-000000"]
+    assert store.entity("asset_bundles", bundle)["held_membership_unit"] == edge
+    assert store.entity("asset_bundles", "bundle-000000")["held_membership_unit"] is None
 
 
 def test_api_browse_refuses_unsupported_filters_and_sorts(api):  # noqa: F811

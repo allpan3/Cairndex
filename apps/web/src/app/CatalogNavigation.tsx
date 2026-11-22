@@ -35,6 +35,7 @@ export function CatalogNavigation({
   onManage,
   onSettings,
   onReview,
+  onReviewConflict,
   onReviewEntity,
   blocked,
   dragItem = null,
@@ -67,6 +68,7 @@ export function CatalogNavigation({
   onManage: () => void
   onSettings?: () => void
   onReviewEntity: (family: string, id: string) => void
+  onReviewConflict?: (unit: string) => void
   onReview: () => void
   /** The catalog is not ready, or recovery holds it; collections stay read-only. */
   blocked: boolean
@@ -225,7 +227,10 @@ export function CatalogNavigation({
           {...editingSmart}
           onClose={() => setEditingSmart(null)}
           onReview={() => {
-            if (editingSmart.id) onReviewEntity('smart_folders', editingSmart.id)
+            const targetId = editingSmart.id
+            setEditingSmart(null)
+            if (targetId && onReviewConflict) onReviewConflict(`smart_folders/${targetId}/$filter`)
+            else if (targetId) onReviewEntity('smart_folders', targetId)
             else onReview()
           }}
           onSaved={async (id) => {

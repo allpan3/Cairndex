@@ -102,10 +102,13 @@ export function CatalogOrdinaryBrowser(props: {
   blocked: boolean
   selected: string | null
   onSelect: (id: string) => void
-  onReviewEntity: (family: string, id: string) => void
+  onReviewEntity: (family: string, id: string, includeDeleted?: boolean) => void
   onReview: () => void
   /** Open Metadata Review on one structural conflict. */
   onReviewConflict?: (unit: string) => void
+  /** Kept mounted while hidden behind conflict or metadata review so browser state survives. */
+  hidden?: boolean
+  onActiveSurfaceChange?: (label: string) => void
   onOpen: (id: string) => void
   /** Open one file in the viewer, at `time` seconds when it is given. */
   onOpenFile: (
@@ -135,6 +138,7 @@ export function CatalogOrdinaryBrowser(props: {
   libraryNotices?: (onNotice: (notice: CatalogNotice) => void) => ReactNode
 }) {
   const [mode, setMode] = useState<AppMode>('collection')
+  const [albumOpen, setAlbumOpen] = useState(false)
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
   const [filters, setFilters] = useState(emptyAdHocFilters)
   const [locateRequest, setLocateRequest] = useState(0)
@@ -316,8 +320,25 @@ export function CatalogOrdinaryBrowser(props: {
     </>
   )
   const headerTrailing = <InspectorToggle visible={panels.inspector} onToggle={toggleInspector} />
+  const { onActiveSurfaceChange } = props
+  useEffect(() => {
+    const label =
+      mode === 'tags'
+        ? 'All Tags'
+        : mode === 'file'
+          ? fileScope === 'unbundled'
+            ? 'Unbundled'
+            : fileScope === 'trash'
+              ? 'Trash'
+              : 'File Browser'
+          : albumOpen
+            ? 'Bundle Album'
+            : 'Bundle Browser'
+    onActiveSurfaceChange?.(label)
+  }, [mode, fileScope, albumOpen, onActiveSurfaceChange])
   const sourceEnabled = Boolean(props.sourceOperationsEnabled && !props.blocked)
   useDesktopMenu((action) => {
+    if (props.hidden) return
     if (action === 'toggle-sidebar') toggleSidebar()
     else if (action === 'toggle-inspector') toggleInspector()
     else if (action === 'show-bundles' || action === 'new-bundle') {
@@ -368,10 +389,11 @@ export function CatalogOrdinaryBrowser(props: {
   const tasks = useSourceTasks(props.library, setNotice, status?.source_original === true)
   // One ⌘Z for both: the newest change, whichever kind. Organizing changes are
   // undone only where the bundles are on screen.
-  useUndoShortcut(() => [
-    mode === 'collection' && !props.viewerOpen ? undo.newest() : null,
-    tasks.newestUndo(),
-  ])
+  useUndoShortcut(() =>
+    props.hidden
+      ? [null, null]
+      : [mode === 'collection' && !props.viewerOpen ? undo.newest() : null, tasks.newestUndo()],
+  )
   const leaving = useMemo(() => leavingPaths(tasks.tasks), [tasks.tasks])
   const arriving = useMemo(() => arrivingFolders(tasks.tasks), [tasks.tasks])
   // Write mode in Libraries is the one switch; each action below is its own operation
@@ -427,15 +449,17 @@ export function CatalogOrdinaryBrowser(props: {
     props.libraries.find((item) => item.id === props.library),
   )
   useHostFileMenu(
-    mode === 'collection'
-      ? bundleHostPath
-      : mode === 'file'
-        ? unbundled
-          ? unbundledHostPath
-          : file?.kind === 'file'
-            ? file.relative_path
-            : null
-        : null,
+    props.hidden
+      ? null
+      : mode === 'collection'
+        ? bundleHostPath
+        : mode === 'file'
+          ? unbundled
+            ? unbundledHostPath
+            : file?.kind === 'file'
+              ? file.relative_path
+              : null
+          : null,
     hostFiles,
   )
   return (
@@ -481,6 +505,7 @@ export function CatalogOrdinaryBrowser(props: {
             onManage={props.onManage}
             onSettings={props.onSettings}
             onReview={props.onReview}
+            onReviewConflict={props.onReviewConflict}
             onReviewEntity={props.onReviewEntity}
             blocked={props.blocked}
             dragItem={dragItem}
@@ -621,7 +646,8 @@ export function CatalogOrdinaryBrowser(props: {
                 onNotice={setNotice}
                 headerLeading={headerLeading}
                 headerTrailing={headerTrailing}
-                onScreen={mode === 'collection'}
+                onScreen={mode === 'collection' && !props.hidden}
+                onAlbumOpenChange={setAlbumOpen}
                 locateRequest={locateRequest}
                 locateFile={locateFile}
                 selection={selection}
@@ -643,6 +669,7 @@ export function CatalogOrdinaryBrowser(props: {
               editor={props.editor}
               metadataEnabled={fileMetadataEnabled}
               blocked={props.blocked}
+              hidden={props.hidden}
               onReview={props.onReview}
               onReviewConflict={props.onReviewConflict}
               onFilterTag={filterFromChip}
@@ -665,7 +692,7 @@ export function CatalogOrdinaryBrowser(props: {
               writable={writable}
               headerLeading={headerLeading}
               headerTrailing={headerTrailing}
-              onReviewEntity={props.onReviewEntity}
+              onReviewEntity={(family, id) => props.onReviewEntity(family, id, true)}
             />
           )}
           {mode === 'file' && fileScope === 'browse' && (
@@ -710,7 +737,7 @@ export function CatalogOrdinaryBrowser(props: {
                 }
               />
               <aside className="inspector" aria-label="File inspector">
-                {file ? (
+                {file && !props.hidden ? (
                   <>
                     <CatalogFileDetails
                       key={file.relative_path}
