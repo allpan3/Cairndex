@@ -200,7 +200,9 @@ test('large editable grouping keeps later files in view through edits and partia
     await page.goto('/')
     await openMetadataReview(page)
     await page.getByRole('button', { name: 'Update', exact: true }).click()
-    await expect(page.getByText(/(?:Initial scan|Update) complete/)).toBeVisible({
+    await expect(
+      page.getByRole('region', { name: 'Library Update' }).getByRole('status'),
+    ).toContainText(/(?:Initial scan|Update) complete/, {
       timeout: 60_000,
     })
     const dialog = page.getByRole('dialog', { name: 'Grouping review' })
