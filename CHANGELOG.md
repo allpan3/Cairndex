@@ -417,7 +417,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   `quinn-udp` 0.5.16 (RUSTSEC-2026-0523, RUSTSEC-2026-0524, RUSTSEC-2026-0538), rustls
   0.23.46 (four TLS advisories, including a ServerHello downgrade and secrets in `Debug`
   output), rustls-webpki, webpki-roots, Tokio and event-listener 5.4.2; the yanked
-  chacha20 0.10.1 is replaced by 0.10.2. Python: Pillow 13.0.0, certifi, setuptools,
+  chacha20 0.10.1 is replaced by 0.10.2. The desktop build uses url 2.5.9 to fix a
+  stack overflow when resolving URL origins (RUSTSEC-2026-0592). Python: Pillow 13.0.0, certifi, setuptools,
   AnyIO and Mako 1.4.3 (GHSA-5639-2j2p-m4mx). Web development tools: Undici 7.30.1, Zod
   4.6.7, source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q) and brace-expansion.
 - **Library passphrases and device pairing codes skip the metadata edit queue,** which
