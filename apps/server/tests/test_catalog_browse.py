@@ -54,7 +54,25 @@ def test_search_follows_peer_conflicts_and_projection(tmp_path):
         assert entity["has_conflicts"]
         shown = json.loads(entity["fields"]["title"]["value"])
         assert page(store, q=shown).total == 1
-        assert page(store).total == 3
+        browsed = {item.id: item.has_conflicts for item in page(store).items}
+        assert browsed == {
+            "bundle-000000": False,
+            "bundle-000001": True,
+            "bundle-000002": False,
+        }
+
+
+def test_bundle_review_finds_a_held_relationship_outside_the_assigned_rows(tmp_path):
+    store = prepare_disposable(create_disposable(parent=tmp_path, bundles=3)).store
+    bundle = "bundle-000001"
+    edge = f"asset_bundle_tags/{bundle}~tags-child/$alive"
+    with store.connection() as db:
+        db.execute("INSERT INTO catalog_holds VALUES (?, 'Concurrent edits')", (edge,))
+    listed = {item.id: item.has_conflicts for item in page(store).items}
+    assert listed[bundle]
+    assert not listed["bundle-000000"]
+    assert store.entity("asset_bundles", bundle)["held_membership_unit"] == edge
+    assert store.entity("asset_bundles", "bundle-000000")["held_membership_unit"] is None
 
 
 def test_api_browse_refuses_unsupported_filters_and_sorts(api):  # noqa: F811
@@ -584,3 +602,61 @@ def test_api_selection_ids_routes_are_bounded_and_never_stat_sources(api, monkey
     assert keys.status_code == 200
     assert keys.json() == {"items": [], "total": 0, "offset": 0, "limit": 1000}
     assert client.get(base + "/replica/status").json()["selection_version"] == 6
+
+
+def test_browse_prefers_video_member_for_preview_over_cover_image(tmp_path):
+    import sqlite3
+
+    from cairndex.devtools.catalog_fixture import insert_row, synthetic_row
+
+    fixture = create_disposable(parent=tmp_path, bundles=3)
+    with sqlite3.connect(fixture.source / ".cairndex/library.db") as db:
+        insert_row(
+            db,
+            "asset_bundles",
+            synthetic_row(
+                "asset_bundles",
+                "bundle-cover-video",
+                title="Synthetic Clip",
+                grouping_state="CONFIRMED",
+                cover_file_id="file-cover-img",
+            ),
+        )
+        insert_row(
+            db,
+            "asset_files",
+            synthetic_row(
+                "asset_files",
+                "file-cover-img",
+                bundle_id="bundle-cover-video",
+                relative_path="Clips/clip-cover.jpg",
+                directory_path="Clips",
+                original_filename="clip-cover.jpg",
+                display_title="clip-cover.jpg",
+                role="IMAGE",
+                sequence=0,
+                tech_metadata="{}",
+            ),
+        )
+        insert_row(
+            db,
+            "asset_files",
+            synthetic_row(
+                "asset_files",
+                "file-main-video",
+                bundle_id="bundle-cover-video",
+                relative_path="Clips/clip.mp4",
+                directory_path="Clips",
+                original_filename="clip.mp4",
+                display_title="clip.mp4",
+                role="PRIMARY_VIDEO",
+                sequence=1,
+                tech_metadata="{}",
+            ),
+        )
+    store = prepare_disposable(fixture).store
+    items = {item.id: item for item in page(store).items}
+    target = items["bundle-cover-video"]
+    assert target.cover_file_id == "file-cover-img"
+    assert target.resume_file_id == "file-main-video"
+    assert target.media_kind == "video"

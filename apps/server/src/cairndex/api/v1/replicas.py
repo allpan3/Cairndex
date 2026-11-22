@@ -49,7 +49,8 @@ def replica_store(
     lifecycle.retain(library_id)
     try:
         store = service.get_store(library)
-        registry.commit()  # Release the registry writer before accessing private metadata
+        if registry.new or registry.dirty or registry.deleted:
+            registry.commit()  # Release the registry writer before accessing private metadata
         yield store
     finally:
         lifecycle.leave(library_id)

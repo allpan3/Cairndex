@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,7 @@ from cairndex.replicas.discovery_collections import place
 from cairndex.replicas.discovery_preview import DiscoveryPreview
 from cairndex.replicas.protocol import ReplicaError
 
-BATCH = 32
+BATCH = 256
 
 
 # Default selection includes the complete candidate; explicit exceptions stay independent of paging
@@ -152,9 +153,19 @@ def verify(
         "ORDER BY position LIMIT ?",
         (operation, cursor, BATCH),
     ).fetchall()
-    for row in rows:
-        file = json.loads(row["original"])
-        if sources.inspect(root, file["path"])["generation"] != file["generation"]:
+    parsed = [(row, json.loads(row["original"])) for row in rows]
+    if len(parsed) > 1:
+        with ThreadPoolExecutor(max_workers=min(16, len(parsed))) as pool:
+            inspected = list(
+                pool.map(
+                    lambda item: sources.inspect(root, item[1]["path"], item[1]),
+                    parsed,
+                )
+            )
+    else:
+        inspected = [sources.inspect(root, item[1]["path"], item[1]) for item in parsed]
+    for (row, file), seen in zip(parsed, inspected, strict=True):
+        if seen["generation"] != file["generation"]:
             raise ReplicaError("Local files changed; run Update before reviewing")
         if file.get("staged"):
             from cairndex.replicas.discovery_staged import validate
@@ -201,88 +212,92 @@ def groups(builder: DiscoveryPreview, intent: dict[str, Any], candidate: dict[st
     from cairndex.replicas.discovery_review import defaults
 
     db, operation = builder.db, builder.operation
-    row = db.execute(
+    rows = db.execute(
         "SELECT * FROM discovery_review_groups WHERE operation=? AND state='queued' "
-        "ORDER BY id LIMIT 1",
+        "ORDER BY id LIMIT 64",
         (operation,),
-    ).fetchone()
-    if row is None:
+    ).fetchall()
+    if not rows:
         db.execute(
             "UPDATE discovery_review_work SET phase='files',cursor=-1,progress=0 WHERE operation=?",
             (operation,),
         )
         return
-    group = json.loads(row["body"])
-    earliest = db.execute(
-        "SELECT MIN(json_extract(body,'$.mtime')) FROM discovery_review_files "
-        "WHERE operation=? AND group_id=?",
-        (operation, row["id"]),
-    ).fetchone()[0]
-    stamp = (
-        datetime.fromtimestamp(earliest / 1_000_000_000, UTC)
-        .replace(tzinfo=None)
-        .isoformat(sep=" ")
-    )
-    target = (
-        intent.get("target", group["target"]) if candidate["kind"] == "new" else group["target"]
-    )
-    if not target and "target" not in intent:
-        settled = db.execute(
-            "SELECT DISTINCT json_extract(r.body,'$.bundle_id') FROM discovery_candidate_files f "
-            "JOIN discovery_accepted_files a ON a.path=json_extract(f.body,'$.path') AND "
-            "a.generation=json_extract(f.body,'$.generation') JOIN catalog_rows r "
-            "ON r.family='asset_files' AND r.entity=a.file_id WHERE f.candidate=? "
-            "AND f.group_id=? LIMIT 2",
-            (intent["candidate"], row["id"]),
-        ).fetchall()
-        if len(settled) == 1:
-            target = settled[0][0]
-    title = intent.get("title", group["title"]) if candidate["kind"] == "new" else group["title"]
-    if not isinstance(title, str) or not title.strip() or len(title) > 512:
-        raise ReplicaError("A bundle title is required")
-    addition = bool(target)
-    if target:
-        if not read_row(db, "asset_bundles", target):
-            raise ReplicaError("The target bundle is unavailable; review another destination")
-        builder.get(key("asset_bundles", target, "$alive"))
-    else:
-        from cairndex.replicas.discovery_staged import reusable
-
-        target = reusable(builder, row["id"])
+    for row in rows:
+        group = json.loads(row["body"])
+        earliest = db.execute(
+            "SELECT MIN(json_extract(body,'$.mtime')) FROM discovery_review_files "
+            "WHERE operation=? AND group_id=?",
+            (operation, row["id"]),
+        ).fetchone()[0]
+        stamp = (
+            datetime.fromtimestamp(earliest / 1_000_000_000, UTC)
+            .replace(tzinfo=None)
+            .isoformat(sep=" ")
+        )
+        target = (
+            intent.get("target", group["target"]) if candidate["kind"] == "new" else group["target"]
+        )
+        if not target and "target" not in intent:
+            settled = db.execute(
+                "SELECT DISTINCT json_extract(r.body,'$.bundle_id') "
+                "FROM discovery_candidate_files f "
+                "JOIN discovery_accepted_files a ON a.path=json_extract(f.body,'$.path') AND "
+                "a.generation=json_extract(f.body,'$.generation') JOIN catalog_rows r "
+                "ON r.family='asset_files' AND r.entity=a.file_id WHERE f.candidate=? "
+                "AND f.group_id=? LIMIT 2",
+                (intent["candidate"], row["id"]),
+            ).fetchall()
+            if len(settled) == 1:
+                target = settled[0][0]
+        title = (
+            intent.get("title", group["title"]) if candidate["kind"] == "new" else group["title"]
+        )
+        if not isinstance(title, str) or not title.strip() or len(title) > 512:
+            raise ReplicaError("A bundle title is required")
+        addition = bool(target)
         if target:
-            builder.put(key("asset_bundles", target, "title"), title)
-            builder.put(key("asset_bundles", target, "grouping_state"), "CONFIRMED")
-            builder.put(key("asset_bundles", target, "grouping_source"), "MANUAL")
+            if not read_row(db, "asset_bundles", target):
+                raise ReplicaError("The target bundle is unavailable; review another destination")
+            builder.get(key("asset_bundles", target, "$alive"))
         else:
-            target = identity(db, operation, row["id"])
-            builder.create(
-                "asset_bundles",
-                defaults(
+            from cairndex.replicas.discovery_staged import reusable
+
+            target = reusable(builder, row["id"])
+            if target:
+                builder.put(key("asset_bundles", target, "title"), title)
+                builder.put(key("asset_bundles", target, "grouping_state"), "CONFIRMED")
+                builder.put(key("asset_bundles", target, "grouping_source"), "MANUAL")
+            else:
+                target = identity(db, operation, row["id"])
+                builder.create(
                     "asset_bundles",
-                    id=target,
-                    title=title,
-                    grouping_state="CONFIRMED",
-                    grouping_source="MANUAL",
-                    imported_at=stamp,
-                    created_at=stamp,
-                    updated_at=stamp,
-                ),
-            )
-    builder.members(target)
-    placement = place(
-        builder,
-        group | {"target": target if addition else None},
-        intent,
-        candidate,
-        target,
-        stamp,
-    )
-    group |= {"stamp": stamp, "addition": addition, "placement": placement, "title": title}
-    db.execute(
-        "UPDATE discovery_review_groups SET target=?,body=?,state='files' "
-        "WHERE operation=? AND id=?",
-        (target, value_text(group), operation, row["id"]),
-    )
+                    defaults(
+                        "asset_bundles",
+                        id=target,
+                        title=title,
+                        grouping_state="CONFIRMED",
+                        grouping_source="MANUAL",
+                        imported_at=stamp,
+                        created_at=stamp,
+                        updated_at=stamp,
+                    ),
+                )
+        builder.members(target)
+        placement = place(
+            builder,
+            group | {"target": target if addition else None},
+            intent,
+            candidate,
+            target,
+            stamp,
+        )
+        group |= {"stamp": stamp, "addition": addition, "placement": placement, "title": title}
+        db.execute(
+            "UPDATE discovery_review_groups SET target=?,body=?,state='files' "
+            "WHERE operation=? AND id=?",
+            (target, value_text(group), operation, row["id"]),
+        )
 
 
 # New files append to complete settled membership; no page can replace an earlier member list

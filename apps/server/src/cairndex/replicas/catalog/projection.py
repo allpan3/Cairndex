@@ -58,6 +58,19 @@ CREATE INDEX IF NOT EXISTS catalog_projected_kind ON catalog_projected_claims(ki
 """
 
 
+def held_bundle_membership(db: sqlite3.Connection, bundle: str) -> str | None:
+    """Find a held relationship even if its current projection is absent or deleted."""
+    for family in ("asset_bundle_tags", "asset_bundle_collections"):
+        prefix = f"{family}/{bundle}"
+        row = db.execute(
+            "SELECT unit FROM catalog_holds WHERE unit>=? AND unit<? ORDER BY unit LIMIT 1",
+            (prefix + "~", prefix + "\x7f"),
+        ).fetchone()
+        if row:
+            return str(row[0])
+    return None
+
+
 # Read one indexed entity without depending on table names supplied by a client
 def read_row(db: sqlite3.Connection, family: str, identity: str) -> Row | None:
     found = db.execute(

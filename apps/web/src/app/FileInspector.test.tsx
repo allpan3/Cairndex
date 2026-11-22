@@ -118,3 +118,15 @@ test('Escape abandons the rename, and clicking away then changes nothing', () =>
 
   expect(onRename).not.toHaveBeenCalled()
 })
+
+test('renders authored file annotations above technical metadata rows', () => {
+  const { container } = render(
+    <FileInspector entry={factsFromEntry(entry)} hostLabels={labels}>
+      <div data-testid="file-annotations-slot">Annotations</div>
+    </FileInspector>,
+  )
+
+  const slot = screen.getByTestId('file-annotations-slot')
+  const meta = container.querySelector('.file-meta') as HTMLElement
+  expect(slot.compareDocumentPosition(meta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})

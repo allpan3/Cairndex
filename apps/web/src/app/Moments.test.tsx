@@ -159,6 +159,21 @@ test('the loop control arms the range loop on that span', () => {
   expect(actions.moments?.loop).toHaveBeenCalledWith('file-1', { start: 1, end: 4 })
 })
 
+test('outside the player, the loop control and span badge open the viewer with the loop armed', () => {
+  hooks.moments = [moment({ id: 'span', start_s: 12.5, end_s: 16.0 })]
+  const onLoopMoment = vi.fn()
+  const onPlayMoment = vi.fn()
+  renderSection([video('file-1', 'clip.mp4')], { onPlayMoment, onLoopMoment })
+
+  const loopBtn = screen.getByRole('button', { name: /^Range loop/ })
+  expect(loopBtn).toBeEnabled()
+  fireEvent.click(loopBtn)
+  expect(onLoopMoment).toHaveBeenCalledWith('bundle', 'file-1', { start: 12.5, end: 16.0 })
+
+  fireEvent.click(screen.getByText('3.5s'))
+  expect(onLoopMoment).toHaveBeenCalledTimes(2)
+})
+
 test('playing a moment names its file and its instant', () => {
   hooks.moments = [moment({ start_s: 42.5 })]
   const onPlayMoment = vi.fn()
@@ -632,4 +647,29 @@ test('a portable row offers no tags and no poster', () => {
   fireEvent.pointerEnter(noted!)
   expect(screen.getByTestId('moment-preview')).toHaveTextContent('note')
   expect(screen.queryByTestId('moment-preview-poster')).not.toBeInTheDocument()
+})
+
+test('a portable row retries its poster while decoding and shows fallback cover artwork', async () => {
+  const previews = vi.fn((row: Moment) => ({
+    poster: `/previews/${row.id}/poster.jpg`,
+    clip: null,
+  }))
+  renderPortable({
+    ...portableSource([moment({ id: 'decode-wait', start_s: 12 })]),
+    previews,
+  })
+  const [row] = screen.getAllByRole('listitem')
+  fireEvent.pointerEnter(row!)
+  expect(document.querySelector('.moment-preview__fallback')).not.toBeNull()
+  const poster = screen.getByTestId('moment-preview-poster')
+  expect(poster).toHaveAttribute('src', '/previews/decode-wait/poster.jpg')
+
+  await act(async () => {
+    fireEvent.error(poster)
+    vi.advanceTimersByTime(400)
+  })
+  expect(screen.getByTestId('moment-preview-poster')).toHaveAttribute(
+    'src',
+    '/previews/decode-wait/poster.jpg?retry=1',
+  )
 })

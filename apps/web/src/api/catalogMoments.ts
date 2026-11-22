@@ -141,36 +141,49 @@ export function useCatalogMomentMutations(library: string, bundleId: string | nu
         momentId: string
         patch: { comment: string }
       }): Promise<void> => {
-        const shown = client
-          .getQueryData<CatalogMoments>(key)
-          ?.moments.find((moment) => moment.id === momentId)?.comment
-        const entity = await catalog<Entity>(library, `/entities/moments/${momentId}`)
-        const comment = entity.fields.comment
-        const alive = entity.fields.$alive
-        if (!comment || !alive || alive.value !== 'true' || alive.held || comment.held)
-          throw new Error('This moment needs metadata review before its comment can change.')
-        // The bases come from the catalog now, so a comment that changed since the
-        // owner saw it would be overwritten without review
-        if (JSON.parse(comment.value ?? 'null') !== (shown ?? null))
-          throw new Error('This comment changed on another device. Open it again to edit it.')
-        await runJob(
-          library,
-          'save',
-          {
-            changes: [
-              {
-                unit: comment.unit,
-                value: JSON.stringify(patch.comment.trim() ? patch.comment : null),
-                basis: comment.basis,
-              },
-              { unit: alive.unit, value: 'true', basis: alive.basis },
-            ],
-            parents: entity.parents,
-            resolve: false,
-            recover: false,
-          },
-          operationId(),
-        )
+        const previous = client.getQueryData<CatalogMoments>(key)
+        const shown = previous?.moments.find((moment) => moment.id === momentId)?.comment
+        const nextComment = patch.comment.trim() ? patch.comment : null
+        if (previous) {
+          client.setQueryData<CatalogMoments>(key, {
+            ...previous,
+            moments: previous.moments.map((moment) =>
+              moment.id === momentId ? { ...moment, comment: nextComment } : moment,
+            ),
+          })
+        }
+        try {
+          const entity = await catalog<Entity>(library, `/entities/moments/${momentId}`)
+          const comment = entity.fields.comment
+          const alive = entity.fields.$alive
+          if (!comment || !alive || alive.value !== 'true' || alive.held || comment.held)
+            throw new Error('This moment needs metadata review before its comment can change.')
+          // The bases come from the catalog now, so a comment that changed since the
+          // owner saw it would be overwritten without review
+          if (JSON.parse(comment.value ?? 'null') !== (shown ?? null))
+            throw new Error('This comment changed on another device. Open it again to edit it.')
+          await runJob(
+            library,
+            'save',
+            {
+              changes: [
+                {
+                  unit: comment.unit,
+                  value: JSON.stringify(nextComment),
+                  basis: comment.basis,
+                },
+                { unit: alive.unit, value: 'true', basis: alive.basis },
+              ],
+              parents: entity.parents,
+              resolve: false,
+              recover: false,
+            },
+            operationId(),
+          )
+        } catch (reason) {
+          if (previous !== undefined) client.setQueryData(key, previous)
+          throw reason
+        }
       },
       // The saved comment is what the next edit must match before the list refetches
       onSuccess: (_saved, { momentId, patch }) =>

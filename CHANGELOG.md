@@ -10,6 +10,31 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Open Bundle and per-file stars, tags, notes, and filtering
+  ([ADR-0043](docs/adr/0043-file-stars-tags-and-notes.md)).** Bundle Browser cards
+  show an **Open bundle** corner trigger (always visible with file count on
+  multi-file bundles, hover/focus on single-file bundles, plus List-row trigger
+  and `⌘↓` / `Alt+↓` shortcut) that opens straight into the bundle's Album view,
+  where **Card** (including **Card details**), **Justified**, and **List** layouts
+  all apply. Individual files support an instantaneous optimistic binary **Star**
+  (`asset_file_stars`) in the inspector file list, Album tiles/rows, File
+  Inspector title bar, and viewer rail (**Bundle / File** tabs) — including
+  Star/Unstar context-menu bulk actions — alongside File Inspector sections for
+  **Tags** (`asset_file_tags`, sharing the `TagPickerPanel` tree and propagating
+  one way to confirmed parent bundles without polluting `provisional` staging
+  bundles, and preserving stars/tags across moved-file repair, transfers, and
+  grouping commits), **Moments** (scoped to the selected video file), **Note**,
+  and **Source** URL with causal-basis save/retry and conflict review.
+  `GET .../media/bundles/{id}/album` supports `starred_only`, `tag_ids`,
+  `include_descendants`, and `tag_mode` (`any`/`all`) filtering (flattening
+  collapsed directory members when filtered and returning `tag_names`), `FileRead`
+  adds `starred` and `tag_ids`, `POST .../catalog/files/selection`,
+  `GET .../catalog/files/{id}/star`, and `GET .../catalog/files/{id}/tags` expose
+  observed causal bases and `file_stars` / `file_tag` previews, full-text search
+  indexes `asset_files.note` and `source`, and the Bundle Browser toolbar's
+  `Starred files` chip plus Smart Collections support the `has_starred_files`
+  boolean predicate.
+
 - Empty browse states offer a relevant action: clear search or filters, show
   subcollection contents, browse all bundles or update the library. Empty File
   Browser folders offer Create folder when permitted, otherwise Refresh files.
@@ -103,17 +128,25 @@ onward. Entries under `Unreleased` ship in the next tagged release.
     bundle changed elsewhere since it was read is left as it was, and **Select
     Unchanged** selects those for review. Collection and tag changes save at once and
     are refused for review when another device changed them first. The card menu has
-    Play / View, Open Bundle, Locate in File Browser, Set as Collection Cover and Remove
-    from This Collection, and acts for the whole selection. None of this touches source
-    files.
+    Play / View, Open Bundle, Locate in File Browser, Set as Collection Cover, Remove
+    from This Collection, and **Review Conflicts** when a selected bundle has
+    competing edits. `CatalogBundleSummary.has_conflicts` controls the warning.
+    Bundle detail reads return `held_membership_unit` for a conflicted tag or
+    collection assignment, including one absent from the current list. These
+    actions apply to the selection and preserve source files.
   - *Inspectors:* v0.2.1's layout, with the cover and ▶ Play, title, rating, Files and
     Date Added, tag and collection chips with × and tree pickers, and **Files in
-    bundle** listing each file's kind, size, dimensions and duration, with ★ to choose
-    the cover. A multi-selection shows **N bundles selected** with one title field, one
+    bundle** listing each file's kind, size, dimensions and duration, with an
+    artwork toggle to choose the cover and a star toggle for individual files. A
+    multi-selection shows **N bundles selected** with one title field, one
     rating and the chips every selected bundle has. Title, notes, rating and cover save
     automatically, and an interrupted save is kept and retried, even after a reload.
-    **Review Conflicts** opens a compact dialog with readable versions of each
-    conflicting value. Collections and File Browser files have their own inspectors.
+    **Review Conflicts** opens a compact dialog over the browser with readable
+    versions of conflicting bundle or file fields, while structural, deletion and
+    tag/collection/star conflicts open a focused review for that item (with
+    explicit recovery safeguards and **Open in Metadata Review**) and return to
+    the same browser, Bundle Album, File Browser or viewer view. Collections and
+    File Browser files have their own inspectors.
   - *Viewer:* double-click or Enter opens the viewer at this device's current file and
     position. Moments are back: `B`, Save Moment and the rail's `+` mark a frame or
     span; the rail plays, loops, comments, tags and deletes them, and shows a preview on
@@ -139,10 +172,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   reopens the draft with those choices. Files that are already in the catalog keep their
   identities, notes, moments and subtitles when grouped.
 - **Update with readable file changes.** Update names its phase with completed and total
-  counts. Its file changes list each file with its folder, a label (Not confirmed,
-  Possibly moved, Content changed) and a plain explanation, and one action (Check and
-  Restore, Check and Link, Use New Content) reads the file when needed, prepares the
-  review and accepts it. Repeat Updates batch their work, skip grouping when there are
+  counts, repairs unambiguous 1:1 renames and moves automatically across local disks,
+  SMB shares and unbundled copies so renamed unbundled files stay in Grouping
+  Suggestions, and reserves File changes for content replacements, unconfirmed copies
+  and ambiguous moves. Its file changes list each file with its folder, a label (Not
+  confirmed, Possibly moved, Content changed) and a plain explanation, pre-select a
+  single missing-file rename or move, offer **Settle All** when multiple unambiguous
+  file changes wait together, and let one action (Check and Restore, Check and Link,
+  Use New Content) read the file when needed, prepare the review and accept it. Repeat Updates batch their work, skip grouping when there are
   no new files and no longer pause after each step. On a synthetic 2,269-bundle library,
   sorts, counts and filter facets take under 0.3 s, and Collect metadata runs about 15
   files/s.
@@ -202,7 +239,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   app uses them to choose what to offer; an older server keeps the earlier behavior.
   - `browse_version`: 3 Manual and File Count sorts; 4 card facts; 5 Delete Bundle; 6
     manual order; 7 New Collection from Folder; 8 All Tags; 9 manual bundling; 10 counts
-    and collection covers; 17 Unbundled sorted over the whole queue.
+    and collection covers; 17 Unbundled sorted over the whole queue; 18 per-file
+    stars/tags (`FileRead.starred`, `FileRead.tag_ids`), FTS5 file notes/sources,
+    and `has_starred_files`.
+  - `album_version`: 1 bundle album pages; 2 server-side `starred_only`, `tag_ids`,
+    `include_descendants`, and `tag_mode` filtering with `tag_names` and flattened
+    filtered directory members.
+  - `inspector_version`: 1 guarded cover/scalar editing; 2 per-file Star, Tags,
+    Note, and Source editing (`/files/selection`, `/files/{id}/star`,
+    `/files/{id}/tags`, `file_stars`, and `file_tag`).
   - `selection_version`: 2 card drags and Remove from This Collection; 3 the selection's
     own destinations; 5 batched changes above 100 bundles; 6 paged Select All keys.
   - `moments_version`: 1 authoring; 2 tags; 3 hover previews; 4 moments in the browser
@@ -214,6 +259,24 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   survive local rebuilds. Preflight checks the identity strictly.
 
 ### Changed
+
+- **Instant local-first UI updates, faster SMB responsiveness, and cached cover
+  delivery.** Metadata edits across Bundle Browser, inspectors, All Tags, Moments,
+  and Grouping Review — including bundle and multi-bundle titles, star ratings,
+  cover choices, collection create/rename/delete/reorder, file tags, tag/group
+  management, moment comments, and grouping row edits — now update the UI
+  immediately and reconcile in the background with automatic rollback on
+  failure. Bundle tag and collection chips reflect confirmed membership changes.
+  The grid loads up to four covers at once and cancels requests when their last
+  card leaves the view. The inspector can load bundle details while the server
+  checks thumbnail sources on SMB. Cached thumbnails retain their source checks
+  and `Cache-Control: private, no-store` headers. Local catalog, grouping,
+  and discovery steps drain directly without blocking behind periodic SMB
+  transport scans, replica object discovery scans only existing shard directories
+  instead of probing 256 shard paths per tick, and **Accept selected** in
+  Grouping Review batches candidate exports (`256` files/step, `64` groups/step)
+  with cached fingerprints and parallel SMB generation checks. Window-focus
+  query storms are disabled.
 
 - Interface fades and transitions share a 150 ms ease-out timing. Reduce
   Motion disables these transitions and the indeterminate progress sweeps.
@@ -283,6 +346,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Removed
 
+- **The global top fetching sweep bar (`.top-progress`),** which flashed across the
+  top edge of the window on routine refetches and background operations.
 - **Opening an old-format library directly.** It opens the conversion review instead.
 - **The File Operations panel.** Each file action runs on its own (see Added), and
   operations that need attention show in the activity card.
@@ -291,6 +356,29 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Moment range-loop playback, hover previews, and video card/album scrub
+  previews in portable libraries.** Clicking a span moment's loop control or
+  badge in the Browser or File Inspector opens the viewer with the range loop
+  armed, and initial moment seeks/loops stay anchored on scalar target values so
+  background status and storyboard polling never reset `currentTime` back to the
+  moment start mid-playback. The desktop media relay forwards portable moment
+  `/replica/media/moments/{id}/poster.jpg` and `clip.mp4` routes instead of
+  rejecting them before they reach the sidecar, and Moment hover previews show
+  fallback cover artwork and retry while initial posters or span clips finish
+  decoding instead of showing a dark box. Bundle cards with both a cover image
+  and a video member now select the video member for hover scrubbing while
+  retaining the cover image, cached technical metadata survives `probe=False`
+  resolutions after an SMB remount when file size and mtime are unchanged, and
+  hovering an uninspected portable video card or album tile probes its stream
+  metadata on demand so scrub preview works without running a full-library
+  metadata pass first.
+- **Hyphenated filename identifiers stay intact during grouping and stem
+  widening/narrowing.** Shared bundle titles keep a complete token-aligned prefix
+  such as `CLIP-100` (across `CLIP-100 - HDR.mp4`, `CLIP-100-cover.jpg`, and
+  `CLIP-100.srt`) instead of trimming back across the internal hyphen to `CLIP`,
+  and sidecar fallback matches the longest unique token prefix shared with a
+  single video group so sibling `CLIP-100` and `CLIP-200` items in one folder
+  keep their covers and subtitles instead of splitting into separate bundles.
 - **A superseded transcode seek no longer restarts the encoder at its old
   position.** An abandoned HLS segment request is checked against the latest
   seek before it restarts an encoder. Dragging the seek bar or a clip-range handle
@@ -329,7 +417,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   `quinn-udp` 0.5.16 (RUSTSEC-2026-0523, RUSTSEC-2026-0524, RUSTSEC-2026-0538), rustls
   0.23.46 (four TLS advisories, including a ServerHello downgrade and secrets in `Debug`
   output), rustls-webpki, webpki-roots, Tokio and event-listener 5.4.2; the yanked
-  chacha20 0.10.1 is replaced by 0.10.2. Python: Pillow 13.0.0, certifi, setuptools,
+  chacha20 0.10.1 is replaced by 0.10.2. The desktop build uses url 2.5.9 to fix a
+  stack overflow when resolving URL origins (RUSTSEC-2026-0592). Python: Pillow 13.0.0, certifi, setuptools,
   AnyIO and Mako 1.4.3 (GHSA-5639-2j2p-m4mx). Web development tools: Undici 7.30.1, Zod
   4.6.7, source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q) and brace-expansion.
 - **Library passphrases and device pairing codes skip the metadata edit queue,** which

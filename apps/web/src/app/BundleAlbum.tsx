@@ -17,6 +17,7 @@ import { ContactSheetDialog } from './ContactSheetDialog'
 import type { ContactSheetTarget } from './contactSheetExport'
 import { AlbumItems } from './AlbumItems'
 import { AlbumRow, AlbumTile } from './AlbumItem'
+import { albumFileAspect } from './layout'
 import { selectionTargets } from './selection'
 import { useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
@@ -268,6 +269,7 @@ export function BundleAlbum({
             scrollRef={scrollRef}
             layout={layout}
             zoom={zoom}
+            getAspect={albumFileAspect}
             render={(f) =>
               listLayout ? (
                 <AlbumRow
@@ -283,6 +285,7 @@ export function BundleAlbum({
                 <AlbumTile
                   key={f.id}
                   file={f}
+                  showMeta={layout === 'grid'}
                   selected={selected.has(f.id)}
                   onSelect={(e) => clickTile(f, e)}
                   onOpen={() => openFile(f.id)}

@@ -24,6 +24,7 @@ from cairndex.replicas import service
 from cairndex.replicas.protocol import Change, PackageFormatError, ReplicaError, canonical, checksum
 from cairndex.replicas.store import Store
 from cairndex.replicas.transport import BATCH, Transport
+from tests.test_replica_recovery_binary import eventually
 
 
 # Generate two independent private stores sharing only immutable synthetic transport artifacts
@@ -247,8 +248,8 @@ def test_inventory_complete():
 
 
 # Real FastAPI dependency/auth/format paths exercise concurrent clients on one replica server
-@pytest.fixture
-def api(tmp_path):
+@contextmanager
+def registered_api(tmp_path):
     root = tmp_path / "api-root"
     create_fixture(root)
     engine = create_registry_engine(f"sqlite:///{tmp_path / 'registry.db'}")
@@ -266,11 +267,31 @@ def api(tmp_path):
         assert reply.status_code == 201, reply.text
         library = reply.json()
         base = f"/api/v1/libraries/{library['id']}"
-        client.post(base + "/replica/exchange")
+        # If the worker already owns the exchange lock, the first call can return
+        # before the seed is imported. Tests consume the registered bundle immediately.
+        eventually(
+            lambda: client.post(base + "/replica/exchange").raise_for_status().json(),
+            lambda state: state["ready"],
+        )
         yield client, base, root, library, app
         # The lifespan worker can still be exchanging this replica.
         lifecycle.close(library["id"])
     engine.dispose()
+
+
+@pytest.fixture
+def api(tmp_path):
+    with registered_api(tmp_path) as ready:
+        yield ready
+
+
+@pytest.fixture
+def manual_exchange_api(tmp_path, monkeypatch):
+    # These tests invoke exchange themselves. A simultaneous worker pass can take
+    # its nonblocking lock or publish the test edit before the descriptor changes.
+    monkeypatch.setattr(service.ReplicaWorker, "run", lambda self: None)
+    with registered_api(tmp_path) as ready:
+        yield ready
 
 
 # All noncapable mutators and legacy DB/lease paths refuse the new package
@@ -502,8 +523,8 @@ def test_publication_collision_and_repair(pair):
 
 
 # Cached background handles must stop before publishing into a changed package
-def test_background_descriptor_fence(api):
-    client, base, root, library, _ = api
+def test_background_descriptor_fence(manual_exchange_api):
+    _, _, root, library, _ = manual_exchange_api
     store = service._handles[library["id"]][0]
     store.save("synthetic-bundle", change(store, "title", "Private only"), "private-only")
     marker = pkg.manifest_path(root)
@@ -517,8 +538,8 @@ def test_background_descriptor_fence(api):
 
 
 # A share that refuses its saved login says so, and the owner's authorization clears it
-def test_exchange_reports_and_clears_missing_share_access(api, monkeypatch):
-    client, base, root, library, _ = api
+def test_exchange_reports_and_clears_missing_share_access(manual_exchange_api, monkeypatch):
+    client, base, _, library, _ = manual_exchange_api
     transport = service._handles[library["id"]][1]
     tick = transport.tick
 

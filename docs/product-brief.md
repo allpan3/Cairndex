@@ -55,8 +55,7 @@ Unless the product owner explicitly changes them, treat these as settled:
 - A native macOS app is not required for the first release; a Tauri shell may be evaluated later.
 - The application links to files already on disk and stores metadata separately.
 - Asset bundle metadata is shared across the bundle.
-- Individual files may have a display title, note, and source/origin hyperlink in the schema; those file-level editing controls may be deferred.
-- Individual files do not need ratings.
+- Individual files do not carry 0–5 numeric ratings; instead, individual files support an independent binary **Star** (on/off bookmark) and per-file tags, note, and source/origin URL alongside their display title ([ADR-0043](adr/0043-file-stars-tags-and-notes.md)). Adding a tag to a file propagates one way to confirmed parent bundles ([ADR-0025](adr/0025-moment-tag-propagation.md)).
 - Tags are hierarchical.
 - Tag groups also exist and are independent of the hierarchy. A tag may belong to multiple groups.
 - Product/API/model terminology is `collection`, not user-facing `folder`, except when referring to ordinary filesystem directories in File Browser or historical/external references.
@@ -140,7 +139,7 @@ Required concepts:
 - library-relative path;
 - original filename;
 - display title defaulting to the filename;
-- optional file-level note and source/origin hyperlink, even if their UI is deferred;
+- optional binary Star (`asset_file_stars`), per-file tags (`asset_file_tags`), file-level note, and source/origin hyperlink;
 - media kind and MIME type;
 - file role;
 - order/sequence within the bundle;
@@ -497,7 +496,7 @@ Plan for directory list/tree navigation scoped to the active library root, file 
 
 A bundle card should communicate selected cover/thumbnail, title, media/file count when greater than one, current-media duration or image dimensions, rating, lightweight status indicators, missing/offline/stale state, grouping review state, and selection state.
 
-The inspector should expose bundle-level fields first: cover, title, note, tags, collections, rating (0–5 stars in half-star steps), aggregate properties, and files in the bundle. Selecting a file within the bundle reveals file-level technical metadata and, later, display title/note/source-link controls.
+The inspector should expose bundle-level fields first: cover, title, note, tags, collections, rating (0–5 stars in half-star steps), aggregate properties, and files in the bundle. Selecting a file within the bundle reveals file-level technical metadata alongside per-file annotation controls (Star toggle, file Tags with one-way propagation to confirmed bundles, Note, and Source URL). Multi-file and hover corner triggers (plus `⌘↓` / `Alt+↓`) open the bundle directly into its Album view with per-file star and tag filtering.
 
 ### Tag selector
 

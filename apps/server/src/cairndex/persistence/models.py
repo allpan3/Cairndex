@@ -128,6 +128,38 @@ moment_tags = Table(
     Index("ix_moment_tags_tag_id", "tag_id"),
 )
 
+# Binary per-file star presence (ADR-0043). Separate authored table rather than
+# an asset_files column so existing Format-3 catalog objects remain compatible.
+asset_file_stars = Table(
+    "asset_file_stars",
+    Base.metadata,
+    Column(
+        "file_id",
+        String(26),
+        ForeignKey("asset_files.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+# Per-file tags with one-way propagation to confirmed bundles (ADR-0043).
+asset_file_tags = Table(
+    "asset_file_tags",
+    Base.metadata,
+    Column(
+        "file_id",
+        String(26),
+        ForeignKey("asset_files.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "tag_id",
+        String(26),
+        ForeignKey("tags.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Index("ix_asset_file_tags_tag_id", "tag_id"),
+)
+
 tag_group_memberships = Table(
     "tag_group_memberships",
     Base.metadata,

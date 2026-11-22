@@ -285,6 +285,35 @@ small denylist such as `.DS_Store`, `__pycache__`, `node_modules`, `Thumbs.db`).
 A rescan also deletes scan-created provisional rows that point at now-ignored
 hidden paths, so portable cache files do not remain as user-visible assets.
 
+`note` and `source` on `asset_files` are authored scalar units indexed by
+`catalog_search` FTS5 (`file_notes` and `source`) and editable from the File
+Inspector in the Album, File Browser, and Viewer rail
+([ADR-0043](adr/0043-file-stars-tags-and-notes.md)).
+
+### `asset_file_stars`
+
+Presence table marking an individual file's binary **Star** (`file_id` PK, FK
+to `asset_files.id` with `ON DELETE CASCADE`). Unlike `asset_bundles.rating`
+(0–5 half-star scale), a file star is an independent on/off bookmark modeled as a
+separate additive table so existing Format-3 `asset_files` entities open unchanged
+without schema migration ([ADR-0043](adr/0043-file-stars-tags-and-notes.md)).
+Deleting or trashing follows the `asset_files` row lifecycle; moved-file repair
+preserves `AssetFile.id` and therefore the file's star state.
+
+### `asset_file_tags`
+
+Many-to-many between `asset_files` and `tags` with composite PK
+`(file_id, tag_id)`, `ON DELETE CASCADE` FKs to `asset_files.id` and `tags.id`,
+and reverse index `ix_asset_file_tags_tag_id`. Mirroring `moment_tags`
+([ADR-0025](adr/0025-moment-tag-propagation.md)), assigning a tag to a file in a
+`confirmed` bundle propagates one way to `asset_bundle_tags` (reviving any
+tombstone); tags on files inside `provisional` scan-staging bundles do **not**
+propagate until the file joins or becomes a `confirmed` bundle. Removing a tag
+from a file, or moving/deleting the file, does not remove the tag from its old
+bundle. Moving, transferring, or grouping a file into a confirmed bundle keeps
+`AssetFile.id`, `asset_file_stars`, and `asset_file_tags`, and propagates missing
+file tags one way onto the destination confirmed bundle.
+
 ### `bundle_directory_members`
 
 Which of a bundle's directories stand in for their files as a single row — an

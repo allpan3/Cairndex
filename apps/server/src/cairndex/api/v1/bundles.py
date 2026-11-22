@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Annotated
 
+from anyio import to_thread
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
@@ -66,10 +67,11 @@ def _thumbnail_response(path: object) -> FileResponse:
     return FileResponse(str(path), media_type=thumbnails.thumbnail_media_type(Path(str(path))))
 
 
-# Add incomplete watch progress to file rows without per-file queries
+# Add incomplete watch progress and per-file annotations to file rows without per-file queries
 def _file_reads(db: LibrarySession, files: list[AssetFile]) -> list[FileRead]:
     file_ids = [asset_file.id for asset_file in files]
     progress_by_file = progress_service.progress_for_files(db, file_ids)
+    starred_ids, tags_by_file = service.file_annotations(db, file_ids)
     return [
         FileRead.model_validate(asset_file).model_copy(
             update={
@@ -80,7 +82,9 @@ def _file_reads(db: LibrarySession, files: list[AssetFile]) -> list[FileRead]:
                     progress_by_file[asset_file.id].completed
                     if asset_file.id in progress_by_file
                     else None,
-                )
+                ),
+                "starred": asset_file.id in starred_ids,
+                "tag_ids": tags_by_file.get(asset_file.id, []),
             }
         )
         for asset_file in files
@@ -510,15 +514,34 @@ async def get_bundle_thumbnail(bundle_id: str, access: MediaAccessDep) -> FileRe
     ``/stream``). The session closes before the image streams.
     """
 
-    # Resolve and build inside one bounded worker without occupying the pool while queued
-    def generate() -> Path | None:
-        if access.replica is not None:
-            from cairndex.replicas.catalog.inspector import cover
-            from cairndex.replicas.media_cache import thumbnail
+    if access.replica is not None:
+        from cairndex.replicas.catalog.inspector import cover
+        from cairndex.replicas.media_cache import cached_thumbnail, thumbnail
 
+        def lookup_cached_bundle() -> tuple[str, Path | None]:
+            assert access.replica is not None
             with access.replica.store.connection(readonly=True) as db:
                 selected = cover(db, bundle_id)
-            return thumbnail(access.replica, selected["id"]) if selected else None
+            if selected is None:
+                raise NotFoundError(f"bundle {bundle_id!r} has no thumbnail")
+            return str(selected["id"]), cached_thumbnail(access.replica, selected["id"])
+
+        selected_id, hit = await to_thread.run_sync(lookup_cached_bundle)
+        if hit is not None:
+            return FileResponse(hit, headers={"Cache-Control": "private, no-store"})
+
+        def generate_replica() -> Path:
+            assert access.replica is not None
+            return thumbnail(access.replica, selected_id)
+
+        try:
+            path_hit = await run_derivative(generate_replica)
+        except thumbnails.ThumbnailError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return FileResponse(path_hit, headers={"Cache-Control": "private, no-store"})
+
+    # Resolve and build inside one bounded worker without occupying the pool while queued
+    def generate() -> Path | None:
         with access.session() as db:
             assert isinstance(db, Session)
             return thumbnails.generate_for_bundle(db, bundle_id)
@@ -529,8 +552,6 @@ async def get_bundle_thumbnail(bundle_id: str, access: MediaAccessDep) -> FileRe
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     if path is None:
         raise NotFoundError(f"bundle {bundle_id!r} has no thumbnail")
-    if access.replica is not None:
-        return FileResponse(path, headers={"Cache-Control": "private, no-store"})
     return _thumbnail_response(path)
 
 
@@ -539,14 +560,30 @@ async def get_file_thumbnail(
     bundle_id: str, file_id: str, access: MediaAccessDep, request: Request
 ) -> FileResponse:
     if access.replica is not None:
-        from cairndex.replicas.media_cache import thumbnail
+        from cairndex.replicas.media_cache import cached_thumbnail, thumbnail
 
-        if access.replica.row("asset_files", file_id)["bundle_id"] != bundle_id:
-            raise NotFoundError("File is not in this bundle")
-        access.replica.validate(file_id, request.query_params.get("source_generation"))
-        return FileResponse(
-            thumbnail(access.replica, file_id), headers={"Cache-Control": "private, no-store"}
-        )
+        expected = request.query_params.get("source_generation")
+
+        def lookup_cached_file() -> Path | None:
+            assert access.replica is not None
+            if access.replica.row("asset_files", file_id)["bundle_id"] != bundle_id:
+                raise NotFoundError("File is not in this bundle")
+            return cached_thumbnail(access.replica, file_id, expected_generation=expected)
+
+        hit = await to_thread.run_sync(lookup_cached_file)
+        if hit is not None:
+            return FileResponse(hit, headers={"Cache-Control": "private, no-store"})
+
+        def generate_replica_file() -> Path:
+            assert access.replica is not None
+            access.replica.validate(file_id, expected)
+            return thumbnail(access.replica, file_id)
+
+        try:
+            path_hit = await run_derivative(generate_replica_file)
+        except thumbnails.ThumbnailError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return FileResponse(path_hit, headers={"Cache-Control": "private, no-store"})
 
     # Resolve and build inside one bounded worker without occupying the pool while queued
     def generate() -> Path:

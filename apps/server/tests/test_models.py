@@ -18,6 +18,8 @@ from cairndex.persistence.models import (
     GroupingPlan,
     GroupingProposal,
     Tag,
+    asset_file_stars,
+    asset_file_tags,
 )
 
 
@@ -424,3 +426,49 @@ def test_ensure_content_indexes_adds_last_opened_at(engine: Engine) -> None:
 
     columns = {c["name"]: c for c in inspect(engine).get_columns("asset_bundles")}
     assert columns["last_opened_at"]["nullable"] is True
+
+
+def test_ensure_content_indexes_adds_file_star_and_tag_tables(engine: Engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE asset_file_tags"))
+        conn.execute(text("DROP TABLE asset_file_stars"))
+
+    ensure_content_indexes(engine)
+
+    inspector = inspect(engine)
+    assert "asset_file_stars" in inspector.get_table_names()
+    assert "asset_file_tags" in inspector.get_table_names()
+    tag_indexes = {idx["name"] for idx in inspector.get_indexes("asset_file_tags")}
+    assert "ix_asset_file_tags_tag_id" in tag_indexes
+
+
+def test_deleting_file_or_tag_cascades_file_annotations(session: Session) -> None:
+    bundle = AssetBundle(title="b")
+    session.add(bundle)
+    session.flush()
+    first = _make_file(session, bundle, "clip-a.mp4")
+    second = _make_file(session, bundle, "clip-b.mp4")
+    tag_keep = Tag(name="keep")
+    tag_drop = Tag(name="drop")
+    session.add_all([tag_keep, tag_drop])
+    session.flush()
+    session.execute(asset_file_stars.insert(), [{"file_id": first.id}, {"file_id": second.id}])
+    session.execute(
+        asset_file_tags.insert(),
+        [
+            {"file_id": first.id, "tag_id": tag_keep.id},
+            {"file_id": second.id, "tag_id": tag_keep.id},
+            {"file_id": second.id, "tag_id": tag_drop.id},
+        ],
+    )
+    session.commit()
+
+    session.delete(first)
+    session.delete(tag_drop)
+    session.commit()
+    session.expire_all()
+
+    stars = list(session.scalars(select(asset_file_stars.c.file_id)))
+    tags = list(session.execute(select(asset_file_tags.c.file_id, asset_file_tags.c.tag_id)))
+    assert stars == [second.id]
+    assert tags == [(second.id, tag_keep.id)]

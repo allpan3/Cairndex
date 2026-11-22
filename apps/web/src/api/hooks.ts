@@ -1660,6 +1660,18 @@ export function useTagMutations() {
         if (library) await renameCatalogItem(library, 'tags', id, name)
         else await updateTag(id, { name }, version)
       },
+      onMutate: ({ id, name }) => {
+        const key = library ? ['catalog-navigation', library, 'tags'] : ['tags']
+        void qc.cancelQueries({ queryKey: key })
+        const prev = qc.getQueryData<TagRead[]>(key)
+        qc.setQueryData<TagRead[]>(key, (old) =>
+          old?.map((t) => (t.id === id ? { ...t, name } : t)),
+        )
+        return { key, prev }
+      },
+      onError: (_e, _v, ctx) => {
+        if (ctx?.prev !== undefined) qc.setQueryData(ctx.key, ctx.prev)
+      },
       // onSettled so a 409 conflict also refetches the latest tag state.
       onSettled: invalidate,
     }),
@@ -1668,6 +1680,44 @@ export function useTagMutations() {
         library
           ? removeCatalogItem(library, 'tags', id, cascade ?? false)
           : deleteTag(id, cascade ?? false),
+      onMutate: ({ id, cascade }) => {
+        const key = library ? ['catalog-navigation', library, 'tags'] : ['tags']
+        void qc.cancelQueries({ queryKey: key })
+        const prev = qc.getQueryData<TagRead[]>(key)
+        if (prev) {
+          if (cascade) {
+            const drop = new Set([id])
+            let changed = true
+            while (changed) {
+              changed = false
+              for (const t of prev) {
+                if (t.parent_id && drop.has(t.parent_id) && !drop.has(t.id)) {
+                  drop.add(t.id)
+                  changed = true
+                }
+              }
+            }
+            qc.setQueryData<TagRead[]>(
+              key,
+              prev.filter((t) => !drop.has(t.id)),
+            )
+          } else {
+            const target = prev.find((t) => t.id === id)
+            qc.setQueryData<TagRead[]>(
+              key,
+              prev
+                .filter((t) => t.id !== id)
+                .map((t) =>
+                  t.parent_id === id ? { ...t, parent_id: target?.parent_id ?? null } : t,
+                ),
+            )
+          }
+        }
+        return { key, prev }
+      },
+      onError: (_e, _v, ctx) => {
+        if (ctx?.prev !== undefined) qc.setQueryData(ctx.key, ctx.prev)
+      },
       onSuccess: invalidate,
     }),
     // Drag-to-reparent: move a tag under a new parent (null = top level). The tree
@@ -1694,17 +1744,17 @@ export function useTagMutations() {
           moveCollections(forest, names, [id], parentId, null),
         )
       },
-      onMutate: async ({ id, parentId }) => {
-        if (library) return { prev: undefined as TagRead[] | undefined }
-        await qc.cancelQueries({ queryKey: ['tags'] })
-        const prev = qc.getQueryData<TagRead[]>(['tags'])
-        qc.setQueryData<TagRead[]>(['tags'], (old) =>
+      onMutate: ({ id, parentId }) => {
+        const key = library ? ['catalog-navigation', library, 'tags'] : ['tags']
+        void qc.cancelQueries({ queryKey: key })
+        const prev = qc.getQueryData<TagRead[]>(key)
+        qc.setQueryData<TagRead[]>(key, (old) =>
           old?.map((t) => (t.id === id ? { ...t, parent_id: parentId } : t)),
         )
-        return { prev }
+        return { key, prev }
       },
       onError: (_e, _v, ctx) => {
-        if (ctx?.prev) qc.setQueryData(['tags'], ctx.prev)
+        if (ctx?.prev !== undefined) qc.setQueryData(ctx.key, ctx.prev)
       },
       onSettled: invalidate,
     }),
@@ -1780,11 +1830,33 @@ export function useTagGroupMutations() {
         if (library) await renameCatalogItem(library, 'tag_groups', id, name)
         else await renameTagGroup(id, name)
       },
+      onMutate: ({ id, name }) => {
+        const key = library ? ['catalog-navigation', library, 'tag_groups'] : ['tag-groups']
+        void qc.cancelQueries({ queryKey: key })
+        const prev = qc.getQueryData<TagGroupRead[]>(key)
+        qc.setQueryData<TagGroupRead[]>(key, (old) =>
+          old?.map((g) => (g.id === id ? { ...g, name } : g)),
+        )
+        return { key, prev }
+      },
+      onError: (_e, _v, ctx) => {
+        if (ctx?.prev !== undefined) qc.setQueryData(ctx.key, ctx.prev)
+      },
       onSuccess: invalidate,
     }),
     remove: useMutation({
       mutationFn: (id: string) =>
         library ? removeCatalogItem(library, 'tag_groups', id) : deleteTagGroup(id),
+      onMutate: (id) => {
+        const key = library ? ['catalog-navigation', library, 'tag_groups'] : ['tag-groups']
+        void qc.cancelQueries({ queryKey: key })
+        const prev = qc.getQueryData<TagGroupRead[]>(key)
+        qc.setQueryData<TagGroupRead[]>(key, (old) => old?.filter((g) => g.id !== id))
+        return { key, prev }
+      },
+      onError: (_e, _v, ctx) => {
+        if (ctx?.prev !== undefined) qc.setQueryData(ctx.key, ctx.prev)
+      },
       onSuccess: invalidate,
     }),
     addTag: useMutation({
@@ -1792,6 +1864,21 @@ export function useTagGroupMutations() {
         library
           ? groupTag(library, groupId, tagId, true)
           : changeTagGroupTags(groupId, [tagId], []),
+      onMutate: ({ groupId, tagId }) => {
+        const prefix = ['tag-group-memberships', library]
+        void qc.cancelQueries({ queryKey: prefix })
+        const prev = qc.getQueriesData<Record<string, string[]>>({ queryKey: prefix })
+        qc.setQueriesData<Record<string, string[]>>({ queryKey: prefix }, (old) => {
+          if (!old) return old
+          const existing = old[groupId] ?? []
+          if (existing.includes(tagId)) return old
+          return { ...old, [groupId]: [...existing, tagId] }
+        })
+        return { prev }
+      },
+      onError: (_e, _v, ctx) => {
+        for (const [k, v] of ctx?.prev ?? []) qc.setQueryData(k, v)
+      },
       onSuccess: invalidate,
     }),
     removeTag: useMutation({
@@ -1799,6 +1886,20 @@ export function useTagGroupMutations() {
         library
           ? groupTag(library, groupId, tagId, false)
           : changeTagGroupTags(groupId, [], [tagId]),
+      onMutate: ({ groupId, tagId }) => {
+        const prefix = ['tag-group-memberships', library]
+        void qc.cancelQueries({ queryKey: prefix })
+        const prev = qc.getQueriesData<Record<string, string[]>>({ queryKey: prefix })
+        qc.setQueriesData<Record<string, string[]>>({ queryKey: prefix }, (old) => {
+          if (!old) return old
+          const existing = old[groupId] ?? []
+          return { ...old, [groupId]: existing.filter((id) => id !== tagId) }
+        })
+        return { prev }
+      },
+      onError: (_e, _v, ctx) => {
+        for (const [k, v] of ctx?.prev ?? []) qc.setQueryData(k, v)
+      },
       onSuccess: invalidate,
     }),
   }

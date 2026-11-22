@@ -239,13 +239,13 @@ An already observed conflict requires explicit metadata review.
 | --- | --- | --- |
 | Open | Existing `/libraries/register`; capability read at `/replica/status`; normal portable Create and reviewed legacy conversion | Provider delivery and owner acceptance retain the limits in STATUS |
 | Bundle Browser | Shared `Browser` and `Toolbar`; `/replica/catalog/bundles/browse`; guarded local cover thumbnails; with `browse_version: 4`, card badges and the hover preview from this device's last observations | A file this device has not opened has no duration or preview |
-| Bundle albums | Shared album tiles/rows and virtualized layout; bounded `/replica/media/bundles/{id}/album` pages; mapped regular-file drag-out | Source operations use File Browser; file note/source controls remain deferred |
+| Bundle albums | Shared album tiles/rows and virtualized layout; bounded `/replica/media/bundles/{id}/album` pages; `album_version: 2` (`starred_only`, `tag_ids`, `include_descendants`, `tag_mode`, `tag_names`, flattened filtered folder items); mapped regular-file drag-out | Source operations use File Browser |
 | Multi-selection | Bounded selection reads; retained bulk title/rating and tag/collection reviews; larger selections run as batched bulk operations | Notes stay per bundle; Select All takes every matching bundle from `selection_version: 6`, up to 100,000 |
 | System views | All, Recent (including local Date Opened order), Uncategorized, Untagged, Random, recorded local Missing Files, Unbundled and All Tags | Cross-device resume remains separate; Trash uses the source-operation journal |
-| Search | Private FTS5 over the complete eligible catalog before pagination | Representative large-library performance qualification |
-| Sort and filters | Title, rating and Date Added; with `browse_version: 3`, Manual and File Count; with `browse_version: 11`, local Size, Date Modified and Date Opened; stable ID ties; existing structured AST, tag/rating facets and Smart Collection execution | Unknown size/opening values sort last; unsupported request fields/sorts return 422 |
-| Inspector | Shared browser/viewer title, notes, rating, cover, memberships, moments and file controls; guarded ordering, removal and folder rows; local summaries | Complete conflicts/history use Metadata Review; file note/source controls remain deferred |
-| Conflict/history | Existing complete choice, history and recovery controls under Metadata review | Common inspector conflict indicators do not replace complete structural review |
+| Search | Private FTS5 over the complete eligible catalog before pagination (`browse_version: 18` indexes `asset_files.note` and `source`) | Representative large-library performance qualification |
+| Sort and filters | Title, rating and Date Added; with `browse_version: 3`, Manual and File Count; with `browse_version: 11`, local Size, Date Modified and Date Opened; with `browse_version: 18`, `has_starred_files`; stable ID ties; existing structured AST, tag/rating/starred-files facets and Smart Collection execution | Unknown size/opening values sort last; unsupported request fields/sorts return 422 |
+| Inspector | Shared browser/viewer title, notes, rating, cover, memberships, moments and file controls; guarded ordering, removal and folder rows; with `inspector_version: 2`, per-file Star, Tags, Note, Source URL and bulk file star/tag selection controls; local summaries | Advanced catalog/history editing uses Metadata Review; ordinary scalar conflicts resolve in place and structural/membership conflicts open focused per-item review |
+| Conflict/history | In-place **Conflicting Edits** modal for bundle/file scalar fields, focused per-item **Conflict Review** for structural/lifetime/membership holds with browser-context preservation, and full catalog/history/recovery under **Metadata Review** | Common inspector conflict indicators never bypass causal bases or explicit deletion recovery |
 | File Browser | Shared File Browser through `/replica/media/directory`, paginated indexed `/replica/catalog/files`, and scoped unindexed media opening; card hover preview for indexed videos this device inspected and the listing's stat finds unchanged | Provider hydration and physical-directory pagination remain separate |
 | Update/media | Phase-aware discovery, editable grouping, initial indexing, explicit bounded media passes and the shared viewer | Source operations use File Browser; provider hydration and cross-device resume remain unavailable |
 
@@ -291,14 +291,17 @@ a destination first reads that destination's current bases, and servers before
 selection version 2 keep a search list of the complete destination population.
 Picking a destination or removing a chip commits one stable pair at once: the preview retains the displayed edge and lifetime bases, refuses stale or
 held choices and clears any collection cover that needs the removed pair. A held
-choice opens Metadata review instead. Explicit Add can restore a removed pair but
-cannot restore a deleted bundle or destination. After a lost reply the chips show
-whether the change applied. Membership saves leave scalar drafts intact.
-Hierarchy edits remain in Metadata review.
+choice surfaces a **Review Conflict** alert and opens focused conflict review for
+that item and relationship rather than replacing the browser with the generic
+catalog editor. Explicit Add can restore a removed pair but cannot restore a
+deleted bundle or destination. After a lost reply the chips show whether the
+change applied. Membership saves leave scalar drafts intact. Hierarchy edits
+remain in Metadata Review.
 
 Cover selection uses the retained inspector draft and observed file lifetime. A
-file row's ★ chooses that file; the current cover's ★ returns to the automatic
-cover. Acknowledged private draft generations stop retrying until edited again.
+file row's image icon chooses that file as cover (clicking the current cover
+returns to the automatic cover), while its star toggle edits the file's
+independent authored Star ([ADR-0043](adr/0043-file-stars-tags-and-notes.md)). Acknowledged private draft generations stop retrying until edited again.
 Changes save automatically while their exact inputs and observed bases
 remain recoverable across reload and response loss. An already observed conflict
 requires explicit review; autosave cannot choose between competing values. Older
@@ -309,17 +312,33 @@ An explicit conflict choice replaces only the covered field drafts and advances
 their acknowledged bases; unrelated input remains intact.
 These controls require `inspector_version: 1`; older servers retain scalar editing
 and Metadata review without calls to unsupported inspector routes.
-**Review Conflicts** in the bundle, viewer and multi-bundle inspectors opens a
-dialog over the browser for those bundles. It reads each held field's complete
-structural scope once and shows title, rating, notes, cover and main-file
-versions as the inspector shows them, never as stored JSON. **Keep Selected**
+`CatalogBundleSummary` includes `has_conflicts` (covering held bundle fields and
+held bundle tag/collection edges, with a fast empty-holds check when the library
+has no conflicts), so healthy bundle context menus show no conflict warning and
+only conflicted selections offer **Review Conflicts**. The exact bundle read returns
+`held_membership_unit` for the next held tag or collection relationship, including
+one whose assignment is no longer visible. **Review Conflicts** in
+the bundle card menu, bundle/viewer/multi-bundle inspectors, and File Inspector
+opens a compact dialog over the active browser view. It reads each held field's
+complete structural scope once and shows bundle title, rating, notes, cover and
+main-file versions — as well as file title, note, source and cover-frame
+versions — as the inspector shows them, never as stored JSON. **Keep Selected**
 queues the existing `choose` preview with every scope unit and exactly the bases
 that were displayed, then commits its receipt as `commit_<job>`. A lost reply
-retries the same operation; a stale choice reloads the versions and
-uses a new one. A scope that includes `$alive`, `$members`, another object or any
-other field is summarized instead: **Open Full Review…** opens Metadata review on
-that object with its complete conflict review open, where composition and
-explicit recovery remain. Rejected versions stay in history.
+retries the same operation; a stale choice reloads the versions and uses a new
+one. A scope that includes `$alive`, `$members`, `$content`, a held membership
+edge, a Smart Collection filter, or another object opens focused per-item
+**Conflict Review** (`CatalogFocusedConflictReview`), which resolves companion
+held units, renders human-readable item and relationship labels without the
+15-family catalog list or unrelated objects, preserves structural JSON
+composition, drafts and prepared choices scoped to the conflict under review, and explicit deletion-recovery safeguards
+(`recover`), offers **Open in Metadata Review** for full catalog/history editing,
+and keeps `CatalogOrdinaryBrowser` mounted (and viewer state suspended) so
+returning restores the exact collection, search, Bundle Album, File Browser
+folder, Unbundled queue, or viewer context. Rejected versions stay in history.
+
+![Reviewing a deletion and a competing edit in a synthetic bundle](screenshots/selected-item-conflict-review.png)
+
 Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
 local derivatives in the private cache; missing artwork leaves metadata usable.
 File pages retain catalog order. Selecting one file checks its local bytes and
@@ -696,6 +715,25 @@ the URL does not name the generation. Release aborts a running build.
 Servers with `moments_version: 4` also name the marked files on each moment page,
 in bundle order, so the browser inspector lists moments without reading playlist
 pages. Its Play from opens the viewer on the moment's file at the moment's start.
+
+Servers with `browse_version: 18`, `album_version: 2`, and `inspector_version: 2`
+implement Open Bundle entry points and per-file annotations under
+[ADR-0043](adr/0043-file-stars-tags-and-notes.md). `FileRead` includes
+`starred` and `tag_ids` (batch-loaded on playlist, album, and file endpoints),
+`CatalogAlbumPage` includes `tag_names` for tags assigned to files in the
+bundle, and `GET /replica/media/bundles/{id}/album` accepts `starred_only`,
+`tag_ids`, `include_descendants`, and `tag_mode` (`any`/`all`), flattening files
+inside collapsed directory members when a file filter is active. Per-file reads
+and batch selection use `POST /replica/catalog/files/selection`,
+`GET /replica/catalog/files/{id}/star`, and `GET /replica/catalog/files/{id}/tags`
+(paginated and supporting `target`). `file_stars` and `file_tag` previews use
+the observed causal bases and enforce holds/conflicts via Metadata Review; adding
+a file tag propagates one way to `asset_bundle_tags` on `confirmed` bundles (as
+do `transfer`, `bundle_files`, and discovery grouping commits when moving files
+into a confirmed bundle), leaving `provisional` staging bundles isolated. `save`
+jobs accept causal edits to `asset_files.note` and `asset_files.source`, and
+`catalog_search` indexes file notes and sources across FTS5 while
+`has_starred_files` filters bundles with at least one starred file.
 
 ## Conversion and evidence
 

@@ -1,4 +1,4 @@
-// A bundle's competing edits, resolved in place with the causal choose → commit_preview protocol
+// Competing bundle or file edits, resolved in place with the causal choose → commit_preview protocol
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { catalog, CatalogJobError, entityLabel, operationId, runJob } from '../api/catalog'
@@ -8,35 +8,65 @@ import { captureRequestScope } from '../api/requestScope'
 import { formatRating } from './rating'
 import { useModalDialog } from './useModalDialog'
 
-/** Bundle fields this dialog can show as readable values. Anything else is structural. */
-const ORDINARY: Record<string, string> = {
+/** Scalar fields this dialog can show as readable values. Anything else is structural. */
+const BUNDLE_ORDINARY: Record<string, string> = {
   title: 'Title',
   rating: 'Rating',
   notes: 'Notes',
   cover_file_id: 'Cover',
   primary_file_id: 'Main file',
 }
+const FILE_ORDINARY: Record<string, string> = {
+  display_title: 'Title',
+  note: 'Note',
+  source: 'Source',
+  cover_time: 'Cover frame',
+}
 const STRUCTURAL: Record<string, string> = {
-  $alive: 'Whether this bundle exists',
+  $alive: 'Whether this item exists',
   $members: 'Files and their order',
+  $content: 'Content identity',
+  relative_path: 'File path',
 }
 
 export type ConflictGroup = {
   /** The held unit the choice is anchored on. */
   unit: string
+  family: 'asset_bundles' | 'asset_files'
   bundle: string
   bundleTitle: string
   /** Every unit in the server's structural scope, with the bases shown to the owner. */
   fields: Field[]
-  /** Labels of the bundle's held fields in this scope, for a structural summary. */
+  /** Labels of the item's held fields in this scope, for a structural summary. */
   labels: string[]
   ordinary: boolean
 }
 
+const fieldFamily = (unit: string) => unit.split('/')[0] ?? ''
 const fieldName = (unit: string) => unit.split('/')[2] ?? ''
+const ordinaryMap = (family: string) => (family === 'asset_files' ? FILE_ORDINARY : BUNDLE_ORDINARY)
 const fieldLabel = (unit: string) => {
+  const family = fieldFamily(unit)
   const name = fieldName(unit)
-  return ORDINARY[name] ?? STRUCTURAL[name] ?? name.replace(/^\$/, '').replaceAll('_', ' ')
+  if (name === '$alive')
+    return family === 'asset_files' ? 'Whether this file exists' : 'Whether this bundle exists'
+  return (
+    ordinaryMap(family)[name] ?? STRUCTURAL[name] ?? name.replace(/^\$/, '').replaceAll('_', ' ')
+  )
+}
+
+function readableItemTitle(entity: Entity): string {
+  const label = entityLabel(entity)
+  if (label !== entity.id) return label
+  if (entity.family === 'asset_files') {
+    const rawPath = entity.fields.relative_path?.value
+    if (rawPath && rawPath.startsWith('"')) {
+      const path = JSON.parse(rawPath) as string
+      return path.split('/').pop() || path
+    }
+    return 'File'
+  }
+  return 'Untitled bundle'
 }
 
 /** Every distinct value the owner may keep: the shown value, then each retained branch. */
@@ -71,21 +101,31 @@ function chooseRequest(group: ConflictGroup, choices: Record<string, string>) {
 }
 
 /**
- * Read each bundle's held fields and the complete scope a choice must cover.
+ * Read each bundle or file's held fields and the complete scope a choice must cover.
  * One read is the snapshot the owner reviews: its bases are what a choice sends,
  * so a later change on the server makes the choice stale instead of silently
  * widening it.
  */
-async function loadConflicts(library: string, bundles: string[]): Promise<ConflictGroup[]> {
+async function loadConflicts(
+  library: string,
+  bundles: string[],
+  files: string[],
+): Promise<ConflictGroup[]> {
   const owners = new Map<string, Promise<Entity>>()
   const owner = (path: string) => {
     if (!owners.has(path)) owners.set(path, catalog<Entity>(library, `/entities/${path}`))
     return owners.get(path)!
   }
+  const targets: { family: 'asset_bundles' | 'asset_files'; id: string }[] = [
+    ...bundles.filter(Boolean).map((id) => ({ family: 'asset_bundles' as const, id })),
+    ...files.filter(Boolean).map((id) => ({ family: 'asset_files' as const, id })),
+  ]
   const groups: ConflictGroup[] = []
   const covered = new Set<string>()
-  for (const bundle of bundles.filter(Boolean)) {
-    const entity = await owner(`asset_bundles/${bundle}`)
+  for (const target of targets) {
+    const entity = await owner(`${target.family}/${target.id}`)
+    const title = readableItemTitle(entity)
+    const allowedOrdinary = ordinaryMap(target.family)
     const held = Object.values(entity.fields)
       .filter((field) => field.held)
       .sort((a, b) => a.unit.localeCompare(b.unit))
@@ -106,20 +146,41 @@ async function loadConflicts(library: string, bundles: string[]): Promise<Confli
       const own = held.filter((item) => history.scope.includes(item.unit))
       groups.push({
         unit: field.unit,
-        bundle,
-        bundleTitle: entityLabel(entity) === entity.id ? 'Untitled bundle' : entityLabel(entity),
+        family: target.family,
+        bundle: target.id,
+        bundleTitle: title,
         fields: fields.filter((item): item is Field => Boolean(item)),
         labels: own.map((item) => fieldLabel(item.unit)),
         ordinary:
           complete &&
           fields.every(
             (item) =>
-              item!.unit.startsWith(`asset_bundles/${bundle}/`) &&
-              fieldName(item!.unit) in ORDINARY &&
+              item!.unit.startsWith(`${target.family}/${target.id}/`) &&
+              fieldName(item!.unit) in allowedOrdinary &&
               (settledValue(item!) !== undefined || conflictOptions(item!).length > 0),
           ) &&
           fields.some((item) => settledValue(item!) === undefined),
       })
+    }
+    const edge = entity.held_membership_unit
+    if (edge && !covered.has(edge)) {
+      const [family, identity] = edge.split('/')
+      const isTag = family === 'asset_bundle_tags'
+      const destination = await owner(
+        `${isTag ? 'tags' : 'collections'}/${identity!.split('~')[1]}`,
+      )
+      const label = entityLabel(destination)
+      const kind = isTag ? 'Tag' : 'Collection'
+      groups.push({
+        unit: edge,
+        family: target.family,
+        bundle: target.id,
+        bundleTitle: title,
+        fields: [],
+        labels: [label === destination.id ? `${kind} membership` : `${kind} “${label}”`],
+        ordinary: false,
+      })
+      covered.add(edge)
     }
   }
   return groups
@@ -185,6 +246,24 @@ export function ConflictValue({
         empty('No notes')
       )
     }
+    case 'note':
+      return typeof value === 'string' && value ? (
+        <span className="conflict-review__text">{value}</span>
+      ) : (
+        empty('No note')
+      )
+    case 'source':
+      return typeof value === 'string' && value ? (
+        <span className="conflict-review__text">{value}</span>
+      ) : (
+        empty('No source')
+      )
+    case 'cover_time':
+      return typeof value === 'number' ? (
+        <span className="conflict-review__text">{value}s</span>
+      ) : (
+        empty('Default frame')
+      )
     case 'cover_file_id':
     case 'primary_file_id':
       if (typeof value !== 'string')
@@ -209,21 +288,23 @@ export function ConflictValue({
 }
 
 /**
- * Review and resolve the conflicts of the given bundles without leaving the browser.
+ * Review and resolve the conflicts of the given bundles or files without leaving the browser.
  * Ordinary fields resolve here; structural scopes (files, order, existence, or
- * anything spanning other objects) are summarized and sent to Metadata Review,
+ * anything spanning other objects) are summarized and sent to focused conflict review,
  * which shows their complete affected scope and recovery safeguards.
  */
 export function CatalogConflictDialog({
   library,
-  bundles,
+  bundles = [],
+  files = [],
   blocked,
   onClose,
   onResolved,
   onAdvanced,
 }: {
   library: string
-  bundles: string[]
+  bundles?: string[]
+  files?: string[]
   blocked: boolean
   onClose: () => void
   /** Called after a choice is committed, so the caller can refresh its views. */
@@ -245,11 +326,12 @@ export function CatalogConflictDialog({
   const [error, setError] = useState('')
   // One retry identity per exact intent: a lost reply retries the same operation
   const operations = useRef(new Map<string, string>())
-  const key = bundles.join(',')
+  const bundleKey = bundles.join(',')
+  const fileKey = files.join(',')
 
   useEffect(() => {
     let current = true
-    loadConflicts(library, key.split(','))
+    loadConflicts(library, bundleKey ? bundleKey.split(',') : [], fileKey ? fileKey.split(',') : [])
       .then((groups) => {
         if (!current) return
         setLoaded({ generation, groups })
@@ -273,7 +355,7 @@ export function CatalogConflictDialog({
     return () => {
       current = false
     }
-  }, [library, key, generation])
+  }, [library, bundleKey, fileKey, generation])
 
   // Versions arrive after the dialog opens; move focus from the close button to the first one
   const focused = useRef(false)
@@ -292,7 +374,7 @@ export function CatalogConflictDialog({
   const requests = ordinary.map((group) => chooseRequest(group, choices))
   const ready = ordinary.length > 0 && requests.every(Boolean)
   const loading = !loaded || loaded.generation !== generation
-  const several = new Set(groups.map((group) => group.bundle)).size > 1
+  const several = new Set(groups.map((group) => `${group.family}/${group.bundle}`)).size > 1
 
   async function apply() {
     if (!ready || busy || blocked || loading) return
@@ -421,8 +503,8 @@ export function CatalogConflictDialog({
                 <div className="conflict-review__structural">
                   <p>
                     <strong>{group.labels.join(', ') || 'Related items'}</strong> changed in more
-                    than one place{related(group.fields.length - 1)}. Metadata Review shows
-                    everything affected before anything changes.
+                    than one place{related(Math.max(0, group.fields.length - 1))}. Full conflict
+                    review shows everything affected before anything changes.
                   </p>
                   <button
                     className="btn btn--compact"

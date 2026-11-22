@@ -25,6 +25,8 @@ export interface HoverPreviewSource {
   storyboardVersion?: string | null
   /** A portable file's observed generation, which names the storyboard to make. */
   generation?: string | null
+  /** True when a portable video card has not yet probed local duration/codecs. */
+  needsProbe?: boolean
 }
 
 export type HoverPreviewMode = 'image' | 'direct' | 'storyboard' | 'none'

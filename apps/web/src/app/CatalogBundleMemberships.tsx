@@ -8,7 +8,8 @@ import {
   selectionKey,
 } from '../api/catalogBulk'
 import { rename, setBulkMembership, setMembership } from '../api/catalogOrganize'
-import { plannedChange } from '../api/catalogUndo'
+import { plannedChange, type MembershipChange } from '../api/catalogUndo'
+import { bundleLockKey, withCatalogWriteLock } from '../api/catalogWriteQueue'
 import { captureRequestScope } from '../api/requestScope'
 import type { components } from '../api/schema'
 import { CatalogChipPicker, type ChipChoice } from './CatalogChipPicker'
@@ -26,6 +27,12 @@ import { TagPickerPanel } from './TagPickerPanel'
 type Page = components['schemas']['CatalogMembershipPage']
 type BulkPage = components['schemas']['CatalogBulkMembershipPage']
 type Observed = Record<string, string[]>
+
+function sameRevisionSet(a?: string[], b?: string[]): boolean {
+  if (!a || !b || a.length !== b.length) return false
+  const right = new Set(b)
+  return a.every((rev) => right.has(rev))
+}
 
 const TITLE = { tags: 'Tags', collections: 'Collections' } as const
 // Every view that shows a membership or counts one, read again together after the
@@ -52,6 +59,7 @@ export function CatalogBundleMemberships({
   family,
   blocked,
   onReview,
+  onReviewConflict,
   onOpenCollection,
   onFilterTag,
 }: {
@@ -61,6 +69,7 @@ export function CatalogBundleMemberships({
   family: 'tags' | 'collections'
   blocked: boolean
   onReview: () => void
+  onReviewConflict?: (unit: string) => void
   onOpenCollection?: (id: string) => void
   onFilterTag?: (id: string) => void
 }) {
@@ -138,8 +147,9 @@ export function CatalogBundleMemberships({
   const key = single
     ? ['catalog-memberships', library, single]
     : ['catalog-bulk-memberships', library, named]
+  const assignedKey = [...key, family, 'assigned', common] as const
   const assigned = useQuery({
-    queryKey: [...key, family, 'assigned', common],
+    queryKey: assignedKey,
     enabled: !large,
     queryFn: () => read('', '', true),
     refetchInterval: 2000,
@@ -187,16 +197,107 @@ export function CatalogBundleMemberships({
         observed: {},
       }))
     : (assigned.data?.items ?? [])
+  const writeKeys = (targetId: string) => [
+    ...ids.map((bundleId) => bundleLockKey(library, bundleId)),
+    `${library}:${family}/${targetId}`,
+  ]
+  const edgeFamily = family === 'tags' ? 'asset_bundle_tags' : 'asset_bundle_collections'
+  const reviewTarget = (targetId?: string) => {
+    if (!onReviewConflict) {
+      onReview()
+      return
+    }
+    if (targetId) {
+      onReviewConflict(
+        single ? `${edgeFamily}/${single}~${targetId}/$alive` : `${family}/${targetId}/$alive`,
+      )
+      return
+    }
+    onReviewConflict(single ? `asset_bundles/${single}/$alive` : `${family}/_/$forest`)
+  }
+  const verifyTargetUnchanged = async (
+    read: ChipChoice & { observed: Observed },
+    assign: boolean,
+  ): Promise<(ChipChoice & { observed: Observed }) | 'reviewed' | null> => {
+    const page = await catalog<BulkPage>(library, '/bundles/selection/memberships', 'POST', {
+      ids,
+      family,
+      target: read.id,
+      limit: 1,
+    })
+    const fresh = page.items[0]
+    if (!fresh)
+      throw new Error(
+        `This ${family === 'tags' ? 'tag' : 'collection'} is no longer in the library.`,
+      )
+    if (fresh.held) {
+      reviewTarget(read.id)
+      return 'reviewed'
+    }
+    const edgePrefix = family === 'tags' ? 'asset_bundle_tags/' : 'asset_bundle_collections/'
+    const edgeChanged = Object.entries(read.observed).some(
+      ([unit, revs]) => unit.startsWith(edgePrefix) && !sameRevisionSet(revs, fresh.observed[unit]),
+    )
+    const expectedCount = read.state === 'on' ? ids.length : read.state === 'off' ? 0 : null
+    if (
+      edgeChanged ||
+      (expectedCount !== null && fresh.assigned_count !== expectedCount) ||
+      (expectedCount === null && fresh.assigned_count === (assign ? ids.length : 0))
+    ) {
+      return null
+    }
+    return { ...read, name: fresh.name, held: fresh.held, observed: fresh.observed }
+  }
   function toggle(choice: ChipChoice, assign: boolean) {
     const read = [...chips, ...choices].find((item) => item.id === choice.id)
-    if (read) change(() => save(read, assign))
+    if (read)
+      change(() =>
+        withCatalogWriteLock(writeKeys(read.id), async ({ waited }) => {
+          if (waited && !large && tree) {
+            const refreshed = await verifyTargetUnchanged(read, assign)
+            if (refreshed === 'reviewed') return
+            if (!refreshed)
+              throw new Error('Membership changed or requires conflict review; refresh choices')
+            await save(refreshed, assign)
+            return
+          }
+          try {
+            await save(read, assign)
+          } catch (reason) {
+            if (
+              !large &&
+              tree &&
+              reason instanceof Error &&
+              /(?:Membership|Selected metadata) changed or requires conflict review/i.test(
+                reason.message,
+              )
+            ) {
+              const refreshed = await verifyTargetUnchanged(read, assign)
+              if (refreshed === 'reviewed') return
+              if (refreshed) {
+                await save(refreshed, assign)
+                return
+              }
+            }
+            throw reason
+          }
+        }),
+      )
   }
   // In the browser, with one-destination reads (version 2), a change first reads
   // what it will alter, so the browser's message can offer its Undo
-  const save = async (read: ChipChoice & { observed: Observed }, assign: boolean) => {
+  const save = async (
+    read: ChipChoice & { observed: Observed },
+    assign: boolean,
+    precomputedPlan?: MembershipChange | null,
+  ) => {
     const current = captureRequestScope()
     const recorded = undo && tree
-    const plan = recorded ? await plannedChange(library, ids, family, read.id, assign) : null
+    const plan = recorded
+      ? precomputedPlan !== undefined
+        ? precomputedPlan
+        : await plannedChange(library, ids, family, read.id, assign)
+      : null
     await (single
       ? setMembership(library, single, family, read, assign)
       : setBulkMembership(library, ids, family, read, assign))
@@ -207,28 +308,39 @@ export function CatalogBundleMemberships({
   // A tree pick reads the one destination with its current bases, as a drag onto a
   // sidebar collection does
   function pickTree(id: string, assign: boolean) {
-    change(async () => {
-      if (large) {
-        await save({ id, name: '', path: [], state: 'off', held: false, observed: {} }, assign)
-        return
-      }
-      const page = await catalog<BulkPage>(library, '/bundles/selection/memberships', 'POST', {
-        ids,
-        family,
-        target: id,
-        limit: 1,
-      })
-      const item = page.items[0]
-      if (!item)
-        throw new Error(
-          `This ${family === 'tags' ? 'tag' : 'collection'} is no longer in the library.`,
-        )
-      if (item.held) {
-        onReview()
-        return
-      }
-      await save({ ...item, path: [item.name], state: 'off' }, assign)
-    })
+    change(() =>
+      withCatalogWriteLock(writeKeys(id), async () => {
+        if (large) {
+          await save({ id, name: '', path: [], state: 'off', held: false, observed: {} }, assign)
+          return
+        }
+        const page = await catalog<BulkPage>(library, '/bundles/selection/memberships', 'POST', {
+          ids,
+          family,
+          target: id,
+          limit: 1,
+        })
+        const item = page.items[0]
+        if (!item)
+          throw new Error(
+            `This ${family === 'tags' ? 'tag' : 'collection'} is no longer in the library.`,
+          )
+        if (item.held) {
+          reviewTarget(id)
+          return
+        }
+        const uniform =
+          item.assigned_count === 0 || item.assigned_count === ids.length
+            ? {
+                family,
+                target: id,
+                assigned: assign,
+                ids: item.assigned_count === (assign ? ids.length : 0) ? [] : ids,
+              }
+            : undefined
+        await save({ ...item, path: [item.name], state: 'off' }, assign, uniform)
+      }),
+    )
   }
   function change(work: () => Promise<void>) {
     if (busy) return
@@ -295,6 +407,7 @@ export function CatalogBundleMemberships({
     onToggle: pickTree,
     onCreated: (created: { id: string }) => pickTree(created.id, true),
   }
+  const heldChip = chips.find((chip) => chip.held) ?? null
   return (
     <InspectorSection id={family} title={TITLE[family]}>
       <CatalogChipPicker
@@ -308,7 +421,7 @@ export function CatalogBundleMemberships({
         loading={found.isPending}
         disabled={blocked || busy || clipboard.busy || !together}
         onToggle={toggle}
-        onReview={onReview}
+        onReview={(choice) => reviewTarget(choice?.id ?? heldChip?.id)}
         onOpenChip={family === 'collections' ? onOpenCollection : undefined}
         panel={
           !tree ? undefined : family === 'tags' ? (
@@ -350,12 +463,32 @@ export function CatalogBundleMemberships({
           }}
           onConfirm={(name) => {
             const current = captureRequestScope()
+            const targetId = renaming.id
+            const prevAssigned = client.getQueryData<{
+              next: string | null
+              items: (ChipChoice & { observed: Observed })[]
+            }>(assignedKey)
+            const navKey = ['catalog-navigation', library, 'tags'] as const
+            const prevNav = client.getQueryData<{ id: string; name: string }[]>(navKey)
+            client.setQueryData<typeof prevAssigned>(assignedKey, (old) =>
+              old
+                ? {
+                    ...old,
+                    items: old.items.map((item) =>
+                      item.id === targetId ? { ...item, name } : item,
+                    ),
+                  }
+                : old,
+            )
+            client.setQueryData<typeof prevNav>(navKey, (old) =>
+              old?.map((item) => (item.id === targetId ? { ...item, name } : item)),
+            )
+            setRenaming(null)
             setBusy(true)
             setError('')
-            void rename(library, 'tags', renaming.id, name)
+            void rename(library, 'tags', targetId, name)
               .then(async () => {
                 current()
-                setRenaming(null)
                 await Promise.all(
                   ['catalog-selection', ...AFFECTED, 'tags'].map((key) =>
                     client.invalidateQueries({ queryKey: [key, library] }),
@@ -365,6 +498,8 @@ export function CatalogBundleMemberships({
               .catch((reason: Error) => {
                 try {
                   current()
+                  if (prevAssigned !== undefined) client.setQueryData(assignedKey, prevAssigned)
+                  if (prevNav !== undefined) client.setQueryData(navKey, prevNav)
                   setError(reason.message)
                 } catch {
                   /* The prior library owns this reply. */
@@ -376,6 +511,16 @@ export function CatalogBundleMemberships({
       )}
       {clipboard.message && <p role="status">{clipboard.message}</p>}
       {assigned.data?.next && <p className="catalog-chips-more">More {family} than shown.</p>}
+      {heldChip && (
+        <p className="catalog-inspector-conflict" role="alert">
+          <span>
+            {family === 'tags' ? 'Tag' : 'Collection'} “{heldChip.name}” has conflicting edits.
+          </span>{' '}
+          <button type="button" className="btn btn--sm" onClick={() => reviewTarget(heldChip.id)}>
+            Review Conflict
+          </button>
+        </p>
+      )}
       {(error || assigned.error || shared.error) && (
         <p role="alert">{error || `${TITLE[family]} are unavailable.`}</p>
       )}

@@ -124,10 +124,13 @@ type CairndexRuntime = typeof globalThis & {
 // Survives Vite module replacement while a desktop connection remains active
 const runtime = globalThis as CairndexRuntime
 
+import { clearCoverBlobCache } from '../app/coverMemoryCache'
+
 // Selects the remote server used by the desktop host while browsers stay same-origin
 export function setApiBaseUrl(value: string | null, connectionKey: string | null = value): void {
   advanceConnectionScope(connectionKey)
   clearEditBases()
+  clearCoverBlobCache()
   retireMetadataRequests()
   runtime.__cairndexApiBaseUrl = value ? value.trim().replace(/\/+$/, '') : null
 }
@@ -148,6 +151,7 @@ export function setActiveLibraryId(id: string | null): void {
   if (activeLibraryId !== id) {
     advanceLibraryScope()
     clearEditBases()
+    clearCoverBlobCache()
     retireMetadataRequests()
   }
   activeLibraryId = id

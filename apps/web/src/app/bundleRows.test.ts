@@ -21,6 +21,7 @@ function file(path: string, overrides: Partial<FileRead> = {}): FileRead {
     quick_fingerprint: null,
     cover_time: null,
     resume_position: null,
+    starred: false,
     supported: true,
     tech_metadata: null,
     created_at: '2026-01-01T00:00:00Z',

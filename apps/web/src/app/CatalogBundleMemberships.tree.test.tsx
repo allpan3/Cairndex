@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { catalog } from '../api/catalog'
 import { setBulkMembership, setMembership } from '../api/catalogOrganize'
+import { bundleLockKey, withCatalogWriteLock } from '../api/catalogWriteQueue'
 import { setActiveLibraryId } from '../api/client'
 import { CatalogBundleMemberships } from './CatalogBundleMemberships'
 
@@ -145,4 +146,157 @@ test('the collection picker shows the collection tree and saves a picked child',
   await waitFor(() => expect(setMembership).toHaveBeenCalledOnce())
   const [, bundle, family, read, assign] = vi.mocked(setMembership).mock.calls[0]!
   expect([bundle, family, read.id, assign]).toEqual(['one', 'collections', 'col-coast', true])
+})
+
+test('removing a tag chip waits on an active bundle write and refreshes $alive when edge is unchanged', async () => {
+  const edgeRevision = 'edge-1'
+  let aliveRevision = 'bundle-alive-1'
+  vi.mocked(catalog).mockImplementation((_library, path, _method, body) => {
+    const req = body as { target?: string } | undefined
+    if (path.includes('/memberships/tags') && !req) {
+      return Promise.resolve({
+        items: [
+          {
+            id: 'tag-mood',
+            name: 'Synthetic mood',
+            path: ['Synthetic mood'],
+            assigned: true,
+            held: false,
+            observed: {
+              'asset_bundles/one/$alive': [aliveRevision],
+              'asset_bundle_tags/one~tag-mood/$alive': [edgeRevision],
+              'tags/tag-mood/$alive': ['tag-node-1'],
+            },
+          },
+        ],
+        next_cursor: null,
+      }) as never
+    }
+    if (path === '/bundles/selection/memberships' && req?.target === 'tag-mood') {
+      return Promise.resolve({
+        items: [
+          {
+            id: 'tag-mood',
+            name: 'Synthetic mood',
+            assigned_count: 1,
+            held: false,
+            observed: {
+              'asset_bundles/one/$alive': [aliveRevision],
+              'asset_bundle_tags/one~tag-mood/$alive': [edgeRevision],
+              'tags/tag-mood/$alive': ['tag-node-1'],
+            },
+          },
+        ],
+        next_cursor: null,
+      }) as never
+    }
+    return Promise.resolve({ items: [], next_cursor: null }) as never
+  })
+
+  setup(['one'])
+  const removeBtn = await screen.findByRole('button', { name: 'Remove Synthetic mood' })
+
+  let releaseBundleWrite!: () => void
+  const heldLock = withCatalogWriteLock(
+    [bundleLockKey('library', 'one')],
+    () =>
+      new Promise<void>((resolve) => {
+        releaseBundleWrite = () => {
+          aliveRevision = 'bundle-alive-2'
+          resolve()
+        }
+      }),
+  )
+
+  fireEvent.click(removeBtn)
+  await act(async () => {
+    await Promise.resolve()
+  })
+  expect(setMembership).not.toHaveBeenCalled()
+
+  await act(async () => {
+    releaseBundleWrite()
+    await heldLock
+  })
+
+  await waitFor(() => expect(setMembership).toHaveBeenCalledOnce())
+  expect(vi.mocked(setMembership).mock.calls[0]![3]).toMatchObject({
+    id: 'tag-mood',
+    observed: {
+      'asset_bundles/one/$alive': ['bundle-alive-2'],
+      'asset_bundle_tags/one~tag-mood/$alive': ['edge-1'],
+    },
+  })
+  expect(vi.mocked(setMembership).mock.calls[0]![4]).toBe(false)
+})
+
+test('removing a tag chip refuses when the edge itself changed while waiting on a bundle write', async () => {
+  let edgeRevision = 'edge-1'
+  vi.mocked(catalog).mockImplementation((_library, path, _method, body) => {
+    const req = body as { target?: string } | undefined
+    if (path.includes('/memberships/tags') && !req) {
+      return Promise.resolve({
+        items: [
+          {
+            id: 'tag-mood',
+            name: 'Synthetic mood',
+            path: ['Synthetic mood'],
+            assigned: true,
+            held: false,
+            observed: {
+              'asset_bundles/one/$alive': ['bundle-alive-1'],
+              'asset_bundle_tags/one~tag-mood/$alive': [edgeRevision],
+              'tags/tag-mood/$alive': ['tag-node-1'],
+            },
+          },
+        ],
+        next_cursor: null,
+      }) as never
+    }
+    if (path === '/bundles/selection/memberships' && req?.target === 'tag-mood') {
+      return Promise.resolve({
+        items: [
+          {
+            id: 'tag-mood',
+            name: 'Synthetic mood',
+            assigned_count: 1,
+            held: false,
+            observed: {
+              'asset_bundles/one/$alive': ['bundle-alive-2'],
+              'asset_bundle_tags/one~tag-mood/$alive': [edgeRevision],
+              'tags/tag-mood/$alive': ['tag-node-1'],
+            },
+          },
+        ],
+        next_cursor: null,
+      }) as never
+    }
+    return Promise.resolve({ items: [], next_cursor: null }) as never
+  })
+
+  setup(['one'])
+  const removeBtn = await screen.findByRole('button', { name: 'Remove Synthetic mood' })
+
+  let releaseBundleWrite!: () => void
+  const heldLock = withCatalogWriteLock(
+    [bundleLockKey('library', 'one')],
+    () =>
+      new Promise<void>((resolve) => {
+        releaseBundleWrite = () => {
+          edgeRevision = 'edge-peer-2'
+          resolve()
+        }
+      }),
+  )
+
+  fireEvent.click(removeBtn)
+  await act(async () => {
+    releaseBundleWrite()
+    await heldLock
+  })
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Membership changed or requires conflict review; refresh choices',
+  )
+  expect(setMembership).not.toHaveBeenCalled()
 })

@@ -3120,6 +3120,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/catalog/files/selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Selected Files */
+        post: operations["selected_files_api_v1_libraries__library_id__replica_catalog_files_selection_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/catalog/files/unbundled": {
         parameters: {
             query?: never;
@@ -3148,6 +3165,40 @@ export interface paths {
         put?: never;
         /** Unbundled File Keys */
         post: operations["unbundled_file_keys_api_v1_libraries__library_id__replica_catalog_files_unbundled_ids_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/files/{file_id}/star": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read File Star */
+        get: operations["read_file_star_api_v1_libraries__library_id__replica_catalog_files__file_id__star_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/replica/catalog/files/{file_id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** File Tag Choices */
+        get: operations["file_tag_choices_api_v1_libraries__library_id__replica_catalog_files__file_id__tags_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4844,6 +4895,10 @@ export interface components {
             };
             /** Revision */
             revision: string;
+            /** Tag Names */
+            tag_names?: {
+                [key: string]: string;
+            };
             /** Title */
             title: string;
             /** Total */
@@ -5072,6 +5127,11 @@ export interface components {
             file_count: number;
             grouping_state: components["schemas"]["GroupingState"];
             /**
+             * Has Conflicts
+             * @default false
+             */
+            has_conflicts: boolean;
+            /**
              * Has Missing
              * @default false
              */
@@ -5146,6 +5206,8 @@ export interface components {
             };
             /** Has Conflicts */
             has_conflicts: boolean;
+            /** Held Membership Unit */
+            held_membership_unit?: string | null;
             /** Id */
             id: string;
             /** Observed */
@@ -5246,6 +5308,42 @@ export interface components {
             unit: string;
             /** Value */
             value: string | null;
+        };
+        /** CatalogFileSelectionItem */
+        CatalogFileSelectionItem: {
+            /** Held */
+            held: boolean;
+            /** Id */
+            id: string;
+            /** Observed */
+            observed: {
+                [key: string]: string[];
+            };
+            /** Starred */
+            starred: boolean;
+        };
+        /** CatalogFileSelectionRead */
+        CatalogFileSelectionRead: {
+            /** Items */
+            items: components["schemas"]["CatalogFileSelectionItem"][];
+        };
+        /** CatalogFileSelectionRequest */
+        CatalogFileSelectionRequest: {
+            /** Ids */
+            ids: string[];
+        };
+        /** CatalogFileStarRead */
+        CatalogFileStarRead: {
+            /** File Id */
+            file_id: string;
+            /** Held */
+            held: boolean;
+            /** Observed */
+            observed: {
+                [key: string]: string[];
+            };
+            /** Starred */
+            starred: boolean;
         };
         /** CatalogIdPage */
         CatalogIdPage: {
@@ -6463,10 +6561,17 @@ export interface components {
              */
             source: string | null;
             /**
+             * Starred
+             * @default false
+             */
+            starred: boolean;
+            /**
              * Supported
              * @default false
              */
             supported: boolean;
+            /** Tag Ids */
+            tag_ids?: string[];
             /** Tech Metadata */
             tech_metadata: {
                 [key: string]: unknown;
@@ -14416,7 +14521,7 @@ export interface operations {
                 authorization?: string | null;
             };
             path: {
-                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "moment_tags" | "tag_group_memberships";
+                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "asset_file_stars" | "asset_file_tags" | "moment_tags" | "tag_group_memberships";
                 library_id: string;
             };
             cookie?: {
@@ -14454,7 +14559,7 @@ export interface operations {
                 authorization?: string | null;
             };
             path: {
-                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "moment_tags" | "tag_group_memberships";
+                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "asset_file_stars" | "asset_file_tags" | "moment_tags" | "tag_group_memberships";
                 library_id: string;
             };
             cookie?: {
@@ -14649,7 +14754,7 @@ export interface operations {
                 authorization?: string | null;
             };
             path: {
-                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "moment_tags" | "tag_group_memberships";
+                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "asset_file_stars" | "asset_file_tags" | "moment_tags" | "tag_group_memberships";
                 library_id: string;
             };
             cookie?: {
@@ -14685,7 +14790,7 @@ export interface operations {
                 authorization?: string | null;
             };
             path: {
-                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "moment_tags" | "tag_group_memberships";
+                family: "asset_bundles" | "asset_files" | "bundle_directory_members" | "tags" | "tag_groups" | "collections" | "smart_folders" | "moments" | "subtitle_tracks" | "asset_bundle_tags" | "asset_bundle_collections" | "asset_file_stars" | "asset_file_tags" | "moment_tags" | "tag_group_memberships";
                 identity: string;
                 library_id: string;
             };
@@ -14743,6 +14848,45 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    selected_files_api_v1_libraries__library_id__replica_catalog_files_selection_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogFileSelectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogFileSelectionRead"];
                 };
             };
             /** @description Validation Error */
@@ -14821,6 +14965,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogUnbundledKeyPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_file_star_api_v1_libraries__library_id__replica_catalog_files__file_id__star_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogFileStarRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_tag_choices_api_v1_libraries__library_id__replica_catalog_files__file_id__tags_get: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+                q?: string;
+                assigned?: boolean;
+                target?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogMembershipPage"];
                 };
             };
             /** @description Validation Error */
@@ -16498,6 +16720,10 @@ export interface operations {
                 offset?: number;
                 limit?: number;
                 expected_revision?: string | null;
+                starred_only?: boolean;
+                tag_ids?: string[] | null;
+                include_descendants?: boolean;
+                tag_mode?: "any" | "all";
             };
             header?: {
                 authorization?: string | null;

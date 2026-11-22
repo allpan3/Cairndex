@@ -204,13 +204,21 @@ export function useHoverPreview(
 
   useEffect(() => {
     if (canActivate()) {
-      if (pointerInside && !active) startDwell()
+      if (pointerInside && !active) {
+        startDwell()
+        if (mode !== 'image' && prefetchTimer.current === null) {
+          prefetchTimer.current = window.setTimeout(() => {
+            prefetchTimer.current = null
+            setPrefetchStoryboard(true)
+          }, HOVER_PREVIEW_PREFETCH_MS)
+        }
+      }
       return
     }
     // External menu/drag state must tear media down in the same turn
     // eslint-disable-next-line react-hooks/set-state-in-effect
     deactivate()
-  }, [active, canActivate, deactivate, pointerInside, startDwell])
+  }, [active, canActivate, deactivate, mode, pointerInside, startDwell])
 
   useEffect(() => deactivate, [deactivate])
 
@@ -547,6 +555,7 @@ export function useHoverPreview(
 
   return {
     active,
+    pointerInside,
     phase,
     mode,
     muted,

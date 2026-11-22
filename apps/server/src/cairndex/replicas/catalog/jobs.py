@@ -107,20 +107,35 @@ def listing(store: CatalogStore, after: int = 0, limit: int = 30) -> dict[str, A
 # Only the server worker executes a job; queued work remains retryable after abrupt exits.
 # A bulk operation advances one batch at a time when nothing else waits, so an ordinary
 # edit queued meanwhile does not wait for the whole selection.
-def run_one(store: CatalogStore, root: Path | None = None) -> None:
-    with store.connection() as db:
-        row = db.execute(
-            "SELECT id,intent FROM catalog_jobs WHERE state='queued' "
+def run_one(store: CatalogStore, root: Path | None = None) -> bool:
+    with store.connection(readonly=True) as db:
+        has_queued = db.execute(
+            "SELECT 1 FROM catalog_jobs WHERE state='queued' "
             "AND json_extract(intent,'$.action') NOT IN ('media_maintenance','bulk_selection') "
-            "ORDER BY sequence LIMIT 1"
+            "LIMIT 1"
         ).fetchone()
-        if row is not None:
-            db.execute("UPDATE catalog_jobs SET state='running' WHERE id=?", (row["id"],))
+    row = None
+    if has_queued is not None:
+        with store.connection() as db:
+            row = db.execute(
+                "SELECT id,intent FROM catalog_jobs WHERE state='queued' "
+                "AND json_extract(intent,'$.action') NOT IN ('media_maintenance','bulk_selection') "
+                "ORDER BY sequence LIMIT 1"
+            ).fetchone()
+            if row is not None:
+                db.execute("UPDATE catalog_jobs SET state='running' WHERE id=?", (row["id"],))
     if row is None:
+        with store.connection(readonly=True) as db:
+            has_bulk = db.execute(
+                "SELECT 1 FROM catalog_jobs WHERE state='queued' "
+                "AND json_extract(intent,'$.action')='bulk_selection' LIMIT 1"
+            ).fetchone()
+        if has_bulk is None:
+            return False
         from cairndex.replicas.catalog.bulk import step
 
         step(store)
-        return
+        return True
     operation, intent = row["id"], json.loads(row["intent"])
     action, body = intent["action"], intent["body"]
     try:
@@ -179,6 +194,7 @@ def run_one(store: CatalogStore, root: Path | None = None) -> None:
             "UPDATE catalog_jobs SET state=?,result=?,error=? WHERE id=?",
             (state, raw, error, operation),
         )
+    return True
 
 
 # Cancel only queued work; saved events and completed previews remain durably discoverable.

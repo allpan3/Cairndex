@@ -36,6 +36,7 @@ import {
 import { CatalogBundleAlbum } from './CatalogBundleAlbum'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
 import { CatalogBundleMoments } from './CatalogBundleMoments'
+import { CatalogConflictDialog } from './CatalogConflictDialog'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { catalogBundleHostPath } from '../desktop/catalogHostFiles'
 import { ContextMenu } from './ContextMenu'
@@ -168,6 +169,7 @@ export function CatalogBundleBrowser({
   headerLeading,
   headerTrailing,
   onScreen = true,
+  onAlbumOpenChange,
   onFilterTag,
   onDropFilesOnBundle,
   onDropContext,
@@ -194,7 +196,12 @@ export function CatalogBundleBrowser({
   onReviewConflict?: (unit: string) => void
   onOpen: (id: string) => void
   /** Open one file in the viewer, at `time` seconds when it is given. */
-  onOpenFile: (bundle: string, file: string, time?: number) => void
+  onOpenFile: (
+    bundle: string,
+    file: string,
+    time?: number,
+    loop?: { start: number; end: number } | null,
+  ) => void
   hostFiles?: LibraryHostFiles
   onHostPath?: (path: string | null) => void
   /** Show one library-relative file in the File Browser. */
@@ -226,6 +233,7 @@ export function CatalogBundleBrowser({
   headerTrailing?: ReactNode
   /** On screen; the View menu's zoom applies only then. */
   onScreen?: boolean
+  onAlbumOpenChange?: (open: boolean) => void
   onFilterTag?: (id: string) => void
   /** Files dropped on one card, with the folder that bundle's files live in. */
   onDropFilesOnBundle?: (
@@ -295,8 +303,10 @@ export function CatalogBundleBrowser({
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 2147483647))
   const [album, setAlbum] = useState<{ id: string; scope: string; file?: LocatedFile } | null>(null)
   const [albumFile, setAlbumFile] = useState<string | null>(null)
+  const [zoomPreview, setZoomPreview] = useState<number | null>(null)
   const [bulkRetained, setBulkRetained] = useState(() => pendingBulkSave(library, editor))
   const [deleting, setDeleting] = useState<string[] | null>(null)
+  const [reviewingBundles, setReviewingBundles] = useState<string[] | null>(null)
   const [cleaning, setCleaning] = useState(false)
   const [creatingBundle, setCreatingBundle] = useState(false)
   const [addingFiles, setAddingFiles] = useState<{ id: string; title: string | null } | null>(null)
@@ -356,6 +366,7 @@ export function CatalogBundleBrowser({
                 total_size: item.total_size ?? 0,
                 size_known: localHistoryEnabled && item.total_size != null,
                 has_missing: item.has_missing ?? false,
+                has_conflicts: item.has_conflicts ?? false,
                 has_cover: Boolean(item.cover_file_id),
                 openable: item.file_count > 0,
                 cover_key: item.cover_key ?? null,
@@ -483,6 +494,9 @@ export function CatalogBundleBrowser({
     [items, selectedIds],
   )
   const albumId = album?.scope === scope ? album.id : null
+  useEffect(() => {
+    onAlbumOpenChange?.(Boolean(albumId))
+  }, [albumId, onAlbumOpenChange])
   const peek = useQuickPreview({
     items,
     activeId: active,
@@ -564,9 +578,17 @@ export function CatalogBundleBrowser({
       onOpen(id)
       return
     }
+    select(id, { shiftKey: false, metaKey: false, ctrlKey: false })
     setAlbum({ id, scope })
     setAlbumFile(null)
   }
+  const filterFromAlbum = onFilterTag
+    ? (id: string) => {
+        setAlbum(null)
+        setAlbumFile(null)
+        onFilterTag(id)
+      }
+    : undefined
   function select(id: string, modifiers: SelectionModifiers) {
     let ids = new Set([id])
     if (selectionEnabled && modifiers.shiftKey) {
@@ -673,6 +695,7 @@ export function CatalogBundleBrowser({
     enabled: Boolean(single),
     queryFn: () => catalog<Entity>(library, `/entities/asset_bundles/${single}`),
     refetchInterval: 2000,
+    retry: 1,
   })
   const albumTitle =
     detail.data?.id === albumId
@@ -840,11 +863,31 @@ export function CatalogBundleBrowser({
           onClick: () => collections.removeBundlesFromOpen(targets),
         })
     }
-    entries.push(null, {
-      icon: <IconAlert />,
-      label: 'Review metadata and conflicts',
-      onClick: onReview,
-    })
+    const held = new Set(items.filter((card) => card.has_conflicts).map((card) => card.id))
+    if (detail.data?.has_conflicts) held.add(detail.data.id)
+    const conflictedTargets = targets.filter((bundleId) => held.has(bundleId))
+    if (conflictedTargets.length > 0)
+      entries.push(null, {
+        icon: <IconAlert />,
+        label: 'Review Conflicts',
+        onClick: () => {
+          const loadedDetail = detail.data
+          if (
+            conflictedTargets.length === 1 &&
+            loadedDetail !== undefined &&
+            loadedDetail.id === conflictedTargets[0] &&
+            loadedDetail.fields.$alive?.value !== 'true'
+          ) {
+            const heldUnit =
+              Object.values(loadedDetail.fields).find((f) => f.held)?.unit ??
+              `asset_bundles/${conflictedTargets[0]}/$alive`
+            if (onReviewConflict) onReviewConflict(heldUnit)
+            else onReview()
+            return
+          }
+          setReviewingBundles(conflictedTargets)
+        },
+      })
     if ((status?.browse_version ?? 0) >= 5)
       entries.push(null, {
         icon: <IconTrash />,
@@ -905,8 +948,8 @@ export function CatalogBundleBrowser({
           ),
         ),
       }))
-    // The workspace shows the bundles first, so this is not limited to `onScreen`
-    else if (action === 'new-bundle' && bundling) setCreatingBundle(true)
+    // New Bundle also switches File Browser to bundles. Review and the viewer suspend it.
+    else if (action === 'new-bundle' && !viewerOpen && bundling) setCreatingBundle(true)
   })
   const scoped = !(selection.collectionId && includeDescendants) && selection.view !== 'random'
   const reorder =
@@ -957,9 +1000,11 @@ export function CatalogBundleBrowser({
   const refresh = () => {
     void browse.refetch()
     if (single) void detail.refetch()
-    // A selection's snapshot read before this save holds the bases the save
-    // replaced, so a bulk change made from it would be refused as stale
+    // A selection or membership snapshot read before this save holds the bases
+    // the save replaced, so subsequent bulk or chip changes must read the new ones.
     void client.invalidateQueries({ queryKey: ['catalog-selection', library] })
+    void client.invalidateQueries({ queryKey: ['catalog-memberships', library] })
+    void client.invalidateQueries({ queryKey: ['catalog-bulk-memberships', library] })
   }
   return (
     <div
@@ -1004,6 +1049,22 @@ export function CatalogBundleBrowser({
           !foldersFolded && pickedFolders.scope === scope && folderIds.size > 0
             ? pickedFolders.active
             : null
+        const mac = /Mac|iPhone|iPad/.test(navigator.platform)
+        if (
+          (mac ? event.metaKey && !event.altKey : event.altKey && !event.metaKey) &&
+          !event.ctrlKey &&
+          !event.shiftKey &&
+          event.key === 'ArrowDown' &&
+          albumEnabled &&
+          !albumId &&
+          !peek.item
+        ) {
+          if (!folderActive && single) {
+            event.preventDefault()
+            openAlbum(single)
+          }
+          return
+        }
         const from = folderActive
           ? `collection:${folderActive}`
           : active
@@ -1102,7 +1163,11 @@ export function CatalogBundleBrowser({
           onSearch={setSearch}
           prefs={prefs}
           onPrefs={setPrefs}
-          onZoomPreview={(zoom) => navigation.current?.previewZoom?.(zoom)}
+          albumOpen={Boolean(albumId)}
+          onZoomPreview={(zoom) => {
+            setZoomPreview(zoom)
+            navigation.current?.previewZoom?.(zoom)
+          }}
           sort={activeSort}
           order={activeOrder}
           onSort={changeSort}
@@ -1122,6 +1187,7 @@ export function CatalogBundleBrowser({
           }
           adHocFilters={filters}
           onAdHocFilters={onFilters}
+          allowStarredFiles={(status?.browse_version ?? 0) >= 18}
           facetContext={{
             view: selection.view,
             collectionId: selection.collectionId,
@@ -1211,6 +1277,7 @@ export function CatalogBundleBrowser({
             onSelect={select}
             onMarqueeSelect={many}
             onOpen={onOpen}
+            onOpenAlbum={albumEnabled ? openAlbum : undefined}
             contextMenuOpen={menu.state !== null}
             onContextMenu={bundleMenu}
             onEmptyContextMenu={emptyMenu}
@@ -1301,12 +1368,16 @@ export function CatalogBundleBrowser({
             key={albumId}
             library={library}
             bundle={albumId}
+            blocked={blocked}
             initialFile={album?.file ?? null}
             layout={prefs.layout}
-            zoom={prefs.zoom}
+            zoom={zoomPreview ?? prefs.zoom}
+            showCardDetails={prefs.showCardDetails ?? true}
             onBack={() => {
+              const closed = albumId
               setAlbum(null)
               setAlbumFile(null)
+              if (closed) requestAnimationFrame(() => navigation.current?.focus(closed))
             }}
             onOpen={(file) => onOpenFile(albumId, file)}
             onSelectFile={setAlbumFile}
@@ -1314,6 +1385,8 @@ export function CatalogBundleBrowser({
             onOpenDirectory={onOpenDirectory}
             onRename={onRenameFile}
             onSourceAction={onSourceAction}
+            onReview={onReview}
+            onReviewConflict={onReviewConflict}
             hostFiles={hostFiles}
           />
         )}
@@ -1337,6 +1410,7 @@ export function CatalogBundleBrowser({
           library={library}
           editor={editor}
           ids={sortedIds}
+          conflictedIds={selectedCards.filter((item) => item.has_conflicts).map((item) => item.id)}
           covers={items.filter((item) => selectedIds.has(item.id)).slice(0, 3)}
           fileCount={
             selectedIds.size > 0 && selectedCards.length === selectedIds.size
@@ -1386,16 +1460,17 @@ export function CatalogBundleBrowser({
           onRenameFile={onRenameFile}
           summary={items.find((item) => item.id === detail.data.id)}
           onOpenCollection={onOpenCollection}
-          onFilterTag={onFilterTag}
+          onFilterTag={filterFromAlbum}
           onLocateFile={onLocateFile}
           onOpenDirectory={onOpenDirectory}
           onOpen={() => onOpen(detail.data.id)}
-          onOpenFile={(file) => onOpenFile(detail.data.id, file)}
+          onOpenFile={(file, time, loop) => onOpenFile(detail.data.id, file, time, loop)}
           moments={
             <CatalogBundleMoments
               library={library}
               bundle={detail.data.id}
               onPlay={(file, time) => onOpenFile(detail.data.id, file, time)}
+              onLoop={(file, range) => onOpenFile(detail.data.id, file, range.start, range)}
             />
           }
         />
@@ -1413,16 +1488,49 @@ export function CatalogBundleBrowser({
           <div className="state">
             {detail.error
               ? 'Bundle details are unavailable.'
-              : single
-                ? 'Loading bundle details…'
-                : 'Select a bundle to see its details.'}
+              : detail.data && single
+                ? 'That bundle is no longer available.'
+                : single
+                  ? 'Loading bundle details…'
+                  : 'Select a bundle to see its details.'}
           </div>
           {detail.error && (
             <button className="btn" onClick={() => void detail.refetch()}>
               Try Again
             </button>
           )}
+          {!detail.error && detail.data?.has_conflicts && (
+            <button
+              className="btn"
+              onClick={() => {
+                const heldUnit =
+                  Object.values(detail.data.fields).find((f) => f.held)?.unit ??
+                  `asset_bundles/${detail.data.id}/$alive`
+                if (onReviewConflict) onReviewConflict(heldUnit)
+                else onReview()
+              }}
+            >
+              Review Conflicts
+            </button>
+          )}
         </aside>
+      )}
+      {reviewingBundles && (
+        <CatalogConflictDialog
+          library={library}
+          bundles={reviewingBundles}
+          blocked={blocked}
+          onClose={() => setReviewingBundles(null)}
+          onResolved={() => {
+            refresh()
+            window.dispatchEvent(new Event('cairndex:metadata-saved'))
+          }}
+          onAdvanced={(unit) => {
+            setReviewingBundles(null)
+            if (onReviewConflict) onReviewConflict(unit)
+            else onReview()
+          }}
+        />
       )}
       <ContextMenu state={menu.state} onClose={menu.close} />
       {peek.item && !albumId && (

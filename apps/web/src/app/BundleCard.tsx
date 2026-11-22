@@ -1,11 +1,13 @@
-import { useMemo } from 'react'
+import { useContext, useMemo } from 'react'
 
+import { CatalogQueryContext } from '../api/catalogQuery'
 import type { BundleSummary } from '../api/client'
 import { fileThumbnailUrl, thumbnailUrl } from '../api/client'
 import { formatDimensions, formatDuration } from '../lib/format'
 import { CoverImage } from './CoverImage'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
+import { IconLayers } from './icons'
 import { useBundleFileDropTarget, type BundleFileDropHandler } from './useBundleFileDropTarget'
 
 /**
@@ -16,6 +18,7 @@ export type BundleCardItem = BundleSummary & {
   resume_storyboard_version?: string | null
   resume_generation?: string | null
   size_known?: boolean
+  has_conflicts?: boolean
 }
 
 interface BundleCardProps {
@@ -24,6 +27,7 @@ interface BundleCardProps {
   showMeta: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
+  onOpenAlbum?: (id: string) => void
   onContextMenu: (id: string, e: React.MouseEvent) => void
   previewDisabled?: boolean
   /**
@@ -40,6 +44,7 @@ export function BundleCard({
   showMeta,
   onSelect,
   onOpen,
+  onOpenAlbum,
   onContextMenu,
   previewDisabled = false,
   onDropFiles,
@@ -48,6 +53,7 @@ export function BundleCard({
   // Duration only makes sense for a video-backed card; an image bundle whose
   // current file happens to carry a stray "duration" in its metadata shouldn't
   // show a runtime badge next to a JPG type badge.
+  const catalogLibrary = useContext(CatalogQueryContext)
   const isVideo = item.media_kind === 'video'
   const previewSource = useMemo<HoverPreviewSource | null>(
     () =>
@@ -76,8 +82,28 @@ export function BundleCard({
               storyboardVersion: item.resume_storyboard_version,
               generation: item.resume_generation,
             }
-          : null,
+          : item.resume_file_id &&
+              Boolean(catalogLibrary) &&
+              (item.resume_media_kind === 'video' || (!item.resume_media_kind && isVideo))
+            ? {
+                mediaKind: 'video',
+                fileId: item.resume_file_id,
+                mimeType: item.resume_mime_type,
+                relativePath: item.resume_relative_path,
+                container: item.resume_container,
+                videoCodec: item.resume_video_codec,
+                videoCodecTag: item.resume_video_codec_tag,
+                audioCodec: item.resume_audio_codec,
+                duration: 0,
+                startTime: item.resume_position,
+                storyboardVersion: item.resume_storyboard_version,
+                generation: item.resume_generation,
+                needsProbe: true,
+              }
+            : null,
     [
+      catalogLibrary,
+      isVideo,
       item.id,
       item.resume_audio_codec,
       item.resume_container,
@@ -136,10 +162,45 @@ export function BundleCard({
         {!item.has_missing && item.extension && (
           <span className="card__badge">{item.extension}</span>
         )}
-        {item.file_count > 1 && (
-          <span className="card__badge" style={{ left: 'auto', right: 6 }}>
-            {item.file_count}
-          </span>
+        {onOpenAlbum ? (
+          <button
+            type="button"
+            className={
+              item.file_count > 1
+                ? 'card__badge card__open card__open--count'
+                : 'card__badge card__open card__open--hover'
+            }
+            aria-label={
+              item.file_count > 1 ? `Open bundle (${item.file_count} files)` : 'Open bundle'
+            }
+            title="Open bundle"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenAlbum(item.id)
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onDragStart={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.stopPropagation()
+                onOpenAlbum(item.id)
+              }
+            }}
+          >
+            <IconLayers />
+            {item.file_count > 1 && <span>{item.file_count}</span>}
+          </button>
+        ) : (
+          item.file_count > 1 && (
+            <span className="card__badge" style={{ left: 'auto', right: 6 }}>
+              {item.file_count}
+            </span>
+          )
         )}
         {isVideo && item.duration ? (
           <span className="card__dur">{formatDuration(item.duration)}</span>

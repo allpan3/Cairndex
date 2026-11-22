@@ -2,8 +2,19 @@
 
 ## Current checkpoint
 
-The local desktop test installation is `a724c9d`, qualified on 2026-11-10;
-the web test installation was not updated because its folder no longer exists.
+The local desktop test installation runs `236f7354` from
+`perf/smb-responsiveness-and-previews` (2026-11-21). A healthy bundle has no
+conflict action in its context menu. When edits compete, the owner can review
+the affected fields and return to the same selection, search or open album.
+Browser tests used synthetic libraries to exercise bundle and file conflicts
+against the packaged server and web interface. The running desktop reported
+the installed revision. The previous signed build is available for rollback.
+
+The earlier synthetic Smart Collection check displayed the selected bundle's
+title while its thumbnail was pending. Selection on the owner's SMB share
+remains an owner check. The standalone web test folder was unavailable at the
+last deployment.
+
 Grouping review accepts with one **Accept selected** button, a new Update's
 draft keeps the owner's earlier choices on the files still present, and an
 accept refused for changed files runs Update and reopens with those choices. File Browser New Folder lists the new folder as soon as its name is
@@ -93,10 +104,44 @@ each rebuilt sidecar asks once (2026-11-08). File tasks now ask before their
 first step; an Apple-issued signing identity is the owner decision that would
 remove the request. Actual owner-share access remains an owner check. Existing conflict alternatives are preserved.
 Album file menus now include Open, Locate in File Browser, and gated Rename/Trash;
-the selected file inspector also supports filename editing. Ordinary conflicts
-open in a compact dialog with readable alternatives. Structural conflicts retain
-full review. Confirmed saves survive inspector remounts, and explicit conflict
+the selected file inspector also supports filename editing. Healthy bundle and
+file selections show no conflict warning (`CatalogBundleSummary.has_conflicts`
+marks only actual holds); ordinary bundle and file scalar conflicts open in a
+compact dialog with readable alternatives, while structural, lifetime and
+membership conflicts open focused per-item review with human-readable labels,
+explicit recovery guards, an escape hatch to **Metadata Review**, and preserved
+return navigation back to the active browser, Bundle Album, File Browser, or
+viewer context. Confirmed saves survive inspector remounts, and explicit conflict
 choices advance only their covered local drafts.
+
+Per-file curation is implemented under [ADR-0043](adr/0043-file-stars-tags-and-notes.md):
+Bundle Browser cards (plus `⌘↓` / `Alt+↓`) open directly into the bundle Album,
+and files across the bundle file list, album, viewer rail, and File Browser
+support binary Star toggles (`asset_file_stars`), hierarchical file Tags
+(`asset_file_tags` with one-way propagation to confirmed parent bundles), Note,
+and Source URL editing with conflict review, server-side album star/tag
+filtering (`album_version: 2`, `inspector_version: 2`, `browse_version: 18`),
+`catalog_search` FTS5 indexing on file notes/sources, and `has_starred_files`
+library/Smart Collection filtering.
+
+SMB responsiveness, optimistic UI updates, and portable media previews are
+implemented on `perf/smb-responsiveness-and-previews`: replica object scans read
+existing `.cairndex/replica/objects` shards via `scandir`, local catalog and
+grouping/discovery commands drain without waiting on periodic SMB transport
+ticks, Grouping **Accept selected** reuses recorded candidate fingerprints and
+batches candidate/group checks with parallel generation verification.
+The grid fetches at most four covers at once. Cached thumbnail lookups run off
+the server event loop so bundle details can load during a slow SMB source check.
+Bundle tag and collection chips update after the server confirms the change.
+Other metadata edits apply optimistically with rollback. The global top sweep
+bar is removed. Portable Moment hover previews and on-demand video scrub
+previews work across desktop and SMB
+remounts, span Moments open with an armed range loop from Browser/File
+inspectors and play continuously without re-seeking on status/storyboard polls,
+and Update repairs 1:1 Finder/SMB renames and renamed unbundled copies
+automatically (keeping them in Grouping Suggestions) while pre-selecting
+single-choice repairs and offering **Settle All** in File Changes. See
+[performance measurements](performance.md#smb-responsiveness-and-grouping-accept-2026-11-21).
 
 ## Merged audit, SMB and incoming-files work
 
@@ -230,6 +275,8 @@ includes a full Linux backend run and focused macOS source-operation checks.
 
 | Snapshot | Qualification |
 | --- | --- |
+| Installed conflict review | All 1,590 web unit tests and both packaged browser scenarios passed. The 20-case browser run initially had two timeouts. The file-star case passed on a serial rerun. The peer-title case passed three times after the test waited for import, and the final layout check passed. The full backend run had 2,281 passes, one skip and one test that read its synthetic bundle before import completed. All 39 tests in that module passed after the fixture waited for readiness. The installed sidecar passed its smoke test. |
+| Installed bundle inspector | macOS web gate (1,583 unit tests), 138 Rust tests, signed package and sidecar smoke passed. Chromium opened bundle details twice with thumbnails held. The full backend run had 2,279 passes, one skip and two replica test races. After isolating the worker in those tests, all 39 replica tests passed and both affected cases passed five further runs. |
 | Installed one-step grouping accept and carried choices | macOS full frontend gate with 1,497 units; grouping and discovery browser specs 10 of 10, including a changed file refused at accept, the automatic Update and the carried title; 8 carry backend cases (titles, selection, order, moves, merge, collection placement and a missing collection, refused and still-open reviews, bounded pages over 240 files). macOS full backend run 2,228 passed and 1 failed: `test_one_pass_runs_review_edit_steps_for_a_bounded_time` fails 2 of 3 runs in the VM alone and passes 5 of 5 on the host; it expects a 50 ms sleep to fit a 120 ms budget, and neither it nor `advance_grouping` changed. Packaged sidecar smoke test passed on the installed app. |
 | Installed instant New Folder and portable video cover frame | macOS full frontend gate with 1,497 units on the packaged commit, including pending-folder listing, open-once-created, disabled menu and refusal reopen; file-operation browser specs 5 of 5; 3 catalog API backend cases including a `cover_time` set and clear through an ordinary save job, with backend lint and format on the changed test. Not re-measured on the Samba share: the folder row now renders in the same update as Enter. |
 | Installed File Browser responsiveness | Disposable Samba share at a 0.68 ms round trip: browser probe before and after (5 runs each), New Folder listed 1.75 s → 1.10 s median, Move item hidden 1.13 s → under 10 ms and finished 1.14 s → 0.71 s; server spans with an HTTP harness at 0 and about 3 ms added delay. macOS full frontend gate with 1,492 units, source-operation browser spec 5 of 5 and 67 focused worker/source/mkdir/original backend cases; signed package with the Apple Development signer, sidecar smoke, four frozen integrations, distribution, installed signature and embedded commit |
@@ -432,7 +479,7 @@ is not an owner-NAS or full-UI Update benchmark.
 - Provider/cloud delivery, offline delivery, hydration, conflicts, large-scale use
   and physical power-loss safety remain unqualified. Do not downgrade private
   stores after the derived search-layout replacement.
-- File Browser folder pagination, file note/source UI, cross-device resume,
+- File Browser folder pagination, cross-device resume,
   owner-media playback diagnosis and production registration repair remain
   deferred. [The restoration audit](restoration-audit.md) records the boundaries.
 - Release tags and production deployment remain separate owner-triggered actions.

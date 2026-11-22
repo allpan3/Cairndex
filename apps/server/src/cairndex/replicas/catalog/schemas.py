@@ -18,6 +18,8 @@ Family = Literal[
     "subtitle_tracks",
     "asset_bundle_tags",
     "asset_bundle_collections",
+    "asset_file_stars",
+    "asset_file_tags",
     "moment_tags",
     "tag_group_memberships",
 ]
@@ -42,6 +44,7 @@ class CatalogField(StrictModel):
 # A snapshot carries exact lifetime/reference bases and the complete observed frontier
 class CatalogEntity(StrictModel):
     has_conflicts: bool
+    held_membership_unit: str | None = None
     family: str
     id: str
     fields: dict[str, CatalogField]

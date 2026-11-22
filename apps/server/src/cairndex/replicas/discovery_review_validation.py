@@ -100,7 +100,7 @@ def source(
 
 # Prepared values retain complete bases and reproduce the exact immutable payload and retry intent
 def review(db: sqlite3.Connection, store: CatalogStore, row: sqlite3.Row) -> None:
-    from cairndex.replicas.discovery_commit import catalog_intent, sources_digest
+    from cairndex.replicas.discovery_commit import catalog_intent, needs_recover, sources_digest
     from cairndex.replicas.discovery_preview import DiscoveryPreview
     from cairndex.replicas.discovery_validation import references
 
@@ -158,6 +158,7 @@ def review(db: sqlite3.Connection, store: CatalogStore, row: sqlite3.Row) -> Non
     if not row["prepared"]:
         return
     prepared = json.loads(row["prepared"])
+    expected_recover = needs_recover(db, operation)
     if (
         set(prepared)
         != {
@@ -180,12 +181,15 @@ def review(db: sqlite3.Connection, store: CatalogStore, row: sqlite3.Row) -> Non
         or prepared["catalog"]["changes_digest"] != digest.hexdigest()
         or prepared["catalog"]["change_count"] != changes
         or prepared["catalog"]["parents"] != json.loads(work["parents"])
+        or prepared["catalog"].get("recover") is not expected_recover
     ):
         raise ReplicaError("Private discovery preview receipt changed")
     commit = db.execute(
         "SELECT intent FROM discovery_review_commit WHERE operation=?", (operation,)
     ).fetchone()
-    if not commit or commit[0] != catalog_intent(builder, work["parents"]):
+    if not commit or commit[0] != catalog_intent(
+        builder, work["parents"], recover=expected_recover
+    ):
         raise ReplicaError("Private discovery retry intent changed")
     last = db.execute(
         "SELECT raw FROM discovery_review_parts WHERE operation=? ORDER BY sequence DESC LIMIT 1",
@@ -194,7 +198,7 @@ def review(db: sqlite3.Connection, store: CatalogStore, row: sqlite3.Row) -> Non
     if last is None:
         raise ReplicaError("Private discovery preview has no complete transaction")
     _, root = decode(last[0], store.descriptor)
-    if not isinstance(root, Root):
+    if not isinstance(root, Root) or root.recover is not expected_recover:
         raise ReplicaError("Private discovery preview has no complete root")
     expected = payload(
         builder.changes(),
@@ -203,6 +207,7 @@ def review(db: sqlite3.Connection, store: CatalogStore, row: sqlite3.Row) -> Non
         replica=root.replica,
         operation="discover_" + checksum(operation.encode())[:50],
         parents=json.loads(work["parents"]),
+        recover=root.recover,
     )
     actual = db.execute(
         "SELECT id,raw FROM discovery_review_parts WHERE operation=? ORDER BY sequence",

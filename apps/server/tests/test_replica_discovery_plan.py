@@ -38,7 +38,16 @@ def prepare_index(store, root):
 
 # Compare full output structure and member order against the established pure grouping semantics
 @pytest.mark.parametrize(
-    "shape", ["parts", "album", "collection", "nested", "folder-extras", "video-extras"]
+    "shape",
+    [
+        "parts",
+        "album",
+        "collection",
+        "nested",
+        "folder-extras",
+        "video-extras",
+        "hyphenated-identifiers",
+    ],
 )
 def test_disk_plan_matches_complete_grouping(replicas, shape):
     store, root, _ = replicas[0]
@@ -52,6 +61,18 @@ def test_disk_plan_matches_complete_grouping(replicas, shape):
         ]
     elif shape == "nested":
         paths = [f"Shelf/Series/episode{i:03}.mp4" for i in range(5)] + ["Shelf/Feature/movie.mp4"]
+    elif shape == "hyphenated-identifiers":
+        paths = [
+            "CLIP-100 - HDR.mp4",
+            "CLIP-100-cover.jpg",
+            "CLIP-100.srt",
+            "Archive/CLIP-200 - HDR.mp4",
+            "Archive/CLIP-200-cover.jpg",
+            "Archive/CLIP-200.srt",
+            "Archive/CLIP-300 - SDR.mp4",
+            "Archive/CLIP-300-cover.jpg",
+            "Archive/CLIP-300.srt",
+        ]
     else:
         paths = ["Feature/movie.mp4", "Feature/poster.png"] + [
             f"Feature/Extras/picture{i:03}.png" for i in range(201)

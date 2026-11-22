@@ -109,12 +109,13 @@ def repair(
     ):
         raise ReplicaError("The file content choice changed; review its identity")
     verified = sources.inspect(root, new["path"])
-    if verified["generation"] != new["generation"] or not sources.matches(old, verified):
+    revalidated = sources.moved_observation(old, verified)
+    if verified["generation"] != new["generation"] or revalidated is None:
         raise ReplicaError("Moved-file evidence changed; run Update again")
     builder = Preview(store, db)
-    builder.put(key("asset_files", identity, "relative_path"), new["path"])
+    builder.put(key("asset_files", identity, "relative_path"), revalidated["path"])
     if not store.tips(db, key("asset_files", identity, "$content")):
-        builder.put(key("asset_files", identity, "$content"), old["evidence"])
+        builder.put(key("asset_files", identity, "$content"), revalidated["evidence"])
     receipt = builder.receipt()
     store.save_in(
         db,
@@ -122,14 +123,14 @@ def repair(
         operation,
         parents=receipt["parents"],
     )
-    repaired_local_state(db, identity, old, new)
+    repaired_local_state(db, identity, old, revalidated)
 
 
 # Resume follows only this device's earlier verified generation, never another device's bytes
 def repaired_local_state(
     db: sqlite3.Connection, identity: str, old: dict[str, Any], new: dict[str, Any]
 ) -> None:
-    if sources.matches(old, new):
+    if sources.moved_observation(old, new) is not None:
         db.execute(
             "UPDATE local_progress SET generation=? WHERE file_id=? AND generation=?",
             (new["generation"], identity, old.get("generation", "")),
@@ -422,28 +423,34 @@ def repair_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
             choices = [json.loads(r[0]) for r in matching(db, run, new).fetchmany(2)]
             matches = []
             if len(choices) == 1:
+                digests = (
+                    new["evidence"]["digest"],
+                    choices[0]["evidence"]["digest"],
+                )
                 matches = [
-                    json.loads(r[0])
+                    item
                     for r in db.execute(
                         (
                             "SELECT body FROM discovery_entries WHERE run=? AND handled IN "
-                            "(0,2) AND json_extract(body,'$.evidence.digest')=? LIMIT ?"
+                            "(0,2) AND json_extract(body,'$.evidence.digest') IN (?,?) LIMIT ?"
                         ),
-                        (run, new["evidence"]["digest"], 2),
+                        (run, digests[0], digests[1], 2),
                     )
-                    if choices[0]["evidence"] == json.loads(r[0])["evidence"]
+                    if (item := json.loads(r[0]))["evidence"]
+                    in (choices[0]["evidence"], choices[0].get("sample"))
                 ]
-            if (
-                len(choices) == len(matches) == 1
-                and choices[0]["automatic"]
-                and sources.matches(choices[0], new)
-            ):
+            repaired_new = (
+                sources.moved_observation(choices[0], new)
+                if len(choices) == len(matches) == 1 and choices[0]["automatic"]
+                else None
+            )
+            if repaired_new is not None:
                 repair(
                     store,
                     db,
                     root,
                     choices[0],
-                    new,
+                    repaired_new,
                     "move_" + checksum(value_text([run, path]).encode())[:40],
                 )
                 db.execute(

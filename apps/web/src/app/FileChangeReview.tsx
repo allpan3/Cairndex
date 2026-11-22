@@ -11,7 +11,7 @@ import {
   type DiscoveryVerification,
 } from '../api/discovery'
 import { formatBytes } from '../lib/format'
-import type { FileChangeKind } from './fileChange'
+import { friendlyFileChangeError as friendly, type FileChangeKind } from './fileChange'
 import { useCatalogDraft } from './useCatalogDraft'
 
 const COPY: Record<
@@ -45,12 +45,6 @@ const COPY: Record<
 }
 
 type Progress = { verification: string; review: string; repair: string }
-
-function friendly(message: string): string {
-  if (message.includes('different bytes'))
-    return 'The whole file is different from what Cairndex recorded. Run Update to review it as changed content.'
-  return message
-}
 
 export function FileChangeReview({
   library,
@@ -110,23 +104,31 @@ export function FileChangeReview({
         `/candidates/${candidate.id}/choices?after=`,
       ),
   })
+  const availableChoices = choices.data?.items ?? body.choices ?? []
+  const hasMoreChoices = Boolean(choices.data ? choices.data.next_cursor : body.choices_next)
+  const singleChoice =
+    kind === 'repair' && availableChoices.length === 1 && !hasMoreChoices
+      ? availableChoices[0]!
+      : null
+  const effectiveRepair = repair || singleChoice?.file_id || ''
   const sent = useRef<string | null>(null)
   const [requestError, setRequestError] = useState('')
 
   async function prepare(verification: string | null, base: Progress = draft.body) {
     const operation = operationId()
-    draft.update({ ...base, review: operation })
+    const selectedRepair = base.repair || singleChoice?.file_id || ''
+    draft.update({ ...base, repair: selectedRepair, review: operation })
     try {
       await discovery(library, '/reviews', 'POST', {
         operation,
         candidate: candidate.id,
         title: body.title,
-        repair_file: repair || null,
+        repair_file: selectedRepair || null,
         use_replacement: kind === 'replacement',
         ...(verification ? { verification } : {}),
       })
     } catch (reason) {
-      draft.update({ ...base, review: '' })
+      draft.update({ ...base, repair: selectedRepair, review: '' })
       setRequestError(friendly((reason as Error).message))
     }
   }
@@ -135,7 +137,7 @@ export function FileChangeReview({
   async function start() {
     setRequestError('')
     sent.current = null
-    const base = { verification: '', review: '', repair }
+    const base = { verification: '', review: '', repair: effectiveRepair }
     if (!needsCheck) return prepare(null, base)
     const operation = operationId()
     draft.update({ ...base, verification: operation })
@@ -184,7 +186,26 @@ export function FileChangeReview({
     (check.error ? check.error.message : '') ||
     (review.error ? review.error.message : '')
   const working = Boolean(checking || saving) && !failure
-  const blocked = kind === 'repair' && !repair
+  const blocked = kind === 'repair' && !effectiveRepair
+  const oldFolder = singleChoice?.path.includes('/')
+    ? singleChoice.path.slice(0, singleChoice.path.lastIndexOf('/'))
+    : ''
+  const oldName = singleChoice
+    ? singleChoice.path.includes('/')
+      ? singleChoice.path.slice(singleChoice.path.lastIndexOf('/') + 1)
+      : singleChoice.path
+    : ''
+  const sameFolderRename = Boolean(singleChoice && oldFolder === folder)
+  const leadText = singleChoice
+    ? sameFolderRename
+      ? 'This file was renamed on disk.'
+      : 'This file moved to another folder on disk.'
+    : copy.lead
+  const detailText = singleChoice
+    ? sameFolderRename
+      ? `${oldName} → ${body.title}. Linking keeps that file’s bundle, tags and notes.`
+      : `${singleChoice.path} → ${candidate.path}. Linking keeps that file’s bundle, tags and notes.`
+    : copy.detail
 
   return (
     <div className="fc-detail" aria-label="File change">
@@ -193,20 +214,20 @@ export function FileChangeReview({
         {folder || 'Library folder'}
         {file ? ` · ${formatBytes(file.evidence.size)}` : ''}
       </p>
-      <p className="fc-detail__lead">{copy.lead}</p>
-      <p className="fc-detail__text">{copy.detail}</p>
+      <p className="fc-detail__lead">{leadText}</p>
+      <p className="fc-detail__text">{detailText}</p>
 
-      {kind === 'repair' && (
+      {kind === 'repair' && !singleChoice && (
         <fieldset className="fc-choices" disabled={working || applied}>
           <legend>Which missing file is this?</legend>
           {choices.isPending && <p className="fc-muted">Loading missing files…</p>}
           {choices.error && <p className="fc-alert">{choices.error.message}</p>}
-          {(choices.data?.items ?? body.choices ?? []).map((item) => (
+          {availableChoices.map((item) => (
             <label key={item.file_id} className="fc-choice">
               <input
                 type="radio"
                 name={`missing-${candidate.id}`}
-                checked={repair === item.file_id}
+                checked={effectiveRepair === item.file_id}
                 onChange={() => draft.update({ ...draft.body, repair: item.file_id })}
               />
               <span>{item.path}</span>

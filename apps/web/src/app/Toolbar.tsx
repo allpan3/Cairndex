@@ -2,8 +2,13 @@ import { ViewOptions } from './ViewOptions'
 import { useState, type ReactNode } from 'react'
 
 import type { BundleSort, SortOrder } from '../api/client'
-import { type AdHocFilters, type FacetContext, anyAdHocActive } from './adHocFilters'
-import { IconFilter, IconLayoutCard, IconLayoutJustified, IconLayoutList } from './icons'
+import {
+  type AdHocFilters,
+  type FacetContext,
+  anyAdHocActive,
+  emptyAdHocFilters,
+} from './adHocFilters'
+import { IconFilter, IconLayoutCard, IconLayoutJustified, IconLayoutList, IconStar } from './icons'
 import { ZOOM_MAX, ZOOM_MIN } from './layout'
 import { TypeFilterControl } from './TypeFilterControl'
 import { RatingFilterControl } from './RatingFilterControl'
@@ -17,6 +22,9 @@ import { BUNDLE_SORTS, type BrowsePrefs, type LayoutMode } from './types'
 interface ToolbarProps {
   unavailableFilters?: string
   allowCollectionSort?: boolean
+  allowStarredFiles?: boolean
+  /** True while viewing files inside an open bundle (hides bundle-only sort controls). */
+  albumOpen?: boolean
 
   /** Leading controls before the title — the sidebar toggle and the
    *  Back/Forward history buttons. */
@@ -77,6 +85,8 @@ export function Toolbar({
   leading,
   unavailableFilters,
   allowCollectionSort = true,
+  allowStarredFiles = false,
+  albumOpen = false,
   trailing,
   onReshuffle,
   title,
@@ -212,7 +222,8 @@ export function Toolbar({
           showDetails={prefs.showCardDetails ?? true}
           onShowDetails={(showCardDetails) => onPrefs({ ...prefs, showCardDetails })}
           sortControls={
-            !onReshuffle && (
+            !onReshuffle &&
+            !albumOpen && (
               <SortFields
                 sort={sort}
                 order={order}
@@ -249,15 +260,29 @@ export function Toolbar({
             onChange={onAdHocFilters}
             ctx={facetContext}
           />
+          {allowStarredFiles && (
+            <button
+              type="button"
+              className={`filter-chip${adHocFilters.hasStarredFiles ? ' filter-chip--on' : ''}`}
+              aria-pressed={Boolean(adHocFilters.hasStarredFiles)}
+              aria-label="Filter by starred files"
+              onClick={() =>
+                onAdHocFilters({
+                  ...adHocFilters,
+                  hasStarredFiles: !adHocFilters.hasStarredFiles,
+                })
+              }
+            >
+              <span className="filter-chip__icon">
+                <IconStar filled={Boolean(adHocFilters.hasStarredFiles)} />
+              </span>
+              Starred files
+            </button>
+          )}
           {filtersActive && (
             <button
               className="filterbar__clear"
-              onClick={() =>
-                onAdHocFilters({
-                  tags: { rule: 'any', includeDescendants: true, include: [], exclude: [] },
-                  rating: null,
-                })
-              }
+              onClick={() => onAdHocFilters(emptyAdHocFilters())}
             >
               Clear all
             </button>

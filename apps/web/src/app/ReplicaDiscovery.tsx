@@ -1,10 +1,15 @@
 // Manual Update keeps pending discoveries and grouping review separate from catalog editors
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { discovery, type DiscoveryCandidate, type DiscoveryRun } from '../api/discovery'
 import { CandidateReview } from './DiscoveryCandidateReview'
 import { DiscoveryPrepared } from './DiscoveryPrepared'
-import { FILE_CHANGE_LABEL, isFileChange, type FileChangeKind } from './fileChange'
+import {
+  FILE_CHANGE_LABEL,
+  isFileChange,
+  settleFileChangeCandidate,
+  type FileChangeKind,
+} from './fileChange'
 import { FileChangeReview } from './FileChangeReview'
 import { useModalDialog } from './useModalDialog'
 import type { ReplicaDiscoveryState } from './useReplicaDiscovery'
@@ -259,6 +264,9 @@ export function DiscoveryReviewDialog({
   // The first change is open by default, so the pane never starts empty
   const shown = candidate ?? (changesView && !reviewId ? (items[0] ?? null) : null)
   const [notice, setNotice] = useState('')
+  const [batchRunning, setBatchRunning] = useState(false)
+  const batchAbortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => batchAbortRef.current?.abort(), [])
   const { setCandidate, refresh } = d
   const refetch = candidates.refetch
   const settled = useCallback(
@@ -270,6 +278,49 @@ export function DiscoveryReviewDialog({
     },
     [setCandidate, refetch, refresh],
   )
+  const settleableItems = changesView
+    ? items.filter(
+        (item) =>
+          isFileChange(item) &&
+          (item.body.kind !== 'repair' ||
+            ((item.body.choices?.length ?? 0) === 1 && !item.body.choices_next)),
+      )
+    : []
+  async function settleAll() {
+    if (batchRunning || settleableItems.length === 0) return
+    const controller = new AbortController()
+    batchAbortRef.current = controller
+    setBatchRunning(true)
+    let doneCount = 0
+    try {
+      for (let i = 0; i < settleableItems.length; i++) {
+        const target = settleableItems[i]!
+        setNotice(`Settling ${i + 1} of ${settleableItems.length}: ${target.body.title}…`)
+        if (await settleFileChangeCandidate(library, target, controller.signal)) {
+          doneCount += 1
+        }
+      }
+      setCandidate(null)
+      await refetch()
+      refresh()
+      setNotice(doneCount === 1 ? 'Settled 1 file change.' : `Settled ${doneCount} file changes.`)
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        setNotice(
+          doneCount > 0
+            ? `Stopped after settling ${doneCount} file ${doneCount === 1 ? 'change' : 'changes'}.`
+            : 'Stopped.',
+        )
+      } else {
+        setNotice((error as Error).message)
+      }
+      void refetch()
+      refresh()
+    } finally {
+      if (batchAbortRef.current === controller) batchAbortRef.current = null
+      setBatchRunning(false)
+    }
+  }
   const savedCount = reviews.data?.items.length ?? 0
   // The earlier choices are offered only when grouping proposals exist to choose from
   const hasGrouping = Boolean(d.candidates.data?.items.some((item) => !isFileChange(item)))
@@ -292,6 +343,22 @@ export function DiscoveryReviewDialog({
             </span>
           )}
           <span className="fc-spacer" />
+          {changesView &&
+            (batchRunning ? (
+              <button className="btn btn--compact" onClick={() => batchAbortRef.current?.abort()}>
+                Stop
+              </button>
+            ) : (
+              settleableItems.length > 1 && (
+                <button
+                  className="btn btn--compact btn--primary"
+                  disabled={d.busy}
+                  onClick={() => void settleAll()}
+                >
+                  Settle All ({settleableItems.length})
+                </button>
+              )
+            ))}
           {fileChangesOnly && (earlierChoices || hasGrouping) && (
             <button
               className="btn btn--compact"
@@ -317,7 +384,7 @@ export function DiscoveryReviewDialog({
         <div className="fc-intro">
           <p>
             {changesView
-              ? 'Files that changed on disk since Cairndex last checked them. Your library changes only when you act on one.'
+              ? 'Files whose content changed on disk or whose move could not be matched automatically (ordinary renames and moves repair during Update).'
               : 'Choices stay private until you accept a prepared review.'}
           </p>
           {notice && (

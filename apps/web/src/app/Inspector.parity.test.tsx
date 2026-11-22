@@ -88,6 +88,7 @@ const shellActions: BundleInspectorActions = {
   onFilterByTags: vi.fn(),
   onOpenCollection: vi.fn(),
   onPlayMoment: vi.fn(),
+  onLoopMoment: vi.fn(),
   // Player-bound in practice (only the viewer has a playhead), but this fixture
   // is "everything, with every entry present": the invariant under test is that
   // whatever the shell supplies reaches the viewer's rail.

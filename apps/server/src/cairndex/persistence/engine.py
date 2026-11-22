@@ -419,6 +419,9 @@ _ADDITIVE_CONTENT_TABLES: tuple[str, ...] = (
     # ``moments``, and these are created in list order.
     "moments",
     "moment_tags",
+    # ADR-0043: per-file star presence and tags; empty until the owner annotates files.
+    "asset_file_stars",
+    "asset_file_tags",
 )
 
 

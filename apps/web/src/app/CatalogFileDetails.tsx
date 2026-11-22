@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { FileBrowserEntry } from '../api/client'
 import type { components } from '../api/schema'
 import { replicaRequest } from '../api/replicas'
 import { getHostLabels } from '../platform'
+import { CatalogFileMoments } from './CatalogBundleMoments'
+import { CatalogFileAnnotations, CatalogFileStarButton } from './CatalogFileAnnotations'
 import { FileInspector } from './FileInspector'
 import { factsFromBundleFile, factsFromEntry, type FileFacts } from './fileFacts'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
@@ -23,6 +26,14 @@ export function CatalogFileDetails({
   locatable = true,
   onRename,
   onLocatePath,
+  editor,
+  metadataEnabled = false,
+  blocked = false,
+  onReview,
+  onReviewConflict,
+  onFilterTag,
+  onPlayMoment,
+  onLoopMoment,
 }: {
   library: string
   file: string | null
@@ -33,7 +44,17 @@ export function CatalogFileDetails({
   locatable?: boolean
   onRename?: (relativePath: string, newName: string) => void | Promise<void>
   onLocatePath?: (relativePath: string) => void
+  editor?: string
+  metadataEnabled?: boolean
+  blocked?: boolean
+  onReview?: () => void
+  onReviewConflict?: (unit: string) => void
+  onFilterTag?: (id: string) => void
+  onPlayMoment?: (bundleId: string, fileId: string, time: number) => void
+  onLoopMoment?: (bundleId: string, fileId: string, range: { start: number; end: number }) => void
 }) {
+  const [starConflict, setStarConflict] = useState<string | null>(null)
+  const [starError, setStarError] = useState<Error | null>(null)
   const detail = useQuery({
     queryKey: ['catalog-local-file', library, file, entry?.local_state],
     queryFn: () =>
@@ -58,6 +79,25 @@ export function CatalogFileDetails({
   if (facts && entry?.local_state === 'unavailable') facts = { ...facts, status: UNAVAILABLE }
   else if (facts && !detail.data && entry?.local_state === 'unknown')
     facts = { ...facts, status: 'Unknown on this device' }
+
+  const showAnnotations =
+    metadataEnabled && file !== null && Boolean(editor) && facts?.kind === 'file'
+  const observedFile = detail.data?.file ?? null
+  const momentSection =
+    metadataEnabled &&
+    observedFile &&
+    observedFile.bundle_id &&
+    observedFile.media_kind === 'video' ? (
+      <CatalogFileMoments
+        library={library}
+        bundle={observedFile.bundle_id}
+        file={observedFile}
+        onPlay={onPlayMoment}
+        onLoop={onLoopMoment}
+        onFilterTag={onFilterTag}
+      />
+    ) : null
+
   return (
     <section aria-label="Local file details" className="catalog-file-details">
       {detail.isPending && !facts && file !== null && (
@@ -76,7 +116,37 @@ export function CatalogFileDetails({
           onLocate={onLocatePath ?? (onLocate && (() => onLocate()))}
           locateDisabled={!locatable}
           onRename={onRename}
-        />
+          headerAction={
+            showAnnotations && file !== null ? (
+              <CatalogFileStarButton
+                library={library}
+                file={file}
+                blocked={blocked}
+                fallbackStarred={observedFile !== null ? Boolean(observedFile.starred) : undefined}
+                onConflict={setStarConflict}
+                onErrorChange={setStarError}
+              />
+            ) : undefined
+          }
+        >
+          {showAnnotations && file !== null && editor ? (
+            <CatalogFileAnnotations
+              library={library}
+              file={file}
+              editor={editor}
+              blocked={blocked}
+              showStarButton={false}
+              externalStarConflict={starConflict}
+              externalStarError={starError}
+              moments={momentSection}
+              onReview={onReview}
+              onReviewConflict={onReviewConflict}
+              onFilterTag={onFilterTag}
+            />
+          ) : (
+            momentSection
+          )}
+        </FileInspector>
       )}
     </section>
   )

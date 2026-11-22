@@ -22,6 +22,7 @@ import {
 } from '../api/replicas'
 import type { LibraryRead } from '../api/client'
 import { CatalogFilter } from './CatalogFilter'
+import { CatalogFocusedConflictReview } from './CatalogFocusedConflictReview'
 import { CatalogJobs } from './CatalogJobs'
 import { CatalogEditor } from './CatalogEditor'
 import { CatalogFileBrowser } from './CatalogFileBrowser'
@@ -238,20 +239,71 @@ export function CatalogWorkspace({
     [],
   )
   const [after, setAfter] = useState('')
-  const [selected, setSelected] = useState<string | null>(null)
+  const [browserSelected, setBrowserSelected] = useState<string | null>(null)
+  const [catalogSelected, setCatalogSelected] = useState<string | null>(null)
   const [deleted, setDeleted] = useState(false)
   const [creating, setCreating] = useState(false)
-  // A structural conflict the bundle browser sent here; its editor opens the full review
+  const [browserSurfaceLabel, setBrowserSurfaceLabel] = useState('Bundle Browser')
+  const [focusedConflict, setFocusedConflict] = useState<{
+    unit: string
+    returnLabel: string
+  } | null>(null)
+  const [suspendedMedia, setSuspendedMedia] = useState<ReplicaOpen | null>(null)
+  // A structural conflict opened inside Library catalog when ordinaryBrowse is unavailable
   const [reviewUnit, setReviewUnit] = useState<string | null>(null)
-  function reviewConflict(unit: string) {
-    const [owner, id] = unit.split('/')
-    setMedia(null)
-    setFamily(owner!)
+  const [lastLibraryId, setLastLibraryId] = useState(libraryId)
+  if (lastLibraryId !== libraryId) {
+    setLastLibraryId(libraryId)
+    setFocusedConflict(null)
+    setSuspendedMedia(null)
+    setBrowserSelected(null)
+    setCatalogSelected(null)
+    setReviewUnit(null)
+  }
+  function returnToBrowser() {
+    setFocusedConflict(null)
+    setReviewMode(false)
+    setReviewUnit(null)
+    if (suspendedMedia) {
+      setMedia(suspendedMedia)
+      setSuspendedMedia(null)
+    }
+  }
+  function openMetadataReview(
+    targetFamily = 'asset_bundles',
+    targetId: string | null = null,
+    includeDeleted = false,
+    activeUnit: string | null = null,
+  ) {
+    if (media) {
+      setSuspendedMedia(media)
+      setMedia(null)
+    }
+    setFocusedConflict(null)
+    setFamily(targetFamily)
     setAfter('')
-    setSelected(id!)
+    setCatalogSelected(targetId)
+    if (includeDeleted) setDeleted(true)
     setCreating(false)
-    setReviewUnit(unit)
+    setReviewUnit(activeUnit)
     setReviewMode(true)
+  }
+  function reviewConflict(unit: string) {
+    if (!ordinaryBrowse) {
+      const [owner, id] = unit.split('/')
+      openMetadataReview(owner!, id!, true, unit)
+      return
+    }
+    const fromViewer = media !== null
+    if (media) {
+      setSuspendedMedia(media)
+      setMedia(null)
+    }
+    setReviewMode(false)
+    setFocusedConflict({
+      unit,
+      returnLabel: fromViewer ? 'Viewer' : browserSurfaceLabel,
+    })
   }
   // A cairndex:// link opens in the browser, so it leaves metadata review and the viewer
   useEffect(() => {
@@ -263,6 +315,8 @@ export function CatalogWorkspace({
     /* eslint-disable react-hooks/set-state-in-effect -- the OS delivers the link,
        not a React event. The browser reports it handled and App clears it, so
        this runs once for each link. */
+    setFocusedConflict(null)
+    setSuspendedMedia(null)
     setReviewMode(false)
     setMedia(null)
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -300,9 +354,9 @@ export function CatalogWorkspace({
     enabled: reviewMode,
     refetchInterval: 2000,
   })
-  const identity = selected ?? page.data?.items[0]?.id
+  const identity = catalogSelected ?? page.data?.items[0]?.id
   // Bind the initial selection before refreshed discoveries can sort ahead of its editor
-  if (selected === null && identity) setSelected(identity)
+  if (catalogSelected === null && identity) setCatalogSelected(identity)
   const detail = useQuery({
     queryKey: ['catalog-detail', libraryId, family, identity],
     enabled: reviewMode && Boolean(identity),
@@ -333,9 +387,16 @@ export function CatalogWorkspace({
       onAuthorized={refresh}
     />
   )
+  const browserHidden = reviewMode || focusedConflict !== null
   return (
     <main
-      className={reviewMode ? 'replica-workspace catalog-workspace' : 'catalog-browser-workspace'}
+      className={
+        reviewMode
+          ? 'replica-workspace catalog-workspace'
+          : focusedConflict
+            ? 'focused-conflict-workspace'
+            : 'catalog-browser-workspace'
+      }
     >
       {reviewMode && (
         <header>
@@ -367,15 +428,7 @@ export function CatalogWorkspace({
       )}
       {reviewMode && (
         <nav aria-label="Library views">
-          <button
-            disabled={!ordinaryBrowse}
-            aria-pressed={!reviewMode}
-            onClick={() => {
-              setReviewMode(false)
-              setFamily('asset_bundles')
-              setSelected(null)
-            }}
-          >
+          <button disabled={!ordinaryBrowse} aria-pressed={!reviewMode} onClick={returnToBrowser}>
             Bundle Browser
           </button>
           <button aria-pressed={reviewMode} onClick={() => setReviewMode(true)}>
@@ -432,11 +485,15 @@ export function CatalogWorkspace({
                   file_id?: string
                   video_file_id?: string
                   start_s?: number
+                  end_s?: number | null
                 }
                 setMedia({
                   bundleId: value.bundle_id,
                   fileId: value.file_id ?? value.video_file_id,
                   time: value.start_s,
+                  ...(value.start_s !== undefined && value.end_s != null
+                    ? { loop: { start: value.start_s, end: value.end_s } }
+                    : {}),
                 })
               }
             }}
@@ -446,7 +503,7 @@ export function CatalogWorkspace({
         )}
       {media && (
         <ReplicaViewer
-          key={`${libraryId}/${media.bundleId}/${media.fileId}/${media.time}`}
+          key={`${libraryId}/${media.bundleId}/${media.fileId}/${media.time}/${media.loop ? `${media.loop.start}-${media.loop.end}` : ''}`}
           library={libraryId}
           target={media}
           onClose={() => setMedia(null)}
@@ -458,11 +515,12 @@ export function CatalogWorkspace({
                     library={libraryId}
                     bundle={bundleId}
                     editor={editor}
-                    inspectorEnabled={state?.inspector_version === 1}
+                    inspectorEnabled={(state?.inspector_version ?? 0) >= 1}
                     blocked={!state?.ready || Boolean(state?.blocked)}
                     onFilterTag={
                       !reviewMode
                         ? (id) => {
+                            setSuspendedMedia(null)
                             setMedia(null)
                             browserTagFilter.current?.(id)
                           }
@@ -471,6 +529,7 @@ export function CatalogWorkspace({
                     onOpenCollection={
                       !reviewMode
                         ? (id) => {
+                            setSuspendedMedia(null)
                             setMedia(null)
                             browserCollectionNavigation.current?.(id)
                           }
@@ -479,6 +538,7 @@ export function CatalogWorkspace({
                     onLocateFile={
                       !reviewMode
                         ? (path) => {
+                            setSuspendedMedia(null)
                             setMedia(null)
                             browserFileNavigation.current?.(path)
                           }
@@ -487,17 +547,13 @@ export function CatalogWorkspace({
                     onOpenDirectory={
                       !reviewMode
                         ? (path) => {
+                            setSuspendedMedia(null)
                             setMedia(null)
                             browserFileNavigation.current?.(path, true)
                           }
                         : undefined
                     }
-                    onReview={() => {
-                      setMedia(null)
-                      setFamily('asset_bundles')
-                      setSelected(bundleId)
-                      setReviewMode(true)
-                    }}
+                    onReview={() => openMetadataReview('asset_bundles', bundleId)}
                     onReviewConflict={reviewConflict}
                     {...controls}
                   />
@@ -522,116 +578,138 @@ export function CatalogWorkspace({
           onOpen={(id) => {
             setReviewMode(true)
             setFamily('asset_files')
-            setSelected(id)
+            setCatalogSelected(id)
             setFileBrowser(false)
           }}
         />
       )}
-      {!reviewMode && state?.ready && editor && (
-        <CatalogOrdinaryBrowser
-          key={libraryId}
-          libraries={libraries}
-          onChangeLibrary={onChangeLibrary}
-          onManage={onManage}
-          onSettings={onSettings}
-          onRegisterTagFilter={registerTagFilter}
-          onRegisterFileNavigation={registerFileNavigation}
-          onRegisterCollectionNavigation={registerCollectionNavigation}
-          onReviewEntity={(family, id) => {
-            setFamily(family)
-            setSelected(id)
-            setReviewMode(true)
-          }}
+      {!reviewMode && focusedConflict && editor && (
+        <CatalogFocusedConflictReview
+          key={`${libraryId}/${focusedConflict.unit}`}
           library={libraryId}
           editor={editor}
-          albumEnabled={state.album_version === 1}
-          inspectorEnabled={state.inspector_version === 1}
-          sourceOperationsEnabled={state.source_operations_version === 1}
-          selectionEnabled={(state.selection_version ?? 0) >= 1}
-          systemViewsEnabled={state.system_views_version === 1}
+          unit={focusedConflict.unit}
           blocked={!state?.ready || Boolean(state?.blocked)}
-          selected={selected}
-          onSelect={setSelected}
-          onReview={() => {
-            setFamily('asset_bundles')
-            setReviewMode(true)
-          }}
-          onReviewConflict={reviewConflict}
-          onOpen={(id) => setMedia({ bundleId: id })}
-          onOpenFile={(bundleId, fileId, time) => setMedia({ bundleId, fileId, time })}
-          viewerOpen={media !== null}
-          deepLink={deepLink}
-          onDeepLinkHandled={onDeepLinkHandled}
-          update={
-            discovery.enabled
-              ? {
-                  running: discovery.running,
-                  initialScan: discovery.run.data?.initial_scan,
-                  disabled: !discovery.canStart,
-                  onClick: () => void discovery.start(),
-                }
-              : undefined
+          returnLabel={focusedConflict.returnLabel}
+          onBack={returnToBrowser}
+          onOpenMetadataReview={(targetFamily, targetId, activeUnit) =>
+            openMetadataReview(targetFamily, targetId || null, true, activeUnit)
           }
-          libraryMenu={[
-            ...(discovery.enabled
-              ? [
-                  {
-                    label: 'Scan new files',
-                    disabled: !discovery.canStart,
-                    onClick: () => void discovery.start({ openReview: false }),
-                  },
-                  {
-                    label:
-                      (state?.grouping_version ?? 0) >= 1
-                        ? 'Suggest grouping…'
-                        : 'Review Discoveries…',
-                    onClick: () => discovery.setOpen(true),
-                  },
-                ]
-              : []),
-            ...(state?.maintenance_version === 1
-              ? [
-                  {
-                    label: 'Collect metadata',
-                    disabled: !maintenance.canStart,
-                    onClick: () => void maintenance.start('probe'),
-                  },
-                  {
-                    label: 'Generate storyboards',
-                    disabled: !maintenance.canStart,
-                    onClick: () => void maintenance.start('storyboards'),
-                  },
-                ]
-              : []),
-            { label: 'Metadata Review', onClick: () => setReviewMode(true) },
-          ]}
-          libraryNotices={(onNotice) => (
-            <>
-              {discovery.enabled && (
-                <DiscoveryNotice discovery={discovery} onComplete={(text) => onNotice({ text })} />
-              )}
-              {state?.maintenance_version === 1 && (
-                <CatalogMaintenanceNotice
-                  maintenance={maintenance}
-                  onComplete={(text) => onNotice({ text })}
-                />
-              )}
-              {(attention || storageAccess) && (
-                <section className="sidebar__notice" aria-label="Metadata delivery status">
-                  {attention && <p role="alert">{attention}</p>}
-                  {storageAccess}
-                  {attention && (
-                    <button className="btn" onClick={refresh}>
-                      Refresh Status
-                    </button>
-                  )}
-                </section>
-              )}
-            </>
-          )}
+          onResolved={refresh}
         />
       )}
-      {!reviewMode && notReady && (
+      {ordinaryBrowse && state?.ready && editor && (
+        <div className="catalog-ordinary-host" hidden={browserHidden}>
+          <CatalogOrdinaryBrowser
+            key={libraryId}
+            libraries={libraries}
+            onChangeLibrary={onChangeLibrary}
+            onManage={onManage}
+            onSettings={onSettings}
+            onRegisterTagFilter={registerTagFilter}
+            onRegisterFileNavigation={registerFileNavigation}
+            onRegisterCollectionNavigation={registerCollectionNavigation}
+            onReviewEntity={(targetFamily, id, includeDeleted = false) =>
+              openMetadataReview(targetFamily, id, includeDeleted)
+            }
+            library={libraryId}
+            editor={editor}
+            albumEnabled={(state.album_version ?? 0) >= 1}
+            inspectorEnabled={(state.inspector_version ?? 0) >= 1}
+            sourceOperationsEnabled={state.source_operations_version === 1}
+            selectionEnabled={(state.selection_version ?? 0) >= 1}
+            systemViewsEnabled={state.system_views_version === 1}
+            blocked={!state?.ready || Boolean(state?.blocked)}
+            selected={browserSelected}
+            onSelect={setBrowserSelected}
+            onReview={() => openMetadataReview('asset_bundles', browserSelected)}
+            onReviewConflict={reviewConflict}
+            hidden={browserHidden}
+            onActiveSurfaceChange={setBrowserSurfaceLabel}
+            onOpen={(id) => setMedia({ bundleId: id })}
+            onOpenFile={(bundleId, fileId, time, loop) =>
+              setMedia({ bundleId, fileId, time, ...(loop ? { loop } : {}) })
+            }
+            viewerOpen={media !== null || browserHidden}
+            deepLink={deepLink}
+            onDeepLinkHandled={onDeepLinkHandled}
+            update={
+              discovery.enabled
+                ? {
+                    running: discovery.running,
+                    initialScan: discovery.run.data?.initial_scan,
+                    disabled: !discovery.canStart,
+                    onClick: () => void discovery.start(),
+                  }
+                : undefined
+            }
+            libraryMenu={[
+              ...(discovery.enabled
+                ? [
+                    {
+                      label: 'Scan new files',
+                      disabled: !discovery.canStart,
+                      onClick: () => void discovery.start({ openReview: false }),
+                    },
+                    {
+                      label:
+                        (state?.grouping_version ?? 0) >= 1
+                          ? 'Suggest grouping…'
+                          : 'Review Discoveries…',
+                      onClick: () => discovery.setOpen(true),
+                    },
+                  ]
+                : []),
+              ...(state?.maintenance_version === 1
+                ? [
+                    {
+                      label: 'Collect metadata',
+                      disabled: !maintenance.canStart,
+                      onClick: () => void maintenance.start('probe'),
+                    },
+                    {
+                      label: 'Generate storyboards',
+                      disabled: !maintenance.canStart,
+                      onClick: () => void maintenance.start('storyboards'),
+                    },
+                  ]
+                : []),
+              {
+                label: 'Metadata Review',
+                onClick: () => openMetadataReview('asset_bundles', browserSelected),
+              },
+            ]}
+            libraryNotices={(onNotice) => (
+              <>
+                {discovery.enabled && (
+                  <DiscoveryNotice
+                    discovery={discovery}
+                    onComplete={(text) => onNotice({ text })}
+                  />
+                )}
+                {state?.maintenance_version === 1 && (
+                  <CatalogMaintenanceNotice
+                    maintenance={maintenance}
+                    onComplete={(text) => onNotice({ text })}
+                  />
+                )}
+                {(attention || storageAccess) && (
+                  <section className="sidebar__notice" aria-label="Metadata delivery status">
+                    {attention && <p role="alert">{attention}</p>}
+                    {storageAccess}
+                    {attention && (
+                      <button className="btn" onClick={refresh}>
+                        Refresh Status
+                      </button>
+                    )}
+                  </section>
+                )}
+              </>
+            )}
+          />
+        </div>
+      )}
+      {!reviewMode && !focusedConflict && notReady && (
         <LibraryAccessNotice
           libraries={libraries}
           libraryId={libraryId}
@@ -696,7 +774,7 @@ export function CatalogWorkspace({
                 onClick={() => {
                   setFamily(name)
                   setAfter('')
-                  setSelected(null)
+                  setCatalogSelected(null)
                   setCreating(false)
                 }}
               >
@@ -719,7 +797,9 @@ export function CatalogWorkspace({
             Create {FAMILIES[family]}
           </button>
           {['tags', 'collections'].includes(family) && (
-            <button onClick={() => setSelected('_')}>Edit hierarchy and sibling order</button>
+            <button onClick={() => setCatalogSelected('_')}>
+              Edit hierarchy and sibling order
+            </button>
           )}
           {page.error && <p role="alert">{page.error.message}</p>}
           {page.isPending && <p>Loading catalog…</p>}
@@ -730,7 +810,7 @@ export function CatalogWorkspace({
                   key={item.id}
                   aria-pressed={identity === item.id}
                   onClick={() => {
-                    setSelected(item.id)
+                    setCatalogSelected(item.id)
                     setCreating(false)
                   }}
                 >
@@ -743,7 +823,7 @@ export function CatalogWorkspace({
                 <button
                   onClick={() => {
                     setAfter(page.data!.next_cursor!)
-                    setSelected(null)
+                    setCatalogSelected(null)
                   }}
                 >
                   Next objects
@@ -753,7 +833,7 @@ export function CatalogWorkspace({
                 <button
                   onClick={() => {
                     setAfter('')
-                    setSelected(null)
+                    setCatalogSelected(null)
                   }}
                 >
                   First objects

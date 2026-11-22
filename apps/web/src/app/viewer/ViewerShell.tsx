@@ -153,7 +153,7 @@ interface ViewerShellProps {
    * the "Resumed at…" notice, which would offer to restart from a position the
    * owner picked deliberately.
    */
-  startAt?: { fileId: string; time: number } | null
+  startAt?: { fileId: string; time: number; loop?: ClipRange | null } | null
   /** Replica adapters supply saved moments without enabling legacy mutations */
   savedMoments?: Moment[]
   onRetryMedia?: () => Promise<unknown>
@@ -379,6 +379,7 @@ export function ViewerShell({
     onEnd: clip.endRangePlayback,
     play: player.play,
     pause: player.pause,
+    seek: player.seek,
   })
 
   // --- Moments (plan 7) -------------------------------------------------
@@ -414,17 +415,49 @@ export function ViewerShell({
    * moment from the shell (nothing has loaded at all yet). One queue for both,
    * so the two paths cannot drift.
    */
+  const startFileId = startAt?.fileId ?? null
+  const startTime = startAt?.time ?? null
+  const startLoopStart = startAt?.loop?.start ?? null
+  const startLoopEnd = startAt?.loop?.end ?? null
+  const startKey =
+    startFileId !== null && startTime !== null
+      ? `${startFileId}:${startTime}:${startLoopStart ?? ''}:${startLoopEnd ?? ''}`
+      : ''
+  const lastStartKeyRef = useRef(startKey)
   const [pendingJump, setPendingJump] = useState<{
     fileId: string
     at: number
     loop: ClipRange | null
-  } | null>(startAt ? { fileId: startAt.fileId, at: startAt.time, loop: null } : null)
-  // A later ask replaces an unconsumed one — the owner changed their mind about
-  // where to open, and only the last answer can be right.
+  } | null>(
+    startFileId !== null && startTime !== null
+      ? {
+          fileId: startFileId,
+          at: startTime,
+          loop:
+            startLoopStart !== null && startLoopEnd !== null
+              ? { start: startLoopStart, end: startLoopEnd }
+              : null,
+        }
+      : null,
+  )
+  // Keyed on scalar target values rather than `startAt` object identity so parent
+  // polling re-renders never re-arm a consumed jump mid-playback.
   useEffect(() => {
-    /* eslint-disable-next-line react-hooks/set-state-in-effect */
-    setPendingJump(startAt ? { fileId: startAt.fileId, at: startAt.time, loop: null } : null)
-  }, [startAt])
+    if (lastStartKeyRef.current === startKey) return
+    lastStartKeyRef.current = startKey
+    setPendingJump(
+      startFileId !== null && startTime !== null
+        ? {
+            fileId: startFileId,
+            at: startTime,
+            loop:
+              startLoopStart !== null && startLoopEnd !== null
+                ? { start: startLoopStart, end: startLoopEnd }
+                : null,
+          }
+        : null,
+    )
+  }, [startFileId, startKey, startLoopEnd, startLoopStart, startTime])
   const playerDuration = player.duration
   const seek = player.seek
   const armLoop = clip.armLoop
@@ -846,6 +879,8 @@ export function ViewerShell({
       // a file step when it belongs to another video) rather than a second
       // viewer on top of the first.
       onPlayMoment: (_targetBundleId, targetFileId, at) => goToMoment(targetFileId, at, null),
+      onLoopMoment: (_targetBundleId, targetFileId, range) =>
+        goToMoment(targetFileId, range.start, range),
       moments: momentActions,
     }),
     [

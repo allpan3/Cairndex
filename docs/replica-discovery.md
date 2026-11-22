@@ -87,11 +87,20 @@ collection placement and exact metadata before acceptance.
 A successful automatic repair preserves the file ID, bundle membership, notes,
 tags, moments, covers and subtitle relationships. It requires the original path to
 be absent, unique matching evidence in both directions and an earlier local
-observation of that same original catalog path. Receiving a peer's moved path
+observation of that same original catalog path. Unique 1:1 renames and moves
+confirm through complete `sha256` equality, an unchanged `(device, inode)` pair, or
+matching `sample-sha256-v1` samples with an unchanged modification time — so Finder
+and SMB renames (where macOS `smbfs` assigns a fresh inode on rename) and previously
+verified or Cairndex-copied files (keeping their complete `sha256` alongside
+recorded samples) repair automatically during Update, and unbundled provisional
+files remain in Grouping Suggestions under their new path. Receiving a peer's moved path
 cannot authorize moving it back to an older local folder. Copies with a surviving
-original are new files. Multiple matches, sample-only matches across different
-physical files and identities with no prior local observation require explicit
-review. Sample-only review states that complete equality is unproven.
+original are new files. Multiple matches, sample-only matches where both physical
+identity and modification time changed, and identities with no prior local
+observation require explicit review. Sample-only review states that complete
+equality is unproven; a single-choice repair pre-selects its missing file and
+describes the rename or folder move, and File changes offers **Settle All** when
+multiple unambiguous changes wait together.
 
 Different evidence at a cataloged path requires an explicit replacement choice.
 Competing accepted replacements expose **Review content identity** in the file
@@ -363,9 +372,13 @@ operation. Merely reopening a recovered library never submits the edit.
 An ordinary scan touches at most three 64 KiB regions per file. Files up to 192 KiB
 receive a complete SHA-256; larger files initially receive `sample-sha256-v1`.
 Samples cannot detect changes outside those regions or prove equality of independent large copies.
-Automatic sampled repair also requires the earlier local device/inode identity.
-Generation-bound local resume follows a verified repair; a manual sample-only
-identity assignment does not transfer old progress to a different physical file.
+Automatic sampled repair requires either the earlier local `(device, inode)`
+identity or a unique 1:1 sample match with an unchanged modification time on an
+earlier locally observed catalog path (carrying a recorded complete `sha256` across
+the rename just as across an SMB remount). Generation-bound local resume follows a
+confirmed repair; a manual sample-only identity assignment where both physical
+identity and modification time changed does not transfer old progress to a
+different physical file.
 
 A file change's action in Update's review (**Check and Restore**, **Check and
 Link**, **Use New Content**) explicitly queues full SHA-256 reads for its immutable
@@ -389,8 +402,9 @@ macOS numbers a network share anew on every mount, which changes every generatio
 This is at least the assurance a sampled file already has; an edit outside the sampled
 regions that keeps size, mtime and inode goes unnoticed until verification.
 Copies made before this change have no recorded samples and need one verification.
-Retained samples find possible
-moves of previously verified files, with complete evidence checked before repair.
+Retained samples match 1:1 renames and moves of previously verified or copied
+files directly when modification time or inode is preserved, and otherwise surface
+possible moves with complete evidence checked before repair.
 Independent large discoveries and same-path different contents retain explicit causal identity conflicts with a
 valid local display. Group IDs derive from selected file IDs. Initial group/file
 timestamps use the earliest selected source modification time: preserved copied

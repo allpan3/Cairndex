@@ -5,11 +5,96 @@ import { discovery, type DiscoveryReview, type DiscoveryVerification } from '../
 import {
   grouping,
   type GroupingCommand,
+  type GroupingFile,
+  type GroupingFolder,
   type GroupingIntent,
+  type GroupingNode,
+  type GroupingPage,
   type GroupingStatus,
   type GroupingWorkspaces,
 } from '../../api/grouping'
 import { getConnectionScopeKey } from '../../api/requestScope'
+
+type TreeItem = GroupingNode | GroupingFile | GroupingFolder
+type CachedTreePage = GroupingPage<TreeItem, number | string> & { pages: number }
+
+function patchGroupingTree(
+  client: ReturnType<typeof useQueryClient>,
+  scope: string | null,
+  library: string,
+  workspace: string,
+  intent: GroupingIntent,
+): () => void {
+  const key = ['grouping-tree', scope, library, workspace] as const
+  const priorPages = client.getQueriesData<CachedTreePage>({ queryKey: key })
+  if (intent.action === 'rename') {
+    client.setQueriesData<CachedTreePage>({ queryKey: key }, (page) =>
+      page
+        ? {
+            ...page,
+            items: page.items.map((item) =>
+              'kind' in item && item.id === intent.node ? { ...item, title: intent.title } : item,
+            ),
+          }
+        : page,
+    )
+  } else if (intent.action === 'destination') {
+    client.setQueriesData<CachedTreePage>({ queryKey: key }, (page) =>
+      page
+        ? {
+            ...page,
+            items: page.items.map((item) =>
+              'kind' in item && item.id === intent.node
+                ? { ...item, target: intent.create_new ? null : item.original_target }
+                : item,
+            ),
+          }
+        : page,
+    )
+  } else if (intent.action === 'folder') {
+    client.setQueriesData<CachedTreePage>({ queryKey: key }, (page) =>
+      page
+        ? {
+            ...page,
+            items: page.items.map((item) =>
+              'expanded' in item && item.path === intent.folder
+                ? { ...item, expanded: intent.expanded }
+                : item,
+            ),
+          }
+        : page,
+    )
+  } else if (intent.action === 'select') {
+    const nodeIds =
+      'nodes' in intent && intent.nodes
+        ? new Set(intent.nodes)
+        : 'node' in intent && intent.node && !('folder' in intent && intent.folder)
+          ? new Set([intent.node])
+          : null
+    const fileId = 'file' in intent && intent.file ? intent.file : null
+    if (nodeIds || fileId) {
+      client.setQueriesData<CachedTreePage>({ queryKey: key }, (page) =>
+        page
+          ? {
+              ...page,
+              items: page.items.map((item) => {
+                if (nodeIds && 'kind' in item && nodeIds.has(item.id)) {
+                  return { ...item, selected: intent.selected ? item.files : 0 }
+                }
+                if (fileId && 'role' in item && item.id === fileId) {
+                  return { ...item, selected: intent.selected }
+                }
+                return item
+              }),
+            }
+          : page,
+      )
+    }
+  }
+  return () => {
+    for (const [pageKey, page] of priorPages) client.setQueryData(pageKey, page)
+  }
+}
 
 export function useGroupingWorkspace(library: string, refresh: () => void) {
   const scope = getConnectionScopeKey()
@@ -56,12 +141,18 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
         setError(reason.message)
       })
   }, [library, lists.data, lists.isSuccess, lists.isFetchedAfterMount])
+  const rollbackRef = useRef<(() => void) | null>(null)
   const status = useQuery({
     queryKey: ['grouping-status', scope, library, workspace],
     queryFn: ({ signal }) =>
       grouping<GroupingStatus>(library, `/workspaces/${workspace}`, 'GET', undefined, signal),
     enabled: workspace !== null,
-    refetchInterval: 500,
+    refetchInterval: (query) => {
+      const current = query.state.data
+      return pending || sending || current?.accepting || (current && current.state !== 'ready')
+        ? 40
+        : 1000
+    },
   })
   const { refetch: refetchStatus } = status
   const commandId = pending?.operation ?? status.data?.command ?? null
@@ -73,7 +164,7 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
     // Queuing wakes the server's worker, so an edit usually finishes within a few
     // passes; poll quickly until it does, then slowly in case it is retried
     refetchInterval: (query) =>
-      ['succeeded', 'failed'].includes(query.state.data?.state ?? '') ? 1000 : 50,
+      ['succeeded', 'failed'].includes(query.state.data?.state ?? '') ? 1000 : 25,
     retry: false,
   })
   useEffect(() => {
@@ -81,6 +172,8 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
     if (!result || handled.current === result.id || !['succeeded', 'failed'].includes(result.state))
       return
     handled.current = result.id
+    if (result.state === 'failed') rollbackRef.current?.()
+    rollbackRef.current = null
     void Promise.all([refetchStatus(), refetchLists()]).then(() => {
       setError(
         result.state === 'failed'
@@ -102,6 +195,8 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
       })
     } catch (reason) {
       // Retain this exact operation and intent when the reply is uncertain.
+      rollbackRef.current?.()
+      rollbackRef.current = null
       setError((reason as Error).message)
     } finally {
       setSending(false)
@@ -109,6 +204,9 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
   }
   function edit(intent: GroupingIntent) {
     if (!status.data || pending || sending || status.data.state !== 'ready') return
+    if (workspace) {
+      rollbackRef.current = patchGroupingTree(client, scope, library, workspace, intent)
+    }
     const value = { operation: operationId(), revision: status.data.revision, intent }
     setPending(value)
     void send(value)
@@ -132,7 +230,8 @@ export function useGroupingWorkspace(library: string, refresh: () => void) {
     queryFn: ({ signal }) =>
       discovery<DiscoveryReview>(library, `/reviews/${reviewId}`, 'GET', undefined, signal),
     enabled: reviewId !== null,
-    refetchInterval: 500,
+    refetchInterval: (query) =>
+      ['applied', 'failed'].includes(query.state.data?.state ?? '') ? 1000 : 40,
   })
   const { refetch: refetchReview } = review
   const verificationId = command.data?.result?.verification ?? null

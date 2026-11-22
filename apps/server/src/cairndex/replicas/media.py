@@ -8,6 +8,7 @@ import sqlite3
 import stat
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import BoundedSemaphore, Lock
 from typing import Any
@@ -89,6 +90,37 @@ def catalog_file(db: sqlite3.Connection, identity: str) -> AssetFile:
         mime_type=mimetypes.guess_type(row["relative_path"])[0],
         availability=FileAvailability.MISSING,
     )
+
+
+def file_annotations(
+    db: sqlite3.Connection, file_ids: list[str]
+) -> tuple[set[str], dict[str, list[str]]]:
+    """Batch-load per-file star state and sorted tag IDs from committed catalog rows."""
+    unique = list(dict.fromkeys(file_ids))
+    if not unique:
+        return set(), {}
+    encoded = json.dumps(unique)
+    starred = {
+        row[0]
+        for row in db.execute(
+            "SELECT entity FROM catalog_rows WHERE family='asset_file_stars' "
+            "AND entity IN (SELECT value FROM json_each(?))",
+            (encoded,),
+        )
+    }
+    tags_by_file: dict[str, list[str]] = {}
+    for file_id, tag_id in db.execute(
+        "SELECT json_extract(c.body, '$.file_id'), json_extract(c.body, '$.tag_id') "
+        "FROM catalog_references r "
+        "JOIN catalog_rows c ON c.family='asset_file_tags' AND c.entity=substr(r.source, 17) "
+        "JOIN catalog_rows t ON t.family='tags' AND t.entity=json_extract(c.body, '$.tag_id') "
+        "WHERE r.target IN (SELECT 'asset_files/' || value FROM json_each(?)) "
+        "AND r.source >= 'asset_file_tags/' AND r.source < 'asset_file_tags0' "
+        "ORDER BY json_extract(t.body, '$.name'), json_extract(c.body, '$.tag_id')",
+        (encoded,),
+    ):
+        tags_by_file.setdefault(file_id, []).append(tag_id)
+    return starred, tags_by_file
 
 
 # A narrow adapter reads authored rows and writes only explicitly private observation tables
@@ -202,6 +234,10 @@ class ReplicaMedia:
         kind = classify(row["relative_path"])
         with self._read() as db:
             cached = db.execute("SELECT * FROM local_media WHERE file_id=?", (identity,)).fetchone()
+            prior_fact = db.execute(
+                "SELECT size, modified_at FROM local_file_facts WHERE file_id=? AND path=?",
+                (identity, row["relative_path"]),
+            ).fetchone()
         token = cached["generation"] if cached else None
         state = cached["state"] if cached else "unknown"
         metadata = json.loads(cached["metadata"]) if cached and cached["metadata"] else None
@@ -215,7 +251,15 @@ class ReplicaMedia:
                     current = generation(row["relative_path"], info)
                     size = info.st_size
                 if current != token:
-                    metadata = None
+                    same_facts = (
+                        not probe
+                        and prior_fact is not None
+                        and prior_fact["size"] == info.st_size
+                        and prior_fact["modified_at"]
+                        == datetime.fromtimestamp(info.st_mtime_ns / 1_000_000_000, UTC).isoformat()
+                    )
+                    if not same_facts:
+                        metadata = None
                 token, state = current, "available"
             except (OSError, PathSafetyError, ValidationError):
                 token, state, metadata = None, "unavailable", None

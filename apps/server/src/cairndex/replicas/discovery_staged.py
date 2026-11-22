@@ -105,18 +105,56 @@ def transfer(builder: DiscoveryPreview, file: dict[str, Any], target: str, seque
 
 
 def dependents(builder: DiscoveryPreview, cursor: int) -> bool:
-    """Move at most 32 dependent rows, keeping linked subtitle files together."""
+    """Move at most 32 dependent rows, keeping subtitle links aligned and propagating file tags."""
     db, operation = builder.db, builder.operation
     rows = db.execute(
         "SELECT DISTINCT r.rowid,r.* FROM discovery_review_files f "
         "JOIN catalog_references ref ON ref.target='asset_files/'||json_extract(f.body,'$.id') "
         "JOIN catalog_rows r ON ref.source=r.family||'/'||r.entity "
         "WHERE f.operation=? AND json_type(f.body,'$.staged') IS NOT NULL "
-        "AND r.family IN ('moments','subtitle_tracks') AND r.rowid>? ORDER BY r.rowid LIMIT 32",
+        "AND r.family IN ('moments','subtitle_tracks','asset_file_tags') "
+        "AND r.rowid>? ORDER BY r.rowid LIMIT 32",
         (operation, cursor),
     ).fetchall()
     for row in rows:
         body = json.loads(row["body"])
+        if row["family"] == "asset_file_tags":
+            member = db.execute(
+                "SELECT bundle FROM discovery_review_members WHERE operation=? "
+                "AND family='asset_files' AND id=?",
+                (operation, body["file_id"]),
+            ).fetchone()
+            if member is None:
+                continue
+            target = str(member[0])
+            raw_state = builder.values.get(key("asset_bundles", target, "grouping_state"))
+            if raw_state is not None:
+                grouping_state = json.loads(raw_state)
+            else:
+                bundle = read_row(db, "asset_bundles", target)
+                grouping_state = bundle["grouping_state"] if bundle else None
+            if grouping_state != "CONFIRMED":
+                continue
+            if (
+                read_row(db, "tags", body["tag_id"]) is None
+                or builder.values.get(key("tags", body["tag_id"], "$alive")) == "false"
+            ):
+                continue
+            unit = key("asset_bundle_tags", f"{target}~{body['tag_id']}", "$alive")
+            if builder.values.get(unit) == "true":
+                continue
+            if db.execute("SELECT 1 FROM catalog_holds WHERE unit=?", (unit,)).fetchone():
+                raise ReplicaError(
+                    "Resolve the current catalog choice before preparing this grouping"
+                )
+            existing = db.execute(
+                "SELECT value FROM catalog_units WHERE unit=?", (unit,)
+            ).fetchone()
+            if existing is None:
+                builder.row("asset_bundle_tags", {"bundle_id": target, "tag_id": body["tag_id"]})
+            elif existing[0] == "false":
+                builder.put(unit, True)
+            continue
         fields = ("file_id",) if row["family"] == "moments" else ("video_file_id", "source_file_id")
         targets = set()
         for field in fields:

@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -28,15 +29,37 @@ def sources_digest(db: sqlite3.Connection, operation: str) -> str:
     return digest.hexdigest()
 
 
+# Propagating existing file tags can revive a tombstoned bundle-tag pair cleanly
+def needs_recover(db: sqlite3.Connection, operation: str) -> bool:
+    return bool(
+        db.execute(
+            "SELECT 1 FROM discovery_review_values v WHERE v.operation=? "
+            "AND v.unit LIKE '%/$alive' AND v.value='true' AND EXISTS ("
+            "SELECT 1 FROM json_each(v.basis) b "
+            "JOIN catalog_revisions r ON r.event=b.value AND r.unit=v.unit "
+            "WHERE r.value='false') LIMIT 1",
+            (operation,),
+        ).fetchone()
+    )
+
+
 # Event retries use the established complete intent encoding, assembled from private disk rows
-def catalog_intent(builder: DiscoveryPreview, parents: str) -> str:
+def catalog_intent(builder: DiscoveryPreview, parents: str, *, recover: bool = False) -> str:
     changes: str = builder.db.execute(
         "SELECT json_group_array(json(item)) FROM (SELECT json_object('basis',json(basis),"
         "'cohort',cohort,'unit',unit,'value',value) AS item FROM discovery_review_values "
         "WHERE operation=? ORDER BY unit)",
         (builder.operation,),
     ).fetchone()[0]
-    return '{"changes":' + changes + ',"parents":' + parents + ',"recover":false,"resolve":false}'
+    return (
+        '{"changes":'
+        + changes
+        + ',"parents":'
+        + parents
+        + ',"recover":'
+        + value_text(recover)
+        + ',"resolve":false}'
+    )
 
 
 # Prepared parts remain private until the whole transaction passes the existing catalog validator
@@ -79,6 +102,7 @@ def finish(
     builder: DiscoveryPreview, root: Path, intent: dict[str, Any], work: sqlite3.Row
 ) -> None:
     db, store, operation = builder.db, builder.store, builder.operation
+    recover = needs_recover(db, operation)
     digest = hashlib.sha256()
     count = 0
     for change in builder.changes():
@@ -94,6 +118,7 @@ def finish(
             replica=author,
             operation="discover_" + checksum(operation.encode())[:50],
             parents=json.loads(work["parents"]),
+            recover=recover,
         )
     ):
         db.execute(
@@ -102,7 +127,7 @@ def finish(
         )
     db.execute(
         "INSERT OR REPLACE INTO discovery_review_commit VALUES (?,?)",
-        (operation, catalog_intent(builder, work["parents"])),
+        (operation, catalog_intent(builder, work["parents"], recover=recover)),
     )
     db.execute("SAVEPOINT complete_discovery_preview")
     try:
@@ -129,7 +154,7 @@ def finish(
             "changes_digest": digest.hexdigest(),
             "change_count": count,
             "resolve": False,
-            "recover": False,
+            "recover": recover,
         },
     }
     db.execute(
@@ -141,6 +166,11 @@ def finish(
     )
 
 
+def _check_generation(root: Path, file: dict[str, Any]) -> bool:
+    with open_source(root, file["path"]) as handle:
+        return bool(generation(file["path"], os.fstat(handle)) == file["generation"])
+
+
 # Source generations are checked in pages before the final atomic write
 def revalidate(builder: DiscoveryPreview, root: Path, *, apply: bool) -> None:
     db, operation = builder.db, builder.operation
@@ -149,12 +179,17 @@ def revalidate(builder: DiscoveryPreview, root: Path, *, apply: bool) -> None:
     ).fetchone()
     rows = db.execute(
         "SELECT position,body FROM discovery_review_files WHERE operation=? "
-        "AND position>? ORDER BY position LIMIT 32",
+        "AND position>? ORDER BY position LIMIT 256",
         (operation, work["cursor"]),
     ).fetchall()
-    for row in rows:
-        file = json.loads(row["body"])
-        if sources.inspect(root, file["path"])["generation"] != file["generation"]:
+    files = [json.loads(row["body"]) for row in rows]
+    if len(files) > 1:
+        with ThreadPoolExecutor(max_workers=min(16, len(files))) as pool:
+            inspected = list(pool.map(lambda f: sources.inspect(root, f["path"], f), files))
+    else:
+        inspected = [sources.inspect(root, f["path"], f) for f in files]
+    for file, seen in zip(files, inspected, strict=True):
+        if seen["generation"] != file["generation"]:
             raise ReplicaError("Files changed after review; run Update and prepare again")
     if rows:
         db.execute(
@@ -176,15 +211,20 @@ def revalidate(builder: DiscoveryPreview, root: Path, *, apply: bool) -> None:
         )
         return
     # Final metadata-only checks fence files that changed after their earlier page was validated
-    for row in db.execute(
-        "SELECT body FROM discovery_review_files WHERE operation=? ORDER BY position", (operation,)
-    ):
-        file = json.loads(row[0])
-        with open_source(root, file["path"]) as handle:
-            if generation(file["path"], os.fstat(handle)) != file["generation"]:
-                raise ReplicaError(
-                    "Files changed during acceptance; the complete review is retained"
-                )
+    all_files = [
+        json.loads(row[0])
+        for row in db.execute(
+            "SELECT body FROM discovery_review_files WHERE operation=? ORDER BY position",
+            (operation,),
+        )
+    ]
+    if len(all_files) > 1:
+        with ThreadPoolExecutor(max_workers=min(16, len(all_files))) as pool:
+            matches = list(pool.map(lambda f: _check_generation(root, f), all_files))
+    else:
+        matches = [_check_generation(root, f) for f in all_files]
+    if not all(matches):
+        raise ReplicaError("Files changed during acceptance; the complete review is retained")
     event = activate(builder)
     from cairndex.replicas.discovery import baseline
 

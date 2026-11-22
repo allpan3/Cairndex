@@ -5,6 +5,8 @@
 INVENTORY: dict[str, dict[str, str]] = {
     "asset_bundle_tags": {"authored": "bundle_id tag_id"},
     "asset_bundle_collections": {"authored": "bundle_id collection_id sort_order"},
+    "asset_file_stars": {"authored": "file_id"},
+    "asset_file_tags": {"authored": "file_id tag_id"},
     "moment_tags": {"authored": "moment_id tag_id"},
     "tag_group_memberships": {"authored": "group_id tag_id sort_order"},
     "asset_bundles": {

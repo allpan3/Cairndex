@@ -12,6 +12,7 @@ export type Field = {
 }
 export type Entity = {
   has_conflicts: boolean
+  held_membership_unit?: string | null
   family: string
   id: string
   fields: Record<string, Field>
@@ -50,6 +51,8 @@ export const FAMILIES: Record<string, string> = {
   subtitle_tracks: 'Subtitle selections',
   asset_bundle_tags: 'Bundle tags',
   asset_bundle_collections: 'Collection membership',
+  asset_file_stars: 'File stars',
+  asset_file_tags: 'File tags',
   moment_tags: 'Moment tags',
   tag_group_memberships: 'Tag group membership',
 }
@@ -70,12 +73,12 @@ export async function runJob(
 ): Promise<Job> {
   const assertScope = captureRequestScope()
   let job = await catalog<Job>(library, '/jobs', 'POST', { action, body, operation })
-  // Queuing wakes the server's worker, so most jobs finish within tens of milliseconds;
-  // the wait doubles up to 250 ms for longer ones
-  let wait = 20
+  // Queuing wakes the server's worker, so most jobs finish within a few milliseconds;
+  // start with a short check and back off up to 150 ms for longer ones
+  let wait = 8
   while (job.state === 'queued' || job.state === 'running') {
     await new Promise((resolve) => setTimeout(resolve, wait))
-    wait = Math.min(wait * 2, 250)
+    wait = Math.min(Math.round(wait * 1.7), 150)
     assertScope()
     job = await catalog<Job>(library, `/jobs/${operation}`)
   }

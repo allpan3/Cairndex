@@ -22,6 +22,7 @@ its reason so a fuzzy guess is easy to override.
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -30,7 +31,7 @@ from cairndex.domain.enums import DEFAULT_STEM_LEVEL, FileRole, MediaKind, Propo
 
 # Bumped whenever the heuristic changes in a way worth re-surfacing. Recorded on
 # provisional bundles/plans so a re-scan can tell stale suggestions apart.
-SUGGESTER_RULE_VERSION = 6
+SUGGESTER_RULE_VERSION = 7
 
 # Image stems that name a cover/poster regardless of the bundle's subject.
 _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "front"})
@@ -392,15 +393,22 @@ def _bundle_groups(
         groups_by_key.setdefault(keys.of(video.relative_path), []).append(video)
     groups = list(groups_by_key.values())
 
-    prefix_counts: dict[str, int] = {}
-    for group in groups:
-        prefix = _subject_prefix(group[0].relative_path)
-        prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
-    group_by_prefix = {
-        _subject_prefix(group[0].relative_path): group
-        for group in groups
-        if prefix_counts[_subject_prefix(group[0].relative_path)] == 1
-    }
+    group_by_prefix: dict[str, list[FileObservation] | None] = {}
+    for key, group in groups_by_key.items():
+        for prefix in (key, *_space_prefixes(key)):
+            if prefix not in group_by_prefix:
+                group_by_prefix[prefix] = group
+            elif group_by_prefix[prefix] is not group:
+                group_by_prefix[prefix] = None
+
+    def _longest_unique_prefix_group(stem: str) -> list[FileObservation] | None:
+        for prefix in (stem, *_space_prefixes(stem)):
+            if prefix in group_by_prefix:
+                # Any shorter prefix covers a superset of video groups, so an
+                # ambiguous prefix (`None`) cannot become unique by shortening.
+                return group_by_prefix[prefix]
+        return None
+
     unassigned: list[FileObservation] = []
     for f in sorted((x for x in media if x.media_kind is not MediaKind.VIDEO), key=_obs_sort_key):
         stem = keys.of(f.relative_path)
@@ -420,16 +428,18 @@ def _bundle_groups(
             for prefix in _space_prefixes(stem)
             if (found := groups_by_key.get(prefix)) is not None
         ]
-        # Last resort for a sidecar that matches no video stem at all: the leading
-        # filename token, when exactly one group owns it. Withheld at level 0,
-        # where the owner has asked for the complete filename to be what matches.
+        # Last resort for a sidecar whose stem neither equals nor extends a full
+        # video stem (e.g. `CLIP-100.srt` or `CLIP-100-cover.jpg` beside
+        # `CLIP-100 - Tag.mp4` when `CLIP-200 - Tag.mp4` is in the same folder):
+        # the longest token prefix shared with a single video group. Withheld at
+        # level 0, where the owner asked for complete filenames to match.
         matched_group = (
             exact_match
             if exact_match is not None
             else (
                 extended[0]
                 if len(extended) == 1
-                else group_by_prefix.get(_subject_prefix(f.relative_path))
+                else _longest_unique_prefix_group(stem)
                 if level >= DEFAULT_STEM_LEVEL
                 else None
             )
@@ -564,48 +574,44 @@ def _role_for(f: FileObservation, multipart: bool, cover_id: str | None) -> File
 # --- proposal builders -------------------------------------------------------
 
 
-def _shared_stem_title(files: list[FileObservation]) -> str | None:
-    """The filename part these files have in common, or ``None`` if they have none.
+def shared_stem_prefix(stems: Iterable[str]) -> str | None:
+    """Reduce streamed filename stems to their shared token-aligned prefix.
 
-    A bundle formed by matching a prefix was titled after its *first* file, which
-    carried that one file's tail — so a group of four became
-    "StudioAlpha.19.12.20.Lead.Player.#2.Session.Behind.The.Scenes", naming the
-    bundle after one member and implying the rest are behind-the-scenes clips
-    (owner-reported, 2026-07-30). The shared part is what actually grouped them,
-    so it is what the bundle is called.
-
-    Computed on the raw stems rather than the normalized comparison forms, so the
-    title keeps the owner's own delimiters and casing, then trimmed back to a
-    delimiter so it never ends mid-token ("…19.12.2" from a pair of dates becomes
-    "…19.12").
+    Preserves a shared prefix verbatim when every stem ends or begins a
+    delimiter right after it (so ``CLIP-100 - HDR``, ``CLIP-100-cover``, and
+    ``CLIP-100`` keep ``CLIP-100`` rather than losing ``-100`` to the internal
+    hyphen), while still trimming a genuine mid-token prefix (``19.12.2`` from
+    ``19.12.20`` and ``19.12.25`` becomes ``19.12``).
     """
-    stems = [_stem(file.relative_path) for file in files]
-    if len(stems) < 2:
-        return None
-    shared = stems[0]
-    for stem in stems[1:]:
-        limit = min(len(shared), len(stem))
-        index = 0
-        while index < limit and shared[index] == stem[index]:
-            index += 1
-        shared = shared[:index]
-        if not shared:
+    shared: str | None = None
+    count = 0
+    at_boundary = True
+    for stem in stems:
+        count += 1
+        if shared is None:
+            shared = stem
+            continue
+        next_shared = os.path.commonprefix((shared, stem))
+        if not next_shared:
             return None
-    # Nothing to trim when every stem *is* the shared part: the prefix is not
-    # partial, it is the whole name. Reachable only since sidecars joined the
-    # comparison (a video and its cover often share their filename exactly), and
-    # without this guard an identical pair lost everything after its last
-    # delimiter — "A - B - 4K" became "A - B".
-    if all(stem == shared for stem in stems):
-        return shared or None
-
-    # Drop a trailing partial token, and the delimiter run before it.
+        n = len(next_shared)
+        prior_ok = at_boundary if n == len(shared) else bool(_SUBJECT_DELIMITER.match(shared, n))
+        curr_ok = len(stem) == n or bool(_SUBJECT_DELIMITER.match(stem, n))
+        at_boundary = prior_ok and curr_ok
+        shared = next_shared
+    if count < 2 or not shared:
+        return None
     boundaries = list(_SUBJECT_DELIMITER.finditer(shared))
     if boundaries and boundaries[-1].end() == len(shared):
         shared = shared[: boundaries[-1].start()]  # ends on a delimiter run
-    elif boundaries:
+    elif not at_boundary and boundaries:
         shared = shared[: boundaries[-1].start()]  # ends mid-token
     return shared or None
+
+
+def _shared_stem_title(files: list[FileObservation]) -> str | None:
+    """The filename part these files have in common, or ``None`` if they have none."""
+    return shared_stem_prefix(_stem(file.relative_path) for file in files)
 
 
 def _bundle_proposal(

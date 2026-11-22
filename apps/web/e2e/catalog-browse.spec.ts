@@ -135,6 +135,16 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
       )
     }
     await deliver()
+    // Copying objects completes before each peer's importer updates its projection.
+    // Check delivery separately so the UI assertion measures just the inspector refresh.
+    await expect
+      .poll(async () => JSON.parse((await entity()).fields.title.value), { timeout: 30_000 })
+      .toBe('Blue title')
+    await expect
+      .poll(async () => JSON.parse(JSON.parse((await entity(1)).fields.notes.value)), {
+        timeout: 30_000,
+      })
+      .toEqual(['First note', 'Second note'])
     await expect(inspector.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
       'Blue title',
     )
@@ -142,14 +152,25 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
       'Second note',
     )
     await expect.poll(async () => (await entity()).has_conflicts).toBe(false)
+    // Healthy bundle card menu never implies a conflict or opens generic Library catalog
+    const targetCard = a.locator('[data-bundle-id="bundle-000001"]')
+    await targetCard.click({ button: 'right' })
+    await expect(
+      a.getByRole('menu').getByRole('menuitem', { name: /Review metadata|Review Conflicts/i }),
+    ).toHaveCount(0)
+    await a.keyboard.press('Escape')
+
     await inspector.getByRole('textbox', { name: 'Title', exact: true }).fill('Amber conflict')
+    await expect
+      .poll(async () => JSON.parse((await entity()).fields.title.value), { timeout: 30_000 })
+      .toBe('Amber conflict')
     await other.getByRole('textbox', { name: 'Title', exact: true }).fill('Blue conflict')
     // The previous save's notice can remain visible before this request starts.
     await expect
       .poll(async () => JSON.parse((await entity(1)).fields.title.value), { timeout: 30_000 })
       .toBe('Blue conflict')
     await deliver()
-    await expect.poll(async () => (await entity()).has_conflicts).toBe(true)
+    await expect.poll(async () => (await entity()).has_conflicts, { timeout: 30_000 }).toBe(true)
     expect(
       (await entity()).fields.title.candidates.map((item: { value: string }) =>
         JSON.parse(item.value),
@@ -158,8 +179,25 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
     await expect(
       inspector.getByText('This bundle has conflicting edits.', { exact: true }),
     ).toBeVisible()
-    // The review opens over the browser for this bundle, with readable versions only
-    await inspector.getByRole('button', { name: 'Review Conflicts', exact: true }).click()
+    // Conflicted bundle card menu surfaces Review Conflicts and opens Conflicting Edits in place
+    await expect
+      .poll(async () => {
+        await targetCard.click({ button: 'right' })
+        const count = await a
+          .getByRole('menu')
+          .getByRole('menuitem', { name: 'Review Conflicts', exact: true })
+          .count()
+        if (!count) await a.keyboard.press('Escape')
+        return count
+      })
+      .toBe(1)
+    await expect(
+      a.getByRole('menu').getByRole('menuitem', { name: /Review metadata and conflicts/i }),
+    ).toHaveCount(0)
+    await a
+      .getByRole('menu')
+      .getByRole('menuitem', { name: 'Review Conflicts', exact: true })
+      .click()
     const review = a.getByRole('dialog', { name: 'Conflicting Edits', exact: true })
     const versions = review.getByRole('group', { name: 'Title', exact: true })
     await expect(versions.getByRole('radio')).toHaveCount(2)
@@ -186,7 +224,98 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
       .poll(async () => JSON.parse((await entity()).fields.title.value))
       .toBe('After resolution')
     await expect.poll(async () => (await entity()).has_conflicts).toBe(false)
+
+    // Structural bundle conflict (bundle deletion on B vs title edit on A) opens focused review
+    // while preserving active search and selection in Bundle Browser
     await openBundle(a, 'After resolution')
+    await inspector.getByRole('textbox', { name: 'Title', exact: true }).fill('Kept in browser')
+    await expect
+      .poll(async () => JSON.parse((await entity()).fields.title.value))
+      .toBe('Kept in browser')
+
+    const previewDel = await apiPost<{ id: string; receipt: string }>(
+      backends[1]!.baseUrl,
+      `/api/v1/libraries/${libraries[1]!.id}/replica/catalog/jobs`,
+      {
+        action: 'preview',
+        operation: 'del_bundle_1_preview',
+        body: { action: 'delete', family: 'asset_bundles', entity: 'bundle-000001' },
+      },
+    )
+    let delJob = previewDel
+    while (!delJob.receipt) {
+      delJob = await (
+        await fetch(
+          `${backends[1]!.baseUrl}/api/v1/libraries/${libraries[1]!.id}/replica/catalog/jobs/del_bundle_1_preview`,
+        )
+      ).json()
+    }
+    await apiPost(
+      backends[1]!.baseUrl,
+      `/api/v1/libraries/${libraries[1]!.id}/replica/catalog/jobs`,
+      {
+        action: 'commit_preview',
+        operation: 'del_bundle_1_commit',
+        body: { job: delJob.id, receipt: delJob.receipt },
+      },
+    )
+    await expect
+      .poll(async () => (await entity(1)).fields.$alive.value, { timeout: 30_000 })
+      .toBe('false')
+    await deliver()
+
+    await a.getByRole('searchbox', { name: 'Search', exact: true }).fill('Kept in browser')
+    await expect(
+      a.getByRole('listbox', { name: 'Bundles', exact: true }).getByRole('option'),
+    ).toHaveCount(1)
+    await openBundle(a, 'Kept in browser')
+    await expect(
+      inspector.getByText('This bundle has conflicting edits.', { exact: true }),
+    ).toBeVisible({ timeout: 30_000 })
+    await inspector.getByRole('button', { name: 'Review Conflicts', exact: true }).click()
+    const structDialog = a.getByRole('dialog', { name: 'Conflicting Edits', exact: true })
+    await structDialog.getByRole('button', { name: 'Open Full Review…', exact: true }).click()
+    await expect(structDialog).toHaveCount(0)
+
+    const focused = a.getByRole('region', { name: 'Complete conflict review', exact: true })
+    await expect(focused).toBeVisible()
+    await expect(
+      a.getByRole('heading', { name: 'Conflict Review · Kept in browser', exact: true }),
+    ).toBeVisible()
+    await expect(a.getByRole('navigation', { name: 'Catalog families' })).toHaveCount(0)
+
+    const lifetimeChoice = focused.getByRole('radio', { name: /Keep in library/ })
+    const choiceLabel = focused.getByText('Keep in library', { exact: true })
+    const radioBox = (await lifetimeChoice.boundingBox())!
+    const labelBox = (await choiceLabel.boundingBox())!
+    expect(radioBox.x + radioBox.width).toBeLessThanOrEqual(labelBox.x)
+    expect(radioBox.y).toBeLessThan(labelBox.y + labelBox.height)
+
+    // Verify escape hatch to Metadata Review and return preserves the active search query
+    await a.getByRole('button', { name: 'Open in Metadata Review', exact: true }).click()
+    await expect(a.getByRole('heading', { name: 'Library catalog', exact: true })).toBeVisible()
+    await a.getByRole('button', { name: 'Bundle Browser', exact: true }).click()
+    await expect(a.getByRole('searchbox', { name: 'Search', exact: true })).toHaveValue(
+      'Kept in browser',
+    )
+
+    // Re-open focused conflict review, explicitly recover the bundle, and verify automatic return
+    await openBundle(a, 'Kept in browser')
+    await inspector.getByRole('button', { name: 'Review Conflicts', exact: true }).click()
+    await structDialog.getByRole('button', { name: 'Open Full Review…', exact: true }).click()
+    await focused
+      .getByRole('group', { name: 'Bundle “Kept in browser”', exact: true })
+      .getByRole('radio', { name: /Keep in library/ })
+      .check()
+    await focused.getByRole('checkbox', { name: /Explicitly restore a deleted identity/ }).check()
+    await focused.getByRole('button', { name: 'Prepare choice', exact: true }).click()
+    await a.getByRole('button', { name: 'Apply reviewed operation', exact: true }).click()
+    await expect(a.getByRole('searchbox', { name: 'Search', exact: true })).toHaveValue(
+      'Kept in browser',
+    )
+    await a.getByRole('searchbox', { name: 'Search', exact: true }).fill('')
+    await expect(a.locator('.toolbar__count')).toContainText('65 items')
+    await openBundle(a, 'Kept in browser')
     const listing = a.getByRole('listbox', { name: 'Bundles' })
     await expect(listing).toHaveAttribute('aria-multiselectable', 'true')
     // After keyboard use the active card carries the ring; the grid itself is not framed

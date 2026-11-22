@@ -8,7 +8,7 @@ from typing import Any
 from cairndex.replicas.catalog.model import value_text
 from cairndex.replicas.protocol import ReplicaError, checksum
 
-BATCH = 32
+BATCH = 256
 MEMBERS = (
     "SELECT f.*,n.directory AS group_directory FROM grouping_nodes n JOIN grouping_files f "
     "ON f.workspace=n.workspace AND f.node=n.id WHERE n.workspace=? AND f.selected=1 "

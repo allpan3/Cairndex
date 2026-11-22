@@ -2,8 +2,10 @@
 
 import json
 import sqlite3
-from collections.abc import MutableMapping
-from typing import Any
+from collections.abc import Iterable, MutableMapping
+from typing import Any, Literal
+
+from pydantic import Field, ValidationError, field_validator
 
 from cairndex.persistence.base import Base
 from cairndex.replicas.catalog.model import (
@@ -18,7 +20,21 @@ from cairndex.replicas.catalog.model import (
 from cairndex.replicas.catalog.projection import read_row
 from cairndex.replicas.catalog.protocol import UnitChange
 from cairndex.replicas.catalog.store import CatalogStore
-from cairndex.replicas.protocol import ReplicaError
+from cairndex.replicas.protocol import ReplicaError, StrictModel, Token
+
+
+class CatalogFileStarsCommand(StrictModel):
+    action: Literal["file_stars"]
+    ids: list[Token] = Field(min_length=1, max_length=100)
+    starred: bool
+    observed: dict[str, list[str]]
+
+    @field_validator("ids")
+    @classmethod
+    def unique(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("Select each file once")
+        return value
 
 
 # Background previews capture all affected values before the user submits an explicit save
@@ -149,7 +165,7 @@ class Preview:
                 self.put(key("collections", collection, "cover_bundle_id"), None)
 
     # Cross-bundle transfers include dependent moments, subtitle sources and source cover clearing
-    def transfer(self, source: str, target: str, members: list[str]) -> None:
+    def transfer(self, source: str, target: str, members: list[str]) -> bool:
         if source == target or not members or len(members) != len(set(members)):
             raise ReplicaError("Transfer requires distinct bundles and selected members")
         source_key, target_key = (
@@ -221,6 +237,66 @@ class Preview:
             row["bundle_id"] = target
             self.row(family, row)
             self.rehomed.add((family, identity))
+        return self._propagate_file_tags(target, moved_files)
+
+    def _propagate_file_tags(self, bundle_id: str, file_ids: Iterable[str]) -> bool:
+        """Collect existing file tags on moved files and propagate onto a confirmed bundle."""
+        target_ids = sorted(set(file_ids))
+        if not target_ids:
+            return False
+        tag_ids: set[str] = set()
+        for file_id in target_ids:
+            for (source,) in self.db.execute(
+                "SELECT source FROM catalog_references WHERE target=? "
+                "AND source>='asset_file_tags/' AND source<'asset_file_tags0'",
+                (f"asset_files/{file_id}",),
+            ):
+                source_id = source.split("/", 1)[1]
+                if self.values.get(key("asset_file_tags", source_id, "$alive")) == "false":
+                    continue
+                edge_row = read_row(self.db, "asset_file_tags", source_id)
+                if edge_row is not None:
+                    tag_ids.add(edge_row["tag_id"])
+        return self._propagate_tags_to_bundle(bundle_id, tag_ids)
+
+    def _propagate_tags_to_bundle(self, bundle_id: str, tag_ids: Iterable[str]) -> bool:
+        """One-way propagate file tags onto a confirmed destination bundle (ADR-0043)."""
+        unique_tags = sorted(set(tag_ids))
+        if not unique_tags:
+            return False
+        bundle = read_row(self.db, "asset_bundles", bundle_id)
+        raw_state = self.values.get(key("asset_bundles", bundle_id, "grouping_state"))
+        grouping_state = (
+            json.loads(raw_state)
+            if raw_state is not None
+            else (bundle["grouping_state"] if bundle else None)
+        )
+        if grouping_state != "CONFIRMED":
+            return False
+        recover = False
+        for tag_id in unique_tags:
+            if (
+                read_row(self.db, "tags", tag_id) is None
+                or self.values.get(key("tags", tag_id, "$alive")) == "false"
+            ):
+                continue
+            identity = f"{bundle_id}~{tag_id}"
+            unit = key("asset_bundle_tags", identity, "$alive")
+            if self.values.get(unit) == "true":
+                continue
+            if self.db.execute("SELECT 1 FROM catalog_holds WHERE unit=?", (unit,)).fetchone():
+                raise ReplicaError(
+                    "Membership changed or requires conflict review; refresh choices"
+                )
+            existing = self.db.execute(
+                "SELECT value FROM catalog_units WHERE unit=?", (unit,)
+            ).fetchone()
+            if existing is None:
+                self.create("asset_bundle_tags", {"bundle_id": bundle_id, "tag_id": tag_id})
+            elif existing[0] == "false":
+                self.put(unit, True)
+                recover = True
+        return recover
 
     def order(self, command: dict[str, Any]) -> None:
         """Rewrite one scope's manual order: a moved block, or a chosen sort.
@@ -407,7 +483,7 @@ class Preview:
                 self.transfer(identity, row["id"], [f"asset_files/{member['id']}"])
         self.delete("asset_bundles", identity)
 
-    def bundle_files(self, command: dict[str, Any], *, new_files: list[Row] | None = None) -> None:
+    def bundle_files(self, command: dict[str, Any], *, new_files: list[Row] | None = None) -> bool:
         """Bundle Unbundled files as legacy manual bundling did, keeping their identities.
 
         Without a target, a selected file's staging bundle becomes the confirmed bundle,
@@ -502,6 +578,7 @@ class Preview:
             proposed = _addition_roles(observed)
             fields = {}
         sources = []
+        recover = False
         for item in proposed:
             source = rows[item.asset_file_id]["bundle_id"]
             if item.asset_file_id in fresh:
@@ -520,7 +597,9 @@ class Preview:
                     rows[item.asset_file_id] | {"bundle_id": target, "sequence": sequence},
                 )
             elif source != target:
-                self.transfer(source, target, [f"asset_files/{item.asset_file_id}"])
+                recover = (
+                    self.transfer(source, target, [f"asset_files/{item.asset_file_id}"]) or recover
+                )
                 sources.append(source)
         unit = key("asset_bundles", target, "$members")
         placed = {item.asset_file_id: item for item in proposed}
@@ -538,6 +617,8 @@ class Preview:
         self.put(unit, sorted(members, key=lambda member: member["sequence"]))
         for field, value in fields.items():
             self.put(key("asset_bundles", target, field), value)
+        # Propagate existing file tags after fields mark a new/reused bundle CONFIRMED
+        recover = self._propagate_file_tags(target, files) or recover
         for source in dict.fromkeys(sources):
             if not self.get(key("asset_bundles", source, "$members")):
                 original = read_row(self.db, "asset_bundles", source)
@@ -593,6 +674,7 @@ class Preview:
                 "sort_order": order,
             }
             self.create("subtitle_tracks", track)
+        return recover
 
     # Creation requires every authored field plus an explicit complete placement when applicable
     def create(self, family: str, row: Row) -> None:
@@ -661,6 +743,59 @@ class Preview:
             return True
         return recover
 
+    def file_stars(self, raw: dict[str, Any]) -> bool:
+        """Star or unstar 1 to 100 files with observed lifetime bases; stale choices are refused."""
+        try:
+            command = CatalogFileStarsCommand.model_validate(raw)
+        except ValidationError as error:
+            raise ReplicaError("Select 1 to 100 distinct files") from error
+        expected: list[str] = []
+        for identity in command.ids:
+            expected.append(key("asset_files", identity, "$alive"))
+            expected.append(key("asset_file_stars", identity, "$alive"))
+        if set(command.observed) != set(expected) or any(
+            set(command.observed[unit]) != {tip["event"] for tip in self.store.tips(self.db, unit)}
+            or self.db.execute("SELECT 1 FROM catalog_holds WHERE unit=?", (unit,)).fetchone()
+            for unit in expected
+        ):
+            raise ReplicaError(
+                "Selected file metadata changed or requires conflict review; refresh choices"
+            )
+        recover = False
+        for identity in command.ids:
+            if read_row(self.db, "asset_files", identity) is None:
+                raise ReplicaError("A selected file is unavailable")
+            self.put(key("asset_files", identity, "$alive"), True)
+            unit = key("asset_file_stars", identity, "$alive")
+            existing = self.db.execute(
+                "SELECT value FROM catalog_units WHERE unit=?", (unit,)
+            ).fetchone()
+            current = existing is not None and existing[0] == "true"
+            if current == command.starred:
+                if existing is not None:
+                    self.put(unit, current)
+                continue
+            if command.starred:
+                if existing is not None:
+                    self.put(unit, True)
+                    recover = True
+                else:
+                    self.create("asset_file_stars", {"file_id": identity})
+            else:
+                self.delete("asset_file_stars", identity)
+        return recover
+
+    def file_tag(self, command: dict[str, Any]) -> bool:
+        """Change one file tag; adding to a confirmed bundle file propagates to the bundle."""
+        file = read_row(self.db, "asset_files", command["file"])
+        if file is None:
+            raise ReplicaError("Membership target is unavailable")
+        recover = self.edge("asset_files", command["file"], "tags", "asset_file_tags", command)
+        if not command["assigned"]:
+            # Removal stays on the file: a bundle tag does not record where it came from
+            return recover
+        return self._propagate_tags_to_bundle(file["bundle_id"], [command["target"]]) or recover
+
     # One explicit edge change with the observed bases the owner saw; stale choices are refused
     def edge(
         self, owner_family: str, owner: str, family: str, edge: str, command: dict[str, Any]
@@ -701,7 +836,11 @@ class Preview:
             # Explicit Add restores only this stable pair, never either referenced object.
             self.put(unit, True)
             return True
-        owner_column = "moment_id" if owner_family == "moments" else "bundle_id"
+        owner_column = {
+            "asset_bundles": "bundle_id",
+            "moments": "moment_id",
+            "asset_files": "file_id",
+        }[owner_family]
         row = {owner_column: owner, "tag_id" if family == "tags" else "collection_id": target}
         if family == "collections":
             row["sort_order"] = 0
@@ -774,6 +913,10 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
             recover = builder.membership(command)
         elif action == "moment_tag":
             recover = builder.moment_tag(command)
+        elif action == "file_stars":
+            recover = builder.file_stars(command)
+        elif action == "file_tag":
+            recover = builder.file_tag(command)
         elif action == "delete":
             if command.get("cascade"):
                 builder.delete_tree(command["family"], command["entity"])
@@ -790,7 +933,7 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
         elif action == "order":
             builder.order(command)
         elif action == "bundle_files":
-            builder.bundle_files(command)
+            recover = builder.bundle_files(command) or recover
         elif action == "bundle_member":
             from cairndex.replicas.catalog.bundle_members import prepare as prepare_member
 
@@ -801,7 +944,10 @@ def preview(store: CatalogStore, command: dict[str, Any]) -> dict[str, Any]:
             for identity in CatalogSelectionRequest.model_validate({"ids": command["ids"]}).ids:
                 builder.dissolve(identity)
         elif action == "transfer":
-            builder.transfer(command["source"], command["target"], command["members"])
+            recover = (
+                builder.transfer(command["source"], command["target"], command["members"])
+                or recover
+            )
         elif action == "create":
             row = command.get("row")
             if row is None:

@@ -46,7 +46,7 @@ test('Widen keeps a subject title below its retained collection @fullstack', asy
       .click()
     await expect(dialog.getByRole('button', { name: 'Accept selected', exact: true })).toBeEnabled()
     await dialog.getByRole('button', { name: 'Expand suggestion Contributor', exact: true }).click()
-    await expect(dialog.getByRole('button', { name: 'SCENE', exact: true })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: 'SCENE-204', exact: true })).toBeVisible()
     await dialog.getByRole('button', { name: 'Show files', exact: true }).click()
     const cover = dialog.getByRole('checkbox', {
       name: 'Accept file Contributor/SCENE-204-cover.jpg',
@@ -64,7 +64,7 @@ test('Widen keeps a subject title below its retained collection @fullstack', asy
       await expect(
         dialog.getByRole('button', { name: 'Accept selected', exact: true }),
       ).toBeEnabled()
-      await expect(dialog.getByRole('button', { name: 'SCENE', exact: true })).toBeVisible()
+      await expect(dialog.getByRole('button', { name: 'SCENE-204', exact: true })).toBeVisible()
       await expect(dialog.getByRole('button', { name: 'Contributor', exact: true })).toHaveCount(1)
       await expect(cover).not.toBeChecked()
     }
@@ -79,7 +79,8 @@ test('Widen keeps a subject title below its retained collection @fullstack', asy
     expect(response.ok).toBe(true)
     expect(
       (await response.json()).items.some(
-        (item: { fields: { title?: { value: string } } }) => item.fields.title?.value === '"SCENE"',
+        (item: { fields: { title?: { value: string } } }) =>
+          item.fields.title?.value === '"SCENE-204"',
       ),
     ).toBe(true)
     expect(await Promise.all(paths.map((path) => readFile(path)))).toEqual(before)

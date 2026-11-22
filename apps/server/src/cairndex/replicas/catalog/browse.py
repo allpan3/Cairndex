@@ -14,6 +14,7 @@ from cairndex.domain.enums import GroupingState, MediaKind
 from cairndex.filters.ast import FilterExpression
 from cairndex.media.image_support import is_openable_media
 from cairndex.replicas.catalog.local_history import MODIFIED_SQL, OPENED_SQL, SIZE_SQL
+from cairndex.replicas.catalog.projection import held_bundle_membership
 from cairndex.replicas.catalog.query import matching, saved_filter
 from cairndex.replicas.protocol import ReplicaError, StrictModel
 from cairndex.scanning.media_types import HIDDEN_NAMES, classify
@@ -32,6 +33,7 @@ class CatalogBundleSummary(StrictModel):
     grouping_state: GroupingState
     cover_file_id: str | None = None
     cover_key: str | None = None
+    has_conflicts: bool = False
     # Browse version 4: this device's last observations of the bundle's current
     # file, for card badges and the hover preview. Nothing here reads source bytes.
     has_missing: bool = False
@@ -418,17 +420,45 @@ def _local_facts(db: sqlite3.Connection, ids: list[str]) -> dict[str, dict[str, 
             ids,
         )
     }
+    conflicted: set[str] = set()
+    if db.execute("SELECT 1 FROM catalog_holds LIMIT 1").fetchone():
+        conflicted = {
+            identity
+            for identity in ids
+            if db.execute(
+                "SELECT 1 FROM catalog_holds WHERE unit>=? AND unit<? LIMIT 1",
+                (f"asset_bundles/{identity}/", f"asset_bundles/{identity}0"),
+            ).fetchone()
+            or held_bundle_membership(db, identity) is not None
+        }
     facts: dict[str, dict[str, Any]] = {}
     for identity in ids:
         supported = [row for row in members.get(identity, []) if _supported(row["path"])]
         available = [row for row in supported if row["state"] == "available"]
+        available_videos = [
+            row
+            for row in available
+            if (classified := classify(row["path"].rsplit("/", 1)[-1])) is not None
+            and classified[0] == MediaKind.VIDEO
+        ]
+        supported_videos = [
+            row
+            for row in supported
+            if (classified := classify(row["path"].rsplit("/", 1)[-1])) is not None
+            and classified[0] == MediaKind.VIDEO
+        ]
         current = (
             next((row for row in supported if row["id"] == cursors.get(identity)), None)
             or next((row for row in available if row["position"] and not row["completed"]), None)
+            or next(iter(available_videos), None)
             or next(iter(available), None)
+            or next(iter(supported_videos), None)
             or next(iter(supported), None)
         )
-        fact: dict[str, Any] = {"has_missing": identity in missing}
+        fact: dict[str, Any] = {
+            "has_missing": identity in missing,
+            "has_conflicts": identity in conflicted,
+        }
         if current is not None:
             kind = classify(current["path"].rsplit("/", 1)[-1])
             meta = json.loads(current["metadata"]) if current["metadata"] else {}

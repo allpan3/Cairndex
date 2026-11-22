@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
+import { clearCoverBlobCache } from './coverMemoryCache'
 import { IconRefresh } from './icons'
 
 /**
@@ -22,6 +23,7 @@ export function RefreshButton() {
       className={`seg toolbar__panel-toggle${clicks ? ' toolbar__refresh--turning' : ''}`}
       onClick={() => {
         setClicks((count) => count + 1)
+        clearCoverBlobCache()
         void queryClient.invalidateQueries()
       }}
       aria-label="Refresh"

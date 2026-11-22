@@ -4,11 +4,13 @@ import { formatBytes, formatDimensions, formatDuration } from '../lib/format'
 import type { FileDragProps } from './dragOut'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
+import { IconStar } from './icons'
 import { factsFromBundleFile } from './fileFacts'
 
 export function AlbumTile({
   file,
   selected,
+  showMeta = true,
   onSelect,
   onOpen,
   onContextMenu,
@@ -16,9 +18,12 @@ export function AlbumTile({
   dragProps,
   catalog = false,
   nameEditor,
+  onToggleStar,
+  starDisabled = false,
 }: {
   file: FileRead
   selected: boolean
+  showMeta?: boolean
   onSelect: (e: React.MouseEvent | React.KeyboardEvent) => void
   onOpen: () => void
   onContextMenu: (e: React.MouseEvent) => void
@@ -26,6 +31,8 @@ export function AlbumTile({
   dragProps: FileDragProps
   catalog?: boolean
   nameEditor?: ReactNode
+  onToggleStar?: () => void
+  starDisabled?: boolean
 }) {
   const [failedPreview, setFailedPreview] = useState('')
   const previewUrl = fileThumbnailUrl(file.bundle_id, file.id, file.updated_at)
@@ -38,7 +45,10 @@ export function AlbumTile({
   const duration = typeof meta.duration === 'number' ? meta.duration : 0
   const container = typeof meta.container === 'string' ? meta.container : null
   const videoCodec = typeof meta.video_codec === 'string' ? meta.video_codec : null
+  const videoCodecTag = typeof meta.video_codec_tag === 'string' ? meta.video_codec_tag : null
   const audioCodec = typeof meta.audio_codec === 'string' ? meta.audio_codec : null
+  const storyboardVersion =
+    typeof meta.storyboard_version === 'string' ? meta.storyboard_version : null
   const previewSource = useMemo<HoverPreviewSource | null>(
     () =>
       file.availability === 'available' && file.media_kind === 'video' && duration > 0
@@ -49,39 +59,76 @@ export function AlbumTile({
             relativePath: file.relative_path,
             container,
             videoCodec,
+            videoCodecTag,
             audioCodec,
             duration,
             startTime: file.resume_position,
+            storyboardVersion,
+            generation: file.quick_fingerprint ?? null,
           }
-        : null,
+        : catalog && file.media_kind === 'video'
+          ? {
+              mediaKind: 'video',
+              fileId: file.id,
+              mimeType: file.mime_type,
+              relativePath: file.relative_path,
+              container,
+              videoCodec,
+              videoCodecTag,
+              audioCodec,
+              duration: 0,
+              startTime: file.resume_position,
+              storyboardVersion,
+              generation: file.quick_fingerprint ?? null,
+              needsProbe: true,
+            }
+          : null,
     [
       audioCodec,
+      catalog,
       container,
       duration,
       file.availability,
       file.id,
       file.media_kind,
       file.mime_type,
+      file.quick_fingerprint,
       file.relative_path,
       file.resume_position,
+      storyboardVersion,
       videoCodec,
+      videoCodecTag,
     ],
   )
 
+  const showFooter = showMeta || Boolean(nameEditor)
   return (
     <div
-      className={`album-tile${selected ? ' album-tile--selected' : ''}`}
+      className={`album-tile${showFooter ? ' album-tile--framed' : ''}${selected ? ' album-tile--selected' : ''}${file.starred ? ' album-tile--starred' : ''}`}
       onClick={(event) => onSelect(event)}
-      onDoubleClick={nameEditor ? undefined : onOpen}
+      onDoubleClick={
+        nameEditor
+          ? undefined
+          : (event) => {
+              if (
+                event.target instanceof Element &&
+                event.target.closest('button, input, textarea')
+              )
+                return
+              onOpen()
+            }
+      }
       onContextMenu={onContextMenu}
       onKeyDown={(event) => {
-        if (event.target instanceof Element && event.target.closest('input, textarea')) return
+        if (event.target instanceof Element && event.target.closest('input, textarea, button'))
+          return
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
         if (event.key === 'Enter' && catalog) onOpen()
         else onSelect(event)
       }}
       role="button"
+      aria-label={!showFooter ? file.display_title : undefined}
       aria-pressed={selected}
       tabIndex={0}
       title={file.display_title}
@@ -120,11 +167,39 @@ export function AlbumTile({
         {file.media_kind === 'video' && meta.duration != null && (
           <span className="card__dur">{dur}</span>
         )}
+        {onToggleStar && (
+          <button
+            type="button"
+            className={`album-tile__star${file.starred ? ' album-tile__star--on' : ''}`}
+            aria-label={
+              file.starred ? `Unstar ${file.display_title}` : `Star ${file.display_title}`
+            }
+            aria-pressed={Boolean(file.starred)}
+            disabled={starDisabled}
+            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleStar()
+            }}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onDragStart={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+          >
+            <IconStar filled={Boolean(file.starred)} />
+          </button>
+        )}
       </HoverPreview>
-      <div className="album-tile__name">{nameEditor ?? file.display_title}</div>
-      <div className="album-tile__sub">
-        {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}
-      </div>
+      {showFooter && (
+        <>
+          <div className="album-tile__name">{nameEditor ?? file.display_title}</div>
+          <div className="album-tile__sub">
+            {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -139,6 +214,8 @@ export function AlbumRow({
   dragProps,
   catalog = false,
   nameEditor,
+  onToggleStar,
+  starDisabled = false,
 }: {
   file: FileRead
   selected: boolean
@@ -148,24 +225,38 @@ export function AlbumRow({
   dragProps: FileDragProps
   catalog?: boolean
   nameEditor?: ReactNode
+  onToggleStar?: () => void
+  starDisabled?: boolean
 }) {
   const facts = factsFromBundleFile(file)
   return (
     <div
-      className={`file-row${selected ? ' file-row--selected' : ''}`}
+      className={`file-row${selected ? ' file-row--selected' : ''}${file.starred ? ' file-row--starred' : ''}`}
       data-file-id={file.id}
       role="row"
       aria-selected={selected}
       tabIndex={0}
       onKeyDown={(event) => {
-        if (event.target instanceof Element && event.target.closest('input, textarea')) return
+        if (event.target instanceof Element && event.target.closest('input, textarea, button'))
+          return
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
         if (event.key === 'Enter' && catalog) onOpen()
         else onSelect(event)
       }}
       onClick={onSelect}
-      onDoubleClick={nameEditor ? undefined : onOpen}
+      onDoubleClick={
+        nameEditor
+          ? undefined
+          : (event) => {
+              if (
+                event.target instanceof Element &&
+                event.target.closest('button, input, textarea')
+              )
+                return
+              onOpen()
+            }
+      }
       onContextMenu={onContextMenu}
       {...dragProps}
     >
@@ -196,6 +287,28 @@ export function AlbumRow({
         {facts.duration ? formatDuration(facts.duration) : ''}
       </span>
       <span className="file-row__modified">{formatDimensions(facts.width, facts.height)}</span>
+      {onToggleStar && (
+        <button
+          type="button"
+          className={`album-row__star${file.starred ? ' album-row__star--on' : ''}`}
+          aria-label={file.starred ? `Unstar ${file.display_title}` : `Star ${file.display_title}`}
+          aria-pressed={Boolean(file.starred)}
+          disabled={starDisabled}
+          onMouseDown={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            onToggleStar()
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onDragStart={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+          }}
+        >
+          <IconStar filled={Boolean(file.starred)} />
+        </button>
+      )}
     </div>
   )
 }

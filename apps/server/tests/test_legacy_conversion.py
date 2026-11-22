@@ -74,6 +74,8 @@ def _legacy(tmp_path: Path) -> Path:
                 synthetic_row("tags", f"tags-{suffix}", parent_id=parent, name=suffix),
             )
         insert_row(db, "asset_bundle_tags", {"bundle_id": "bundle-0", "tag_id": "tags-child"})
+        insert_row(db, "asset_file_stars", {"file_id": "file-video"})
+        insert_row(db, "asset_file_tags", {"file_id": "file-video", "tag_id": "tags-child"})
         insert_row(
             db,
             "collections",
@@ -166,6 +168,10 @@ def test_conversion_publishes_a_package_that_another_server_can_join(tmp_path):
     assert sorted(bundles) == ["bundle-0", "bundle-1", "bundle-2"]
     assert bundles["bundle-1"]["title"] == "Synthetic bundle 1"
     assert set(_rows(store, "tags")) == {"tags-root", "tags-child"}
+    assert _rows(store, "asset_file_stars") == {"file-video": {"file_id": "file-video"}}
+    assert _rows(store, "asset_file_tags") == {
+        "file-video~tags-child": {"file_id": "file-video", "tag_id": "tags-child"}
+    }
     # A repeated activation reports the same finished conversion
     assert conversion.activate(root, base, attempt, review["receipt"])["state"] == "converted"
 
@@ -351,3 +357,19 @@ def test_preparation_is_idempotent_and_rejects_invalid_identities(tmp_path):
         conversion.prepare(root, base, "../escape")
     with pytest.raises(ReplicaError, match="outside the library"):
         conversion.prepare(root, root / "data", uuid4().hex)
+
+
+def test_conversion_tolerates_absent_file_star_and_tag_tables(tmp_path):
+    root = _legacy(tmp_path)
+    with closing(sqlite3.connect(root / ".cairndex" / "library.db")) as db:
+        db.execute("DROP TABLE asset_file_tags")
+        db.execute("DROP TABLE asset_file_stars")
+        db.commit()
+    assert conversion.inspect(root)["blocking"] == []
+    base = _base(tmp_path)
+    attempt = uuid4().hex
+    review = conversion.prepare(root, base, attempt)
+    assert conversion.activate(root, base, attempt, review["receipt"])["state"] == "converted"
+    store = _join(root, tmp_path / "joined")
+    assert _rows(store, "asset_file_stars") == {}
+    assert _rows(store, "asset_file_tags") == {}

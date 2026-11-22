@@ -2,7 +2,7 @@ import type { components } from '../api/schema'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { formatBytes, formatDuration, formatFileRole, formatResolution } from '../lib/format'
 import { fileDragProps } from './dragOut'
-import { IconPlay } from './icons'
+import { IconImage, IconPlay, IconStar } from './icons'
 
 export function CatalogBundleFileRow({
   file,
@@ -15,6 +15,8 @@ export function CatalogBundleFileRow({
   onPick,
   onCover,
   onOpen,
+  onStar,
+  starBusy = false,
 }: {
   file: components['schemas']['FileRead']
   selected: boolean
@@ -26,6 +28,8 @@ export function CatalogBundleFileRow({
   onPick: () => void
   onCover: () => void
   onOpen: () => void
+  onStar?: () => void
+  starBusy?: boolean
 }) {
   const meta = (file.tech_metadata ?? {}) as Record<string, unknown>
   const line = [
@@ -40,6 +44,7 @@ export function CatalogBundleFileRow({
     .join(' · ')
   const visual = file.media_kind === 'image' || file.media_kind === 'video'
   const isCover = cover === file.id
+  const starred = Boolean(file.starred)
   return (
     <>
       <button
@@ -62,6 +67,19 @@ export function CatalogBundleFileRow({
         <span className="file-row__role">{line}</span>
       </button>
       <div className="file-row__actions">
+        {onStar && (
+          <button
+            type="button"
+            className={`tip star-file-action${starred ? ' star-file-action--active' : ''}`}
+            data-tip={starred ? 'Unstar file' : 'Star file'}
+            aria-label={starred ? `Unstar ${file.relative_path}` : `Star ${file.relative_path}`}
+            aria-pressed={starred}
+            disabled={blocked || starBusy}
+            onClick={onStar}
+          >
+            <IconStar filled={starred} />
+          </button>
+        )}
         {visual && (
           <button
             className={`tip cover-action${isCover ? ' cover-action--active' : ''}`}
@@ -71,7 +89,7 @@ export function CatalogBundleFileRow({
             disabled={blocked || busy}
             onClick={onCover}
           >
-            ★
+            <IconImage />
           </button>
         )}
         {visual && (

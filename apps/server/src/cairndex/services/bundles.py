@@ -37,6 +37,8 @@ from cairndex.persistence.models import (
     AssetFile,
     Collection,
     Tag,
+    asset_file_stars,
+    asset_file_tags,
 )
 from cairndex.services import collections as collection_service
 from cairndex.services import directory_members as directory_member_service
@@ -309,6 +311,30 @@ def list_active_files(session: Session, bundle_id: str) -> list[AssetFile]:
         .order_by(AssetFile.sequence, AssetFile.id)
     )
     return list(session.scalars(stmt))
+
+
+def file_annotations(
+    session: Session, file_ids: list[str]
+) -> tuple[set[str], dict[str, list[str]]]:
+    """Batch-load per-file star state and sorted tag IDs for legacy ORM reads."""
+    unique = list(dict.fromkeys(file_ids))
+    if not unique:
+        return set(), {}
+    starred = set(
+        session.scalars(
+            select(asset_file_stars.c.file_id).where(asset_file_stars.c.file_id.in_(unique))
+        )
+    )
+    tags_by_file: dict[str, list[str]] = {}
+    rows = session.execute(
+        select(asset_file_tags.c.file_id, asset_file_tags.c.tag_id)
+        .join(Tag, Tag.id == asset_file_tags.c.tag_id)
+        .where(asset_file_tags.c.file_id.in_(unique))
+        .order_by(Tag.name, Tag.id)
+    )
+    for file_id, tag_id in rows:
+        tags_by_file.setdefault(file_id, []).append(tag_id)
+    return starred, tags_by_file
 
 
 def add_file(

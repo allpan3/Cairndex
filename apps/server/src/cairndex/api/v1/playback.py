@@ -51,7 +51,7 @@ from cairndex.replicas.media import ReplicaMedia
 from cairndex.services import collections as collection_service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
-from cairndex.services.bundles import get_bundle, list_active_files
+from cairndex.services.bundles import file_annotations, get_bundle, list_active_files
 from cairndex.services.pagination import MAX_LIMIT
 
 router = APIRouter(route_class=MetadataRoute, prefix="/libraries/{library_id}", tags=["playback"])
@@ -257,7 +257,13 @@ def set_cover_frame(file_id: str, payload: CoverFrameUpdate, db: LibrarySession)
     except thumbnails.ThumbnailError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     db.flush()
-    return FileRead.model_validate(asset_file)
+    starred_ids, tags_by_file = file_annotations(db, [asset_file.id])
+    return FileRead.model_validate(asset_file).model_copy(
+        update={
+            "starred": asset_file.id in starred_ids,
+            "tag_ids": tags_by_file.get(asset_file.id, []),
+        }
+    )
 
 
 @router.delete("/files/{file_id}/cover-frame", response_model=FileRead)
@@ -284,7 +290,13 @@ def clear_cover_frame(file_id: str, db: LibrarySession) -> FileRead:
     except thumbnails.ThumbnailError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     db.flush()
-    return FileRead.model_validate(asset_file)
+    starred_ids, tags_by_file = file_annotations(db, [asset_file.id])
+    return FileRead.model_validate(asset_file).model_copy(
+        update={
+            "starred": asset_file.id in starred_ids,
+            "tag_ids": tags_by_file.get(asset_file.id, []),
+        }
+    )
 
 
 # List bundles with unfinished playback progress

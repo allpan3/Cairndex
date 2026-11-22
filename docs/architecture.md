@@ -61,7 +61,14 @@ and metadata work. Catalog bases are rechecked before mutation and commit, so
 concurrent metadata saves remain available without weakening recovery.
 Local maintenance alone leaves history polling at its idle interval.
 Update also advances several bounded transactions per exchange pass, yielding
-after 32 steps or 0.25 seconds.
+after 32 steps or 0.25 seconds. Replica workers drain local catalog, grouping,
+and discovery commands directly before periodic SMB object-shard scans, and
+replica object discovery opens `.cairndex/replica/objects` once via `scandir`
+over existing shard directories rather than probing all 256 shard paths per tick.
+Cached bundle, file, and collection thumbnails serve directly from private SSD
+cache after one `open_source` + `fstat` generation check (preserving symlink
+fencing and `Cache-Control: private, no-store`) without acquiring the derivative
+encode limiter.
 
 Durable `conversion_tasks` hold global owner-setup inspection, preparation,
 activation and Undo. One worker executes slow metadata work outside HTTP handlers.

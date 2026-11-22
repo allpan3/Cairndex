@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { fileStoryboardUrl, setActiveLibraryId } from '../api/client'
+import { CatalogQueryContext } from '../api/catalogQuery'
 import { HoverPreview } from './HoverPreview'
 import {
   HOVER_PREVIEW_DWELL_MS,
@@ -846,4 +847,65 @@ test('clears the video source and reloads it when unmounted mid-preview', () => 
   expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled()
   expect(HTMLMediaElement.prototype.load).toHaveBeenCalled()
   expect(video.hasAttribute('src')).toBe(false)
+})
+
+test('probes an uninspected portable video on hover and activates scrub preview', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/replica/media/files/unprobed-video')) {
+        return new Response(
+          JSON.stringify({
+            state: 'available',
+            generation: 'gen-1',
+            playback: { duration: 90, container: 'mp4', video_codec: 'h264', audio_codec: 'aac' },
+            file: {
+              mime_type: 'video/mp4',
+              relative_path: 'Clips/clip.mp4',
+              tech_metadata: {
+                duration: 90,
+                container: 'mov,mp4,m4a,3gp,3g2,mj2',
+                video_codec: 'h264',
+                audio_codec: 'aac',
+              },
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      return new Response('', { status: 404 })
+    }),
+  )
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const unprobed: HoverPreviewSource = {
+    mediaKind: 'video',
+    fileId: 'unprobed-video',
+    relativePath: 'Clips/clip.mp4',
+    duration: null,
+    needsProbe: true,
+  }
+  const rendered = render(
+    <QueryClientProvider client={client}>
+      <CatalogQueryContext value="lib1">
+        <HoverPreview source={unprobed} className="card__thumb">
+          <span>cover</span>
+        </HoverPreview>
+      </CatalogQueryContext>
+    </QueryClientProvider>,
+  )
+  const card = rendered.container.querySelector('.card__thumb') as HTMLElement
+  fireEvent.pointerEnter(card)
+  for (let i = 0; i < 10 && card.getAttribute('data-hover-preview-mode') !== 'direct'; i++) {
+    await act(async () => {
+      vi.advanceTimersByTime(125)
+      await Promise.resolve()
+    })
+  }
+  expect(card).toHaveAttribute('data-hover-preview-mode', 'direct')
+  await act(async () => {
+    vi.advanceTimersByTime(HOVER_PREVIEW_DWELL_MS)
+  })
+  expect(rendered.getByTestId('hover-preview-video')).toBeInTheDocument()
 })

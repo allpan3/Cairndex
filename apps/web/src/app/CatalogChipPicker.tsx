@@ -47,7 +47,7 @@ export function CatalogChipPicker({
   loading: boolean
   disabled: boolean
   onToggle: (choice: ChipChoice, assign: boolean) => void
-  onReview: () => void
+  onReview: (choice?: ChipChoice) => void
   /** Collections open from their chip. */
   onOpenChip?: (id: string) => void
   onTagMenu?: (chip: ChipChoice, event: MouseEvent) => void
@@ -58,7 +58,7 @@ export function CatalogChipPicker({
   useEffect(() => onOpenChange(open), [open, onOpenChange])
   const noun = NOUN[family]
   const pick = (choice: ChipChoice) => {
-    if (choice.held) onReview()
+    if (choice.held) onReview(choice)
     else if (!disabled) onToggle(choice, choice.state !== 'on')
   }
   const sorted = [...choices].sort((a, b) => a.path.join('/').localeCompare(b.path.join('/')))
@@ -92,7 +92,7 @@ export function CatalogChipPicker({
           <button
             className="chip__remove"
             disabled={disabled}
-            onClick={() => (chip.held ? onReview() : onToggle(chip, false))}
+            onClick={() => (chip.held ? onReview(chip) : onToggle(chip, false))}
             aria-label={`Remove ${chip.name}`}
           >
             ×

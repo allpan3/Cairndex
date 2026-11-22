@@ -19,8 +19,8 @@ use crate::sidecar::LocalServer;
 
 const PROXY_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const PROXY_READ_TIMEOUT: Duration = Duration::from_secs(30);
-const PROXY_WORKERS: usize = 8;
-const PROXY_QUEUE_DEPTH: usize = 32;
+const PROXY_WORKERS: usize = 24;
+const PROXY_QUEUE_DEPTH: usize = 128;
 const ALLOWED_ORIGINS: [&str; 4] = [
     "tauri://localhost",
     "http://tauri.localhost",
@@ -278,6 +278,7 @@ fn media_route_library_id(path: &str) -> Option<&str> {
         // the only way they reach the server at all. The moment's *JSON* routes
         // are deliberately absent: those go over `hostFetch` with their own auth.
         | ["bundles", _, "moments", _, "clip.mp4" | "poster.jpg"]
+        | ["replica", "media", "moments", _, "clip.mp4" | "poster.jpg"]
         | ["collections", _, "thumbnail"]
         | ["files", _, "stream" | "content" | "preview" | "storyboard.vtt" | "contact-sheet"]
         | ["subtitles", _, "vtt"]
@@ -1168,5 +1169,25 @@ mod tests {
             "http://127.0.0.1:4567",
             Some("local-tok")
         ));
+    }
+
+    #[test]
+    fn allows_portable_moment_preview_media_routes_and_rejects_json_routes() {
+        assert_eq!(
+            media_route_library_id("/api/v1/libraries/lib-1/replica/media/moments/m-1/poster.jpg"),
+            Some("lib-1")
+        );
+        assert_eq!(
+            media_route_library_id("/api/v1/libraries/lib-1/replica/media/moments/m-1/clip.mp4"),
+            Some("lib-1")
+        );
+        assert_eq!(
+            media_route_library_id("/api/v1/libraries/lib-1/replica/media/moments/m-1"),
+            None
+        );
+        assert_eq!(
+            media_route_library_id("/api/v1/libraries/lib-1/replica/media/files/file-01"),
+            None
+        );
     }
 }

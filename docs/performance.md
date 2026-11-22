@@ -260,6 +260,32 @@ against the local test VM daemon. Receipts:
 `fullfsync-ack-final-linux-20261018-230705` and
 `fullfsync-docker-20261018-230350`.
 
+## SMB responsiveness and grouping accept (2026-11-21)
+
+Synthetic benchmark against a format-three portable library whose root is
+instrumented with a `1.5 ms` per-syscall SMB round-trip plus `280 MB/s`
+sequential read bandwidth across `open`, `stat`, `lstat`, `scandir`, `fsync`,
+`read`, `pread`, and `write`, with private SQLite stores (`fullfsync=ON`,
+`synchronous=FULL`) and derived-media caches on local SSD:
+
+| Workload | Before | After (Server / SMB) | Visible UI Latency |
+| --- | ---: | ---: | ---: |
+| Idle 4 s background window | 1,667 SMB syscalls (1,590 `open`s) | **77 SMB syscalls** (11 `open`s, **−95.4%**) | — |
+| 24 cached thumbnails (8-way burst) | 669.4 ms wall / 1,344 SMB ops | **315.0 ms** cold (**105.4 ms** p50) / 409 SMB ops | **0 ms** on warm scroll / view switch (`coverMemoryCache`) |
+| Single-bundle rename (`save` job) | 2,637.4 ms median | **126.9 ms** (**20.8× faster**) | **0 ms** (optimistic draft + browse patch) |
+| Tag / collection toggle (`preview` + `commit`) | 5,654.0 ms median | **258.4 ms** (**21.9× faster**) | 0 ms in the measured build. The current inspector displays confirmed membership after the save. |
+| Grouping **Accept selected** (12 bundles / 36 files) | 75,416.9 ms cold / 37,842 SMB syscalls (~3.0 s warm SMB) | **1,431.0 ms** / **646 SMB syscalls** (**52.7× faster**, **−98.3% ops**) | Adaptive 25–40 ms status poll (`<250 ms` on LAN SMB) |
+
+Why SMB felt sluggish despite `280 MB/s` sequential bandwidth: SMB throughput
+governs bulk streaming, whereas small metadata operations (`open`, `stat`,
+`scandir`, `fsync`) pay per-round-trip latency (`~0.8–2.5 ms` each). Probing
+256 shard paths per worker tick under the per-library lock, re-reading 192 KiB
+file samples during Grouping **Accept selected** instead of passing cached
+candidate rows, serializing `LIMIT 1` group steps across `F_FULLFSYNC`
+commits, evicting `no-store` thumbnails on virtualized scroll, and waiting for
+job polling before updating React Query caches multiplied per-syscall RTT into
+multi-second stalls.
+
 ## Remaining / future work
 
 - **`view_counts` (~275 ms), descendant-inclusive `collection_counts` (~268 ms),

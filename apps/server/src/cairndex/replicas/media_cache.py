@@ -5,6 +5,7 @@ from contextlib import ExitStack
 from pathlib import Path
 
 from cairndex.core.errors import ValidationError
+from cairndex.core.paths import PathSafetyError
 from cairndex.domain.enums import MediaKind
 from cairndex.media import derived_cache, playback, previews, thumbnails
 from cairndex.media.hls import BurnSubtitle
@@ -12,11 +13,48 @@ from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetFile
 from cairndex.replicas.media import ReplicaMedia, generation, open_source, open_sources
 from cairndex.replicas.protocol import ReplicaError
+from cairndex.scanning.media_types import classify
 
 
-# Cache publication requires the same current source generation before and after derivation
-def preview(media: ReplicaMedia, file_id: str, size: int) -> Path:
-    _, asset = media.resolve_file(file_id)
+def cached_thumbnail(
+    media: ReplicaMedia,
+    file_id: str,
+    *,
+    expected_generation: str | None = None,
+) -> Path | None:
+    """Return an already-built local thumbnail/preview using one no-follow fstat.
+
+    Falls back to ``None`` on any missing/changed/unconfirmed source or cache miss so
+    the full guarded builder handles derivation and observation persistence.
+    """
+    row = media.row("asset_files", file_id)
+    relative_path = str(row["relative_path"])
+    kind = classify(relative_path)
+    if kind is None or kind[0] not in (MediaKind.IMAGE, MediaKind.VIDEO):
+        return None
+    try:
+        with open_source(media.root, relative_path) as handle:
+            token = generation(relative_path, os.fstat(handle))
+    except (OSError, PathSafetyError, ValidationError):
+        return None
+    if expected_generation is not None and token != expected_generation:
+        return None
+    if media.store.descriptor.format_version == 3:
+        with media.store.connection(readonly=True) as db:
+            seen = db.execute(
+                "SELECT 1 FROM local_media WHERE file_id=? AND generation=? AND state='available'",
+                (file_id, token),
+            ).fetchone()
+        if not seen:
+            return None
+    if kind[0] == MediaKind.IMAGE:
+        dest = media.cache("previews", file_id, token, "-640.webp")
+        return dest if derived_cache.is_current(dest, token) else None
+    dest = media.cache("thumbnails", file_id, f"{token}:{row.get('cover_time')}", ".jpg")
+    return dest if dest.is_file() else None
+
+
+def _preview_for_asset(media: ReplicaMedia, file_id: str, asset: AssetFile, size: int) -> Path:
     if asset.media_kind != MediaKind.IMAGE:
         raise ValidationError("Only images have previews")
     token = asset.quick_fingerprint or ""
@@ -31,11 +69,17 @@ def preview(media: ReplicaMedia, file_id: str, size: int) -> Path:
     return path
 
 
+# Cache publication requires the same current source generation before and after derivation
+def preview(media: ReplicaMedia, file_id: str, size: int) -> Path:
+    _, asset = media.resolve_file(file_id)
+    return _preview_for_asset(media, file_id, asset, size)
+
+
 # Cover timestamp is read from authored metadata and never selected by a local probe
 def thumbnail(media: ReplicaMedia, file_id: str) -> Path:
     source, asset = media.resolve_file(file_id)
     if asset.media_kind == MediaKind.IMAGE:
-        return preview(media, file_id, 640)
+        return _preview_for_asset(media, file_id, asset, 640)
     if asset.media_kind != MediaKind.VIDEO:
         raise ValidationError("Only video and images have thumbnails")
     token = asset.quick_fingerprint or ""

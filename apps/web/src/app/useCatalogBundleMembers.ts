@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { CatalogJobError, operationId } from '../api/catalog'
 import { changeBundleMember, type BundleMemberChange } from '../api/catalogBundleMembers'
+import { bundleLockKey, withCatalogWriteLock } from '../api/catalogWriteQueue'
 import { captureRequestScope } from '../api/requestScope'
 import { useCatalogDraft } from './useCatalogDraft'
 
@@ -66,26 +67,30 @@ export function useCatalogBundleMembers(library: string, bundle: string) {
     setError('')
     const assertScope = captureRequestScope()
     try {
-      storage.update({ data: JSON.stringify(intent) })
-      await changeBundleMember(library, bundle, intent.observed, intent.change, intent.operation)
-      assertScope()
-      await storage.discard()
-      await Promise.all(
-        [
-          'catalog-inspector-files',
-          'catalog-album',
-          'replica-media',
-          'catalog-detail',
-          'catalog-browse',
-          'catalog-view-counts',
-          'catalog-local-unbundled',
-          'catalog-private-unbundled',
-          'catalog-unbundled',
-          'catalog-selection',
-        ].map((key) => client.invalidateQueries({ queryKey: [key, library] })),
-      )
-      assertScope()
-      window.dispatchEvent(new Event('cairndex:metadata-saved'))
+      await withCatalogWriteLock([bundleLockKey(library, bundle)], async () => {
+        storage.update({ data: JSON.stringify(intent) })
+        await changeBundleMember(library, bundle, intent.observed, intent.change, intent.operation)
+        assertScope()
+        await storage.discard()
+        await Promise.all(
+          [
+            'catalog-inspector-files',
+            'catalog-album',
+            'replica-media',
+            'catalog-detail',
+            'catalog-browse',
+            'catalog-view-counts',
+            'catalog-local-unbundled',
+            'catalog-private-unbundled',
+            'catalog-unbundled',
+            'catalog-selection',
+            'catalog-memberships',
+            'catalog-bulk-memberships',
+          ].map((key) => client.invalidateQueries({ queryKey: [key, library] })),
+        )
+        assertScope()
+        window.dispatchEvent(new Event('cairndex:metadata-saved'))
+      })
       return true
     } catch (reason) {
       if (reason instanceof CatalogJobError) {

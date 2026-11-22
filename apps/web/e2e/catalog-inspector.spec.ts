@@ -40,9 +40,28 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     })
     const page = await context.newPage()
     await proxyApi(page, backend.baseUrl)
-    await page.goto('/')
-    await page.getByRole('option').filter({ hasText: 'Synthetic playback' }).click()
     const inspector = page.getByRole('complementary', { name: 'Bundle inspector' })
+    const coverRequest = '**/bundles/*/thumbnail*'
+    let releaseCovers!: () => void
+    const coversHeld = new Promise<void>((resolve) => {
+      releaseCovers = resolve
+    })
+    await page.route(coverRequest, async (route) => {
+      await coversHeld
+      await route.fallback()
+    })
+    try {
+      const requested = page.waitForRequest(coverRequest)
+      await page.goto('/')
+      await requested
+      await page.getByRole('option').filter({ hasText: 'Synthetic playback' }).click()
+      await expect(inspector.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
+        'Synthetic playback',
+      )
+    } finally {
+      releaseCovers()
+      await page.unroute(coverRequest)
+    }
     await expect(inspector.getByRole('img', { name: 'Bundle cover' })).toBeVisible()
     await expect
       .poll(() =>
@@ -104,10 +123,11 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     ])
     expect([addTag?.y, addTag?.height]).toEqual([tagPill?.y, tagPill?.height])
     const files = inspector.locator('[data-section="files"]')
-    await files.getByRole('button', { name: /^movie\.mp4/ }).click()
-    const facts = files.getByRole('region', { name: 'Local file details' })
-    await expect(facts).toContainText('320 × 180')
-    await expect(facts).toContainText('Observed on this device')
+    const movieRow = files.getByRole('button', { name: /^movie\.mp4/ })
+    await movieRow.click()
+    await expect(movieRow).toHaveAttribute('aria-pressed', 'true')
+    // Clicking a row in Files in bundle must not append file metadata at the bottom of the bundle inspector.
+    await expect(files.getByRole('region', { name: 'Local file details' })).toHaveCount(0)
     // Cover selection saves automatically, including in a short window.
     await page.setViewportSize({ width: 1200, height: 640 })
     await files.getByRole('button', { name: 'Set Playback/movie.mp4 as cover' }).click()
@@ -133,13 +153,23 @@ test('ordinary inspector saves membership and covers while local facts stay priv
     await expect
       .poll(async () => (await (await fetch(entityUrl)).json()).fields.cover_file_id.value)
       .toBe('null')
-    await files.getByRole('button', { name: /^movie\.mp4/ }).click()
-    await expect(facts).toContainText('320 × 180')
     await inspector.screenshot({ path: test.info().outputPath('synthetic-inspector.png') })
     await inspector.evaluate((node) => {
       node.scrollTop = 0
     })
     await inspector.screenshot({ path: test.info().outputPath('synthetic-inspector-cover.png') })
+    // Open the bundle to inspect individual file observations in the File Inspector
+    await page
+      .getByRole('option')
+      .filter({ hasText: 'Synthetic playback' })
+      .getByRole('button', { name: 'Open bundle' })
+      .click()
+    const albumListing = page.getByRole('list', { name: 'Album items' })
+    const movieTile = albumListing.locator('[data-file-id="media-direct"]')
+    await movieTile.click()
+    const fileInspector = page.getByRole('complementary', { name: 'File inspector' })
+    const facts = fileInspector.getByRole('region', { name: 'Local file details' })
+    await expect(facts).toContainText('320 × 180')
     await rename(
       join(root, 'Playback/movie.mp4'),
       join(root, 'Playback/temporarily-unavailable.mp4'),
@@ -151,11 +181,12 @@ test('ordinary inspector saves membership and covers while local facts stay priv
       join(root, 'Playback/temporarily-unavailable.mp4'),
       join(root, 'Playback/movie.mp4'),
     )
-    // So does selecting it again
-    await files.getByRole('button', { name: /^movie\.mp4/ }).click()
-    await expect(facts).toHaveCount(0)
-    await files.getByRole('button', { name: /^movie\.mp4/ }).click()
+    // Deselecting and selecting it again re-reads local availability
+    await albumListing.press('Escape')
+    await expect(fileInspector).toHaveCount(0)
+    await movieTile.click()
     await expect(facts).toContainText('Observed on this device')
+    await page.getByRole('button', { name: 'Back to library', exact: true }).click()
     expect(await hash()).toBe(original)
     await page.route('**/replica/status', async (route) => {
       const response = await fetch(backend.baseUrl + new URL(route.request().url()).pathname)

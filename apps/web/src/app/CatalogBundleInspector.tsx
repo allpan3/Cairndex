@@ -54,7 +54,7 @@ export function CatalogBundleInspector({
   onReviewConflict?: (unit: string) => void
   /** Open the bundle in the viewer; absent inside the viewer itself. */
   onOpen?: () => void
-  onOpenFile: (file: string) => void
+  onOpenFile: (file: string, time?: number, loop?: { start: number; end: number } | null) => void
   /** The moments section; each surface supplies its own source and actions. */
   moments?: ReactNode
   albumFile?: string | null
@@ -72,6 +72,7 @@ export function CatalogBundleInspector({
   onOpenDirectory?: (path: string) => void
 }) {
   const status = useReplicaStatus(library).data
+  const fileMetadataEnabled = inspectorEnabled && (status?.inspector_version ?? 0) >= 2
   const draft = useCatalogBundleDraft(library, entity, editor, refresh, blocked)
   const [addingFiles, setAddingFiles] = useState(false)
   const [reviewing, setReviewing] = useState(false)
@@ -152,6 +153,14 @@ export function CatalogBundleInspector({
           onRename={onRenameFile}
           onLocatePath={onLocateFile}
           hostFiles={hostFiles}
+          editor={editor}
+          metadataEnabled={fileMetadataEnabled}
+          blocked={blocked}
+          onReview={onReview}
+          onReviewConflict={onReviewConflict}
+          onFilterTag={onFilterTag}
+          onPlayMoment={(_bundleId, fileId, time) => onOpenFile(fileId, time)}
+          onLoopMoment={(_bundleId, fileId, range) => onOpenFile(fileId, range.start, range)}
         />
       </aside>
     )
@@ -225,7 +234,10 @@ export function CatalogBundleInspector({
         <span className="prop__k">Rating</span>
         <StarRating
           value={rating ?? 0}
-          onChange={(value) => draft.change('rating', JSON.stringify(value || null))}
+          onChange={(value) => {
+            draft.change('rating', JSON.stringify(value || null))
+            void draft.save()
+          }}
         />
       </div>
       {summary && (
@@ -309,6 +321,7 @@ export function CatalogBundleInspector({
             family={family}
             blocked={blocked}
             onReview={onReview}
+            onReviewConflict={onReviewConflict}
             onOpenCollection={onOpenCollection}
             onFilterTag={onFilterTag}
           />
@@ -320,13 +333,17 @@ export function CatalogBundleInspector({
           bundle={entity.id}
           cover={cover}
           blocked={blocked || draft.busy}
+          editor={editor}
           fileCount={summary?.file_count}
-          onCover={(file, reference) =>
+          onCover={(file, reference) => {
             draft.change('cover_file_id', JSON.stringify(file), reference ? [reference] : [])
-          }
+            void draft.save()
+          }}
           onOpen={onOpenFile}
           onAddFiles={canAddFiles ? () => setAddingFiles(true) : undefined}
           onReview={onReview}
+          onReviewConflict={onReviewConflict}
+          onFilterTag={onFilterTag}
           onLocateFile={onLocateFile}
           onOpenDirectory={onOpenDirectory}
           hostFiles={hostFiles}
