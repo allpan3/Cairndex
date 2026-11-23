@@ -1,3 +1,4 @@
+import { operationId } from './operationId'
 // Replica requests use explicit library scope so changing tabs cannot redirect a save
 import { hostFetch } from '../platform'
 import { captureRequestScope, getConnectionScopeKey } from './requestScope'
@@ -56,13 +57,13 @@ export function holdEditor(onReady: (id: string) => void): () => void {
   async function acquire() {
     let id: string
     try {
-      id = sessionStorage.getItem(key) ?? crypto.randomUUID().replaceAll('-', '')
+      id = sessionStorage.getItem(key) ?? operationId()
     } catch {
-      id = crypto.randomUUID().replaceAll('-', '')
+      id = operationId()
     }
     while (!stopped) {
       if (!navigator.locks) {
-        onReady(crypto.randomUUID().replaceAll('-', ''))
+        onReady(operationId())
         return
       }
       const finished = await navigator.locks.request(
@@ -82,7 +83,7 @@ export function holdEditor(onReady: (id: string) => void): () => void {
         },
       )
       if (finished) return
-      id = crypto.randomUUID().replaceAll('-', '')
+      id = operationId()
     }
   }
   // Defer admission until StrictMode has cancelled its disposable first effect

@@ -1,3 +1,4 @@
+import { operationId } from '../api/operationId'
 // Bundle metadata editor with durable private drafts and field-scoped recovery
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -127,7 +128,7 @@ export function ReplicaEditor({
   // Cache each keystroke before requesting a server-side draft save
   function change(field: FieldName, value: Value) {
     const next: Draft = {
-      id: draft?.id ?? crypto.randomUUID().replaceAll('-', ''),
+      id: draft?.id ?? operationId(),
       revision: (draft?.revision ?? 0) + 1,
       changes: {
         ...draft?.changes,
@@ -205,7 +206,7 @@ export function ReplicaEditor({
   // Recovery is explicit and cannot overwrite an active unsaved editor
   function recover(item: Draft) {
     if (draft) return
-    const recovered = { ...item, id: crypto.randomUUID().replaceAll('-', ''), revision: 1 }
+    const recovered = { ...item, id: operationId(), revision: 1 }
     try {
       localStorage.setItem(key, JSON.stringify(recovered))
     } catch {
@@ -324,7 +325,7 @@ export function ReplicaEditor({
                     onClick={() =>
                       setReview({
                         field,
-                        operation: crypto.randomUUID().replaceAll('-', ''),
+                        operation: operationId(),
                         value: candidate.value,
                         basis: [...bundle.fields[field].basis],
                       })
@@ -359,7 +360,7 @@ export function ReplicaEditor({
                 onClick={() =>
                   setReview({
                     field: historyField,
-                    operation: crypto.randomUUID().replaceAll('-', ''),
+                    operation: operationId(),
                     value: item.value,
                     basis: [...bundle.fields[historyField].basis],
                   })

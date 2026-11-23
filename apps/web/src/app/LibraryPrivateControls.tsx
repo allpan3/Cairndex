@@ -1,3 +1,4 @@
+import { operationId } from '../api/operationId'
 import { usePersistentState } from '../state/usePersistentState'
 import { getConnectionScopeKey } from '../api/requestScope'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -279,9 +280,7 @@ function PrivateBackups({ libraryId, released }: { libraryId: string; released: 
         after: '',
         limit: 20,
         ...body,
-        operation: Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
-          byte.toString(16).padStart(2, '0'),
-        ).join(''),
+        operation: operationId(),
       }),
     onSuccess: (result) => {
       setSelected(result.id)

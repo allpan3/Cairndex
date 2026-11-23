@@ -108,7 +108,7 @@ export function displayCell(raw: string | null | undefined): string {
 }
 
 // New retry IDs are generated on intent changes, never on a retry of the same draft
-export const operationId = () => crypto.randomUUID().replaceAll('-', '')
+export { operationId } from './operationId'
 
 // Provenance remains available without obscuring everyday creation and editing controls
 export const advancedCatalogFields = new Set([

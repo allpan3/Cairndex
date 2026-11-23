@@ -356,6 +356,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Opening a portable library and editing its metadata work over LAN HTTP on a NAS.
+
 - **Moment range-loop playback, hover previews, and video card/album scrub
   previews in portable libraries.** Clicking a span moment's loop control or
   badge in the Browser or File Inspector opens the viewer with the range loop
