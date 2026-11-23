@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import type { FileBrowserEntry } from '../api/client'
@@ -153,4 +153,29 @@ test('entries with no possible still keep their icon', () => {
   // honest answer rather than a broken image.
   expect(thumbSrcFor('notes.srt')).toBeNull()
   expect(thumbSrcFor('Extras')).toBeNull()
+})
+
+test('with blob support, thumbnails come from the shared cover queue and cache', async () => {
+  const cache = await import('./coverMemoryCache')
+  const requested: string[] = []
+  vi.spyOn(cache, 'canCacheCoverBlobs').mockReturnValue(true)
+  vi.spyOn(cache, 'getCachedCoverBlobUrl').mockImplementation((src) =>
+    src.includes('file-img') ? 'blob:cached-poster' : undefined,
+  )
+  vi.spyOn(cache, 'acquireCoverBlobUrl').mockImplementation((src) => {
+    requested.push(src)
+    return {
+      promise: Promise.resolve(src.includes('preview') ? null : 'blob:movie'),
+      setVisible: () => undefined,
+      release: () => undefined,
+    }
+  })
+  renderBrowser()
+
+  // A cached thumbnail shows at once, without asking the server again
+  expect(thumbSrcFor('poster.jpg')).toBe('blob:cached-poster')
+  expect(requested.some((src) => src.includes('file-img'))).toBe(false)
+  await waitFor(() => expect(thumbSrcFor('movie.mp4')).toBe('blob:movie'))
+  // A thumbnail the server cannot produce keeps the icon
+  await waitFor(() => expect(thumbSrcFor('loose.png')).toBeNull())
 })

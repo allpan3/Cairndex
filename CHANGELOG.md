@@ -373,6 +373,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Unbundled and File Browser thumbnails reappear at once when their rows scroll back
+  into view. They now share the bundle-cover request queue and the session's memory
+  cache, instead of re-reading every thumbnail over SMB with no limit on concurrent
+  requests; after a fast scroll, previously seen thumbnails took 3–10 s to return.
+
 - Opening a portable library and editing its metadata work over LAN HTTP on a NAS.
 
 - **Moment range-loop playback, hover previews, and video card/album scrub
