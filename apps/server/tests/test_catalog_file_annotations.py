@@ -78,7 +78,7 @@ def test_file_annotation_capabilities_and_format2_browse_version(tmp_path: Path)
     format2 = prepare_disposable(
         create_disposable(parent=tmp_path / "f2", bundles=3), format_version=2
     ).store.status()
-    assert format3["browse_version"] == 18
+    assert format3["browse_version"] == 19
     assert format2["browse_version"] == 12
     assert format3["album_version"] == 2 and format2["album_version"] == 2
     assert format3["inspector_version"] == 2 and format2["inspector_version"] == 2

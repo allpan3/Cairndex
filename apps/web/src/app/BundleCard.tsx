@@ -4,6 +4,7 @@ import { CatalogQueryContext } from '../api/catalogQuery'
 import type { BundleSummary } from '../api/client'
 import { fileThumbnailUrl, thumbnailUrl } from '../api/client'
 import { formatDimensions, formatDuration } from '../lib/format'
+import type { CoverBatchItem } from './coverMemoryCache'
 import { CoverImage } from './CoverImage'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
@@ -17,6 +18,7 @@ import { useBundleFileDropTarget, type BundleFileDropHandler } from './useBundle
 export type BundleCardItem = BundleSummary & {
   resume_storyboard_version?: string | null
   resume_generation?: string | null
+  cover_batch?: CoverBatchItem
   size_known?: boolean
   has_conflicts?: boolean
 }
@@ -154,7 +156,7 @@ export function BundleCard({
     >
       <HoverPreview source={previewSource} disabled={previewDisabled} className="card__thumb">
         {item.has_cover ? (
-          <CoverImage src={thumbnailUrl(item.id, item.cover_key)} />
+          <CoverImage batch={item.cover_batch} src={thumbnailUrl(item.id, item.cover_key)} />
         ) : (
           <div className="card__placeholder">▦</div>
         )}

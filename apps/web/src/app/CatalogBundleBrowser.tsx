@@ -3,7 +3,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { catalog, type Entity } from '../api/catalog'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { components } from '../api/schema'
-import type { BundleSort, SortOrder } from '../api/client'
+import { resolveApiUrl, type BundleSort, type SortOrder } from '../api/client'
 import type { BundleCardItem } from './BundleCard'
 import { Browser, type BrowserNavigation } from './Browser'
 import { bundleHome, parentFolder } from './sourceTasks'
@@ -353,6 +353,10 @@ export function CatalogBundleBrowser({
       page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
     refetchInterval: 2000,
   })
+  const coverEndpoint =
+    (status?.browse_version ?? 0) >= 19
+      ? resolveApiUrl(`/api/v1/libraries/${library}/replica/media/prepared-covers`)
+      : undefined
   const leaving = collections.leaving
   const items = useMemo(
     () =>
@@ -369,6 +373,9 @@ export function CatalogBundleBrowser({
                 has_conflicts: item.has_conflicts ?? false,
                 has_cover: Boolean(item.cover_file_id),
                 openable: item.file_count > 0,
+                cover_batch: coverEndpoint
+                  ? { endpoint: coverEndpoint, bundle: item.id }
+                  : undefined,
                 cover_key: item.cover_key ?? null,
                 cover_width: null,
                 cover_height: null,
@@ -395,7 +402,7 @@ export function CatalogBundleBrowser({
               }) satisfies BundleCardItem,
           ),
       ) ?? [],
-    [browse.data, localHistoryEnabled, leaving],
+    [browse.data, localHistoryEnabled, leaving, coverEndpoint],
   )
   // A new bundle dropped here most likely belongs with this view's bundles
   const collectionId = selection.collectionId ?? null

@@ -17,7 +17,13 @@ function observeSurface(root: Element | null) {
       { root, rootMargin },
     )
   }
-  return { cards, visible: observer('visible', '0px'), near: observer('near', '400px 0px') }
+  // Prepare up to one screen of mounted rows as visible requests drain.
+  const lookahead = Math.min(1200, Math.max(400, root?.clientHeight || window.innerHeight))
+  return {
+    cards,
+    visible: observer('visible', '0px'),
+    near: observer('near', `${lookahead}px 0px`),
+  }
 }
 
 const surfaces = new Map<Element | null, ReturnType<typeof observeSurface>>()

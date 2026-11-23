@@ -2,6 +2,7 @@
 
 import os
 import sqlite3
+import stat
 import threading
 from contextlib import ExitStack
 from pathlib import Path
@@ -14,6 +15,8 @@ from cairndex.media import derived_cache, playback, previews, thumbnails
 from cairndex.media.hls import BurnSubtitle
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetFile
+from cairndex.replicas.catalog.inspector import cover
+from cairndex.replicas.catalog.projection import read_row
 from cairndex.replicas.media import ReplicaMedia, generation, open_source, open_sources
 from cairndex.replicas.protocol import ReplicaError
 from cairndex.scanning.media_types import classify
@@ -55,6 +58,37 @@ def cached_thumbnail(
         return dest if derived_cache.is_current(dest, token) else None
     dest = media.cache("thumbnails", file_id, f"{token}:{row.get('cover_time')}", ".jpg")
     return dest if dest.is_file() else None
+
+
+MAX_COVER_BATCH = 16
+_MAX_BATCH_BYTES = 2 * 1024 * 1024
+
+
+def prepared_bundle_covers(media: ReplicaMedia, bundles: list[str]) -> list[tuple[int, str, bytes]]:
+    """Collect only current cache hits from one catalog snapshot. Never start a decoder."""
+    hits = []
+    remaining = _MAX_BATCH_BYTES
+    with media.store.connection(readonly=True) as db:
+        for index, bundle in enumerate(bundles):
+            if read_row(db, "asset_bundles", bundle) is None:
+                continue
+            artwork = cover(db, bundle)
+            path = cached_thumbnail(media, db, artwork) if artwork else None
+            if path is None:
+                continue
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                with os.fdopen(fd, "rb") as stream:
+                    info = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= remaining:
+                        continue
+                    data = stream.read(info.st_size)
+            except FileNotFoundError:
+                continue  # Eviction between lookup and open is an ordinary miss.
+            if len(data) == info.st_size:
+                hits.append((index, thumbnails.thumbnail_media_type(path), data))
+                remaining -= len(data)
+    return hits
 
 
 def _preview_for_asset(media: ReplicaMedia, file_id: str, asset: AssetFile, size: int) -> Path:

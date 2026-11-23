@@ -340,7 +340,7 @@ class CatalogStorage(PrivateStore):
             return {
                 "ready": "catalog_ready" in config,
                 "catalog_version": self.descriptor.catalog_version,
-                "browse_version": 18 if self.descriptor.format_version == 3 else 12,
+                "browse_version": 19 if self.descriptor.format_version == 3 else 12,
                 "album_version": 2,
                 "inspector_version": 2,
                 "bundle_summary_version": 1,

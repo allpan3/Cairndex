@@ -4016,6 +4016,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/replica/media/prepared-covers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepared Covers
+         * @description Prepared bundle covers as binary form parts named by zero-based request index.
+         *
+         *     Missing, unconfirmed and over-budget covers are omitted. The individual endpoint
+         *     remains available for generation. At most 2 MiB of image data is returned.
+         */
+        post: operations["prepared_covers_api_v1_libraries__library_id__replica_media_prepared_covers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/replica/status": {
         parameters: {
             query?: never;
@@ -7660,6 +7683,11 @@ export interface components {
             operator: string;
             /** Value */
             value?: unknown;
+        };
+        /** PreparedCoverRequest */
+        PreparedCoverRequest: {
+            /** Bundles */
+            bundles: string[];
         };
         /** ProposalDestinationUpdate */
         ProposalDestinationUpdate: {
@@ -17137,6 +17165,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PathMediaRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepared_covers_api_v1_libraries__library_id__replica_media_prepared_covers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreparedCoverRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "multipart/form-data": string;
                 };
             };
             /** @description Validation Error */

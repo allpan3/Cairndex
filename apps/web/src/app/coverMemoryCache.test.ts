@@ -118,3 +118,45 @@ test('visible covers bypass nearby work and share an already requested cover', a
   await next.promise
   for (const handle of [near, next, promoted, visible, shared]) handle.release()
 })
+
+test('one visible batch delivers hits and retries only the missing cover individually', async () => {
+  const calls: string[] = []
+  vi.spyOn(platform, 'hostFetch').mockImplementation(async (input, init) => {
+    calls.push(String(input))
+    if (input !== '/prepared') return new Response('cold')
+    const ids = JSON.parse(String(init?.body)).bundles as string[]
+    return new Response(
+      `--sample\r\nContent-Disposition: form-data; name="${ids.indexOf('ready')}"; filename="cover"\r\nContent-Type: image/jpeg\r\n\r\nwarm\r\n--sample--\r\n`,
+      { headers: { 'Content-Type': 'multipart/form-data; boundary=sample' } },
+    )
+  })
+  const items = ['ready', 'cold'].map((bundle) =>
+    acquireCoverBlobUrl('/cover/' + bundle, true, { endpoint: '/prepared', bundle }),
+  )
+  const results = await Promise.all(items.map((item) => item.promise))
+  expect(results.every(Boolean)).toBe(true)
+  expect(calls).toEqual(['/prepared', '/cover/cold'])
+  items.forEach((item) => item.release())
+})
+
+test('releasing one card keeps its batch alive, clearing the library retires all late bytes', async () => {
+  let signal: AbortSignal | null | undefined
+  let respond!: (response: Response) => void
+  const fetch = vi.spyOn(platform, 'hostFetch').mockImplementation((_url, init) => {
+    signal = init?.signal
+    return new Promise<Response>((resolve) => {
+      respond = resolve
+    })
+  })
+  const a = acquireCoverBlobUrl('/a', true, { endpoint: '/batch', bundle: 'a' })
+  const b = acquireCoverBlobUrl('/b', true, { endpoint: '/batch', bundle: 'b' })
+  await Promise.resolve()
+  a.release()
+  expect(signal?.aborted).toBe(false)
+  clearCoverBlobCache()
+  expect(signal?.aborted).toBe(true)
+  respond(new Response(new FormData()))
+  expect(await Promise.all([a.promise, b.promise])).toEqual([null, null])
+  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(getCachedCoverBlobUrl('/b')).toBeUndefined()
+})

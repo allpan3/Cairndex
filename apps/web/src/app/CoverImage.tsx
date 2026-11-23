@@ -1,6 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { observeCover } from './coverViewport'
-import { acquireCoverBlobUrl, canCacheCoverBlobs, getCachedCoverBlobUrl } from './coverMemoryCache'
+import {
+  type CoverBatchItem,
+  acquireCoverBlobUrl,
+  canCacheCoverBlobs,
+  getCachedCoverBlobUrl,
+} from './coverMemoryCache'
 
 /**
  * A card's cover, decoded off the main thread and faded in over one neutral
@@ -12,7 +17,9 @@ import { acquireCoverBlobUrl, canCacheCoverBlobs, getCachedCoverBlobUrl } from '
  * It is inert decoration, like every cover (see the inert-media rule in
  * index.css): the card beneath owns clicks, menus and drags.
  */
-export function CoverImage({ src }: { src: string }) {
+export function CoverImage({ src, batch }: { src: string; batch?: CoverBatchItem }) {
+  const endpoint = batch?.endpoint
+  const bundle = batch?.bundle
   const image = useRef<HTMLImageElement | null>(null)
   const useBlobs = canCacheCoverBlobs()
   const warmBlob = useBlobs ? getCachedCoverBlobUrl(src) : undefined
@@ -40,7 +47,11 @@ export function CoverImage({ src }: { src: string }) {
         handle.setVisible(visible)
         return
       }
-      const request = acquireCoverBlobUrl(src, visible)
+      const request = acquireCoverBlobUrl(
+        src,
+        visible,
+        endpoint && bundle ? { endpoint, bundle } : undefined,
+      )
       handle = request
       void request.promise.then((objectUrl) => {
         if (handle !== request) return
@@ -53,7 +64,7 @@ export function CoverImage({ src }: { src: string }) {
       handle?.release()
       handle = undefined
     }
-  }, [src, useBlobs])
+  }, [src, useBlobs, endpoint, bundle])
 
   useLayoutEffect(() => {
     if (useBlobs && warmBlob) return

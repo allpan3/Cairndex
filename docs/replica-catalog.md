@@ -342,9 +342,14 @@ folder, Unbundled queue, or viewer context. Rejected versions stay in history.
 Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
 local derivatives in the private cache. Update and catalog artwork changes prepare bundle
 covers on the local worker. Browsing also requests visible artwork immediately and
-prefetches nearby cards one at a time when visible requests have drained. Both
-paths reuse the same generation-checked artifacts and decoder locks. For an
-automatic video cover, the decoder chooses among the first 12 frames at thumbnail
+prefetches mounted rows up to one screen ahead when visible requests have drained.
+With `browse_version: 19`, the grid sends up to 16 bundle IDs to
+`POST /api/v1/libraries/{library_id}/replica/media/prepared-covers`. This private,
+uncached HTTP response carries up to 2 MiB of already prepared image bytes as binary
+form parts indexed by request position. Each cover passes the same source-generation
+and availability checks as an individual thumbnail. Omitted covers and older servers
+use individual requests, which can generate missing artwork. Update and on-demand
+generation share the same artifacts and decoder locks. For an automatic video cover, the decoder chooses among the first 12 frames at thumbnail
 resolution. Selecting a cover timestamp still seeks to that frame.
 File pages retain catalog order. Selecting one file checks its local bytes and
 shows the shared file inspector in place of the bundle controls. Clearing the

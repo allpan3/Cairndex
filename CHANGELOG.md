@@ -264,7 +264,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   cover changes refresh affected artwork. The browser loads visible covers first
   and prefetches nearby rows even before the first Update. Automatic video covers
   sample fewer frames at thumbnail resolution, and small image covers encode faster.
-  Cached covers reuse one catalog read per request. Cover preparation
+  With `browse_version: 19`, the grid fetches up to 16 prepared covers in one
+  request to `POST /replica/media/prepared-covers` under the library API and
+  prefetches up to one screen of mounted rows. Cover preparation
   progress is available in the sidebar and the media maintenance status response.
 
 - **Instant local-first UI updates, faster SMB responsiveness, and cached cover
@@ -274,7 +276,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   management, moment comments, and grouping row edits — now update the UI
   immediately and reconcile in the background with automatic rollback on
   failure. Bundle tag and collection chips reflect confirmed membership changes.
-  The grid loads up to four covers at once and cancels requests when their last
+  The grid uses up to four cover requests at once and cancels requests when their last
   card leaves the view. The inspector can load bundle details while the server
   checks thumbnail sources on SMB. Cached thumbnails retain their source checks
   and `Cache-Control: private, no-store` headers. Local catalog, grouping,

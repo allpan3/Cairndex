@@ -859,7 +859,9 @@ function ListRow({
       {...dragProps}
     >
       <div className="list-row__thumb">
-        {item.has_cover && <CoverImage src={thumbnailUrl(item.id, item.cover_key)} />}
+        {item.has_cover && (
+          <CoverImage batch={item.cover_batch} src={thumbnailUrl(item.id, item.cover_key)} />
+        )}
       </div>
       <div className="list-row__title">
         <span className="list-row__name">{item.title ?? 'Untitled'}</span>

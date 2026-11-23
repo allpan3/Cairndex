@@ -17,7 +17,7 @@ export function BundleCoverStack({ items }: { items: BundleCardItem[] }) {
           }}
         >
           {item.has_cover ? (
-            <CoverImage src={thumbnailUrl(item.id, item.cover_key)} />
+            <CoverImage batch={item.cover_batch} src={thumbnailUrl(item.id, item.cover_key)} />
           ) : (
             <IconLayers />
           )}
