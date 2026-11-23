@@ -273,6 +273,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   sitting in black bars, using the shape this device measured when the server
   has no cover size. Type and duration badges are quieter translucent chips, and
   every slider (zoom, volume, playback settings) uses one thin filled track.
+- Quieter window chrome. Sidebar and inspector headings are in sentence case
+  instead of capitals, the current sidebar item has a neutral highlight, and
+  toolbar buttons are bare icons until the pointer is over them. The Space
+  preview has an opaque background. In the desktop app the viewer's title sits
+  beside the window buttons instead of under them. Empty views centre their
+  message and actions in the pane.
 
 - Portable library Update prepares bundle covers in the background. Grouping and
   cover changes refresh affected artwork. The browser loads visible covers first

@@ -327,9 +327,14 @@ button {
   margin: 10px 0;
 }
 .sidebar__heading {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 4px 8px;
+}
+/* A note inside a section, such as an empty Collections list: body text, not a heading */
+.sidebar__note {
+  font-size: 12px;
   color: var(--text-muted);
   padding: 4px 8px;
 }
@@ -349,9 +354,14 @@ button {
 .nav-item:hover {
   background: var(--surface);
 }
+/* The current place is a neutral highlight, as in Finder and Eagle; accent colour
+   stays reserved for selected content */
 .nav-item--active {
-  background: var(--accent-soft);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-strong);
+}
+.nav-item--active .nav-item__icon {
+  opacity: 1;
 }
 .nav-item__icon {
   width: 16px;
@@ -508,6 +518,52 @@ button {
   background: var(--accent-soft);
   color: var(--text-strong);
 }
+/* Toolbar controls are bare icons, as in Eagle and Finder: no frame until the
+   pointer is over one, and the current choice is a neutral fill. Accent stays
+   for content selection and the active filter dot. Grouped buttons keep a small
+   gap instead of shared borders. Filter popovers elsewhere keep framed .seg. */
+.toolbar .seg {
+  border-color: transparent;
+  background: transparent;
+  overflow: visible;
+  gap: 2px;
+}
+.toolbar .seg button,
+.toolbar button.seg {
+  background: transparent;
+  border-radius: 6px;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.toolbar .seg button:hover:not(:disabled),
+.toolbar button.seg:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-strong);
+}
+.toolbar .seg button.is-active,
+.toolbar button.seg.is-active {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-strong);
+}
+.sidebar__titlebar .seg {
+  border-color: transparent;
+  background: transparent;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.sidebar__titlebar .seg:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-strong);
+}
+.toolbar input[type='search'] {
+  border-color: transparent;
+}
+.toolbar input[type='search']:focus {
+  border-color: var(--accent);
+  outline: none;
+}
 /* One turn of the Refresh icon per click (see RefreshButton) */
 .toolbar__refresh--turning .icon {
   animation: toolbar-refresh-turn 450ms ease-out;
@@ -537,6 +593,8 @@ button {
 .toolbar__view-options {
   display: none;
   flex: none;
+  align-items: center;
+  padding: 5px 8px;
   cursor: pointer;
 }
 @container surface (max-width: 700px) {
@@ -997,9 +1055,8 @@ input[type='range']:disabled {
   align-items: center;
   gap: 4px;
   margin: 12px 6px 4px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-muted);
 }
 .alltags__side-add {
@@ -2414,9 +2471,8 @@ input[type='range']:disabled {
 
 .field-label {
   display: block;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-muted);
   margin: 12px 0 4px;
 }
@@ -3509,6 +3565,31 @@ input[type='range']:disabled {
 }
 .state--error {
   color: var(--error);
+}
+/* A listing's height comes from flex stretch, which a percentage height does not
+   resolve against, so an empty view's message sat at the top of the pane. As a
+   flex column the listing lets the message take the room below anything above it
+   (collection cards) and centre in it. */
+.browser__listing:has(> .state) {
+  display: flex;
+  flex-direction: column;
+}
+.browser__listing:has(> .state) > * {
+  flex-shrink: 0;
+}
+.browser__listing > .state {
+  flex: 1 0 auto;
+  height: auto;
+  padding-bottom: 80px;
+}
+/* The first line says what happened; the rest are hints and actions */
+.state > div:first-child {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.state > .btn {
+  min-width: 160px;
 }
 code {
   font-family: var(--mono);
@@ -5325,11 +5406,14 @@ code {
    pass used — and **not in fullscreen**, where the OS hides the lights entirely
    and the extra inset reads as the title floating for no reason (owner,
    2026-07-27). `:fullscreen` covers the element-fullscreen path; the shell's
-   native window fullscreen sets `data-fullscreen` on the body. */
+   native window fullscreen sets `data-fullscreen` on the body.
+
+   The title shares the lights' line, set 100px in as the sidebar-less toolbar
+   is, rather than sitting under them: stacked below, the lights read as part of
+   the title block. Its two lines centre on the lights' 22px centre line. */
 :root[data-titlebar='overlay'] .mv-topbar {
-  height: 76px;
-  padding-top: 26px;
-  background: linear-gradient(rgba(0, 0, 0, 0.72) 45%, rgba(0, 0, 0, 0));
+  height: 64px;
+  padding: 0 18px 20px 100px;
 }
 :root[data-titlebar='overlay'] .media-viewer:fullscreen .mv-topbar,
 :root[data-titlebar='overlay'] body[data-fullscreen='true'] .mv-topbar {
@@ -7897,7 +7981,9 @@ code {
    body — painting a background box behind those looked broken (visibly so during
    a drag-over, when :hover is active on the drop target), so their hover
    thickens the ring instead. */
-.nav-item--active:hover,
+.nav-item--active:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
 .list-row--selected:hover,
 .file-table .file-row--selected:hover {
   background: var(--accent-soft-strong);
@@ -9955,7 +10041,9 @@ button.pick-row:disabled {
   z-index: 150;
   display: flex;
   flex-direction: column;
-  background: rgba(8, 9, 12, 0.88);
+  /* Opaque, as Eagle's and Finder's previews are: the grid showing through a
+     translucent backdrop competed with the item being previewed */
+  background: #0c0d10;
   animation: quick-preview-in var(--motion-duration) var(--motion-easing);
 }
 @keyframes quick-preview-in {

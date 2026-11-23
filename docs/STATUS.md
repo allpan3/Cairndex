@@ -278,10 +278,10 @@ Visual polish (branch `feat/eagle-style-grid`, 2026-11-23, local only). A side-b
 review against Eagle found Cairndex's interactions mostly at parity but its
 surfaces heavier. First batch: Justified tiles without a card frame, labelled
 under the cover, covers in their own shape, quieter badges and one slider style.
-Proposed next, not started: sentence-case sidebar headers and a neutral active
-row, borderless toolbar buttons, an opaque Space preview, the viewer title clear
-of the window controls, and centred empty states. Larger items need the owner's
-decision first: a compact sidebar header, a quieter inspector, a viewer that
+Second batch: sentence-case sidebar and inspector headings, a neutral active
+sidebar row, bare toolbar icons, an opaque Space preview, the viewer title on
+the window buttons' line, and centred empty states. Larger items need the
+owner's decision first: a compact sidebar header, a quieter inspector, a viewer that
 opens in place of the grid, a consolidated type scale, and whether a parent
 collection shows its subcollections' bundles by default.
 
