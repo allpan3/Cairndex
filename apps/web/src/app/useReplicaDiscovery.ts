@@ -37,12 +37,14 @@ export function useReplicaDiscovery(library: string, enabled: boolean, refresh: 
     enabled,
     refetchInterval: 1000,
   })
+  // The closed review needs only a presence check for the sidebar.
+  const candidateQuery = open ? `after=${encodeURIComponent(after)}` : 'after=&limit=1'
   const candidates = useQuery({
-    queryKey: ['discovery-candidates', library, after],
+    queryKey: ['discovery-candidates', library, candidateQuery],
     queryFn: ({ signal }) =>
       discovery<{ items: DiscoveryCandidate[]; next_cursor: string | null }>(
         library,
-        `/candidates?after=${encodeURIComponent(after)}`,
+        `/candidates?${candidateQuery}`,
         'GET',
         undefined,
         signal,

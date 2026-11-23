@@ -343,7 +343,9 @@ Automatic artwork follows image-before-video order. Bundle thumbnails use guarde
 local derivatives in the private cache. Update and catalog artwork changes prepare bundle
 covers on the local worker. Browsing also requests visible artwork immediately and
 prefetches nearby cards one at a time when visible requests have drained. Both
-paths reuse the same generation-checked artifacts and decoder locks.
+paths reuse the same generation-checked artifacts and decoder locks. For an
+automatic video cover, the decoder chooses among the first 12 frames at thumbnail
+resolution. Selecting a cover timestamp still seeks to that frame.
 File pages retain catalog order. Selecting one file checks its local bytes and
 shows the shared file inspector in place of the bundle controls. Clearing the
 file selection restores the bundle inspector and its unsaved draft; file details

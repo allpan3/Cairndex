@@ -93,6 +93,39 @@ def test_generates_thumbnail_outside_source_and_leaves_original(
 
 
 @requires_ffmpeg
+def test_automatic_cover_samples_opening_frames_and_explicit_cover_seeks(tmp_path: Path) -> None:
+    from PIL import Image
+
+    assert _FFMPEG is not None
+    source = tmp_path / "two-scenes.mp4"
+    subprocess.run(
+        [
+            _FFMPEG,
+            "-f",
+            "lavfi",
+            "-i",
+            "color=red:s=64x48:r=12:d=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=blue:s=64x48:r=12:d=3",
+            "-filter_complex",
+            "concat=n=2:v=1:a=0",
+            str(source),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    for when, expected_band in [(None, 0), (2.0, 2)]:
+        dest = tmp_path / "cover.jpg"
+        thumbnails._generate(source, dest, MediaKind.VIDEO, when)
+        with Image.open(dest) as cover:
+            assert cover.width == thumbnails.THUMBNAIL_WIDTH
+            bands = cover.convert("RGB").getpixel((0, 0))
+            assert bands[expected_band] > 230
+
+
+@requires_ffmpeg
 def test_thumbnail_is_deduplicated(session: Session, library_root: Path) -> None:
     _make_image(library_root / "poster.png")
     scan_library(session, library_root)

@@ -142,7 +142,9 @@ def test_update_prepares_cold_cover_once_and_revalidates_on_next_scan(images, mo
 
     store, root = images.store, images.package
     media = ReplicaMedia(store, root, "synthetic")
-    assert cached_thumbnail(media, "image-000") is None
+    row = media.row("asset_files", "image-000")
+    with store.connection(readonly=True) as db:
+        assert cached_thumbnail(media, db, row) is None
     initial = store.frontier()
 
     def update(operation):
@@ -160,7 +162,8 @@ def test_update_prepares_cold_cover_once_and_revalidates_on_next_scan(images, mo
 
     update("first-scan")
     assert maintenance.latest(store)["covers"] == {"ready": 1, "skipped": 1}
-    hit = cached_thumbnail(media, "image-000")
+    with store.connection(readonly=True) as db:
+        hit = cached_thumbnail(media, db, row)
     assert hit and hit.is_file()
     original = cover_work.build_thumbnail
 

@@ -77,9 +77,9 @@ def _generate(source: Path, dest: Path, kind: MediaKind, cover_time: float | Non
     os.close(fd)
     temp_path = Path(temp_name)
     scale = f"scale={THUMBNAIL_WIDTH}:-2"
-    # The "thumbnail" filter picks a representative video frame without needing
-    # the duration (no -ss seek, so very short clips still work).
-    vf = f"thumbnail,{scale}" if kind is MediaKind.VIDEO and cover_time is None else scale
+    # Sample at cover resolution. The default buffers 100 full-resolution frames
+    # per clip, competing for memory and decoder threads across the visible grid.
+    vf = f"{scale},thumbnail=12" if kind is MediaKind.VIDEO and cover_time is None else scale
     seek = ["-ss", f"{cover_time:g}"] if cover_time is not None else []
     try:
         try:
@@ -88,6 +88,10 @@ def _generate(source: Path, dest: Path, kind: MediaKind, cover_time: float | Non
                     [
                         ffmpeg_exe(),
                         "-y",
+                        "-threads",
+                        "2",
+                        "-filter_threads",
+                        "1",
                         *seek,
                         "-i",
                         str(source),

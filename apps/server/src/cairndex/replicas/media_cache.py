@@ -1,9 +1,11 @@
 """Private derivatives reuse the production decoders without mutating catalog choices"""
 
 import os
+import sqlite3
 import threading
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Any
 
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import PathSafetyError
@@ -19,7 +21,8 @@ from cairndex.scanning.media_types import classify
 
 def cached_thumbnail(
     media: ReplicaMedia,
-    file_id: str,
+    db: sqlite3.Connection,
+    row: dict[str, Any],
     *,
     expected_generation: str | None = None,
 ) -> Path | None:
@@ -28,7 +31,7 @@ def cached_thumbnail(
     Falls back to ``None`` on any missing/changed/unconfirmed source or cache miss so
     the full guarded builder handles derivation and observation persistence.
     """
-    row = media.row("asset_files", file_id)
+    file_id = str(row["id"])
     relative_path = str(row["relative_path"])
     kind = classify(relative_path)
     if kind is None or kind[0] not in (MediaKind.IMAGE, MediaKind.VIDEO):
@@ -41,11 +44,10 @@ def cached_thumbnail(
     if expected_generation is not None and token != expected_generation:
         return None
     if media.store.descriptor.format_version == 3:
-        with media.store.connection(readonly=True) as db:
-            seen = db.execute(
-                "SELECT 1 FROM local_media WHERE file_id=? AND generation=? AND state='available'",
-                (file_id, token),
-            ).fetchone()
+        seen = db.execute(
+            "SELECT 1 FROM local_media WHERE file_id=? AND generation=? AND state='available'",
+            (file_id, token),
+        ).fetchone()
         if not seen:
             return None
     if kind[0] == MediaKind.IMAGE:

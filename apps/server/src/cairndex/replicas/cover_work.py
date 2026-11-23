@@ -56,32 +56,34 @@ def step(store: CatalogStore, root: Path, library: str, stopped: Callable[[], bo
     if foreground_covers_pending() or not _background_slot.acquire(blocking=False):
         return False
     try:
+        media = ReplicaMedia(store, root, library)
         with store.connection(readonly=True) as db:
             row = db.execute(
                 "SELECT bundle,ticket FROM cover_work WHERE state='pending' ORDER BY bundle LIMIT 1"
             ).fetchone()
-            if not row or stopped():
-                return False
-            if not db.execute(
-                "SELECT 1 FROM catalog_rows WHERE family='asset_bundles' AND entity=?", (row[0],)
-            ).fetchone():
+        if not row or stopped():
+            return False
+        try:
+            with store.connection(readonly=True) as db:
                 selected = None
-            else:
-                selected = cover(db, row[0])
-        state = "skipped"
-        if selected:
-            media = ReplicaMedia(store, root, library)
-            try:
+                if db.execute(
+                    "SELECT 1 FROM catalog_rows WHERE family='asset_bundles' AND entity=?",
+                    (row[0],),
+                ).fetchone():
+                    selected = cover(db, row[0])
+                hit = cached_thumbnail(media, db, selected) if selected else None
+            state = "skipped"
+            if selected:
                 with abort_scope(stopped):
-                    if not cached_thumbnail(media, selected["id"]):
+                    if not hit:
                         build_thumbnail(media, selected["id"])
                 state = "ready"
-            except OperationAborted:
-                return False
-            except NotFoundError:
-                state = "skipped"
-            except (DomainError, OSError, ThumbnailError):
-                state = "failed"
+        except OperationAborted:
+            return False
+        except NotFoundError:
+            state = "skipped"
+        except (DomainError, OSError, ThumbnailError):
+            state = "failed"
         if not stopped():
             with store.connection() as db:
                 db.execute(

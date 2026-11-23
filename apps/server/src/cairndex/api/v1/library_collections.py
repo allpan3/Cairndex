@@ -186,9 +186,9 @@ async def get_collection_thumbnail(collection_id: str, access: MediaAccessDep) -
             assert access.replica is not None
             with access.replica.store.connection(readonly=True) as catalog:
                 selected = collection_cover(catalog, collection_id)
-            if selected is None:
-                raise NotFoundError(f"collection {collection_id!r} has no cover")
-            return str(selected["id"]), cached_thumbnail(access.replica, selected["id"])
+                if selected is None:
+                    raise NotFoundError(f"collection {collection_id!r} has no cover")
+                return str(selected["id"]), cached_thumbnail(access.replica, catalog, selected)
 
         selected_id, hit = await to_thread.run_sync(lookup_cached_collection)
         if hit is not None:

@@ -262,7 +262,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 - Portable library Update prepares bundle covers in the background. Grouping and
   cover changes refresh affected artwork. The browser loads visible covers first
-  and prefetches nearby rows even before the first Update. Cover preparation
+  and prefetches nearby rows even before the first Update. Automatic video covers
+  sample fewer frames at thumbnail resolution, and small image covers encode faster.
+  Cached covers reuse one catalog read per request. Cover preparation
   progress is available in the sidebar and the media maintenance status response.
 
 - **Instant local-first UI updates, faster SMB responsiveness, and cached cover

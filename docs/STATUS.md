@@ -4,7 +4,8 @@
 
 Portable Update queues private bundle covers during catalog checks. The background
 worker resumes pending covers after restart, and the browser prioritizes visible
-artwork and prefetches nearby cards without requiring Update.
+artwork and prefetches nearby cards without requiring Update. The review sidebar
+checks for one pending discovery until the full review opens.
 
 The local desktop test installation runs `236f7354` from
 `perf/smb-responsiveness-and-previews` (2026-11-21). A healthy bundle has no
