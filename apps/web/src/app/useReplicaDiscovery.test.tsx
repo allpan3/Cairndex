@@ -45,6 +45,17 @@ beforeEach(() => {
     .mockReturnValue('next-run')
 })
 
+test('the closed review checks one candidate and opens the full page on demand', async () => {
+  serve([])
+  const { result } = setup()
+  await waitFor(() => expect(result.current.candidates.isSuccess).toBe(true))
+  const paths = () => vi.mocked(discovery).mock.calls.map(([, path]) => path)
+  expect(paths()).toContain('/candidates?after=&limit=1')
+  expect(paths()).not.toContain('/candidates?after=')
+  act(() => result.current.setOpen(true))
+  await waitFor(() => expect(paths()).toContain('/candidates?after='))
+})
+
 // As v0.2.1 opened grouping review when its Update left suggestions
 test('an Update this window started opens the review when it leaves discoveries', async () => {
   serve([candidate])

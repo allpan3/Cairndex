@@ -2,6 +2,11 @@
 
 ## Current checkpoint
 
+Portable Update queues private bundle covers during catalog checks. The background
+worker resumes pending covers after restart, and the browser prioritizes visible
+artwork and prefetches nearby cards without requiring Update. The review sidebar
+checks for one pending discovery until the full review opens.
+
 The local desktop test installation runs `236f7354` from
 `perf/smb-responsiveness-and-previews` (2026-11-21). A healthy bundle has no
 conflict action in its context menu. When edits compete, the owner can review
@@ -130,7 +135,8 @@ existing `.cairndex/replica/objects` shards via `scandir`, local catalog and
 grouping/discovery commands drain without waiting on periodic SMB transport
 ticks, Grouping **Accept selected** reuses recorded candidate fingerprints and
 batches candidate/group checks with parallel generation verification.
-The grid fetches at most four covers at once. Cached thumbnail lookups run off
+The grid uses at most four cover requests at once. A prepared-cover response
+can carry up to 16 bundle covers. Visible misses queue in reading order, and nearby rows use one speculative request at a time. The first bundle page takes priority over sidebar and job queries. Cached thumbnail lookups run off
 the server event loop so bundle details can load during a slow SMB source check.
 Bundle tag and collection chips update after the server confirms the change.
 Other metadata edits apply optimistically with rollback. The global top sweep

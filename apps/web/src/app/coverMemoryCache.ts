@@ -7,10 +7,19 @@ const MAX_CACHED_COVERS = 1500
 const MAX_CONCURRENT_COVER_FETCHES = 4
 const COVER_FETCH_TIMEOUT_MS = 20_000
 
+export interface CoverBatchItem {
+  endpoint: string
+  bundle: string
+}
+
+const MAX_BATCH_SIZE = 16
+
 interface CoverTask {
   src: string
+  visibleRefs: number
   refs: number
-  controller: AbortController | null
+  batch?: CoverBatchItem
+  cancel: (() => void) | null
   promise: Promise<string | null>
   resolve: (value: string | null) => void
 }
@@ -59,40 +68,109 @@ function storeBlob(src: string, blob: Blob): string {
   return objectUrl
 }
 
-function pumpQueue(): void {
-  while (activeFetches < MAX_CONCURRENT_COVER_FETCHES && queue.length > 0) {
-    // LIFO so newly visible cards at the current scroll position load before older scrolled-into items
-    const task = queue.pop()!
-    const controller = new AbortController()
-    task.controller = controller
-    activeFetches += 1
-    const timer = window.setTimeout(() => controller.abort(), COVER_FETCH_TIMEOUT_MS)
-    void hostFetch(task.src, { signal: controller.signal, priority: 'low' } as RequestInit)
-      .then(async (response) => {
-        if (!response.ok) return null
-        const blob = await response.blob()
-        if (blob.size === 0 || controller.signal.aborted) return null
-        return storeBlob(task.src, blob)
-      })
-      .catch(() => null)
-      .then((result) => {
-        window.clearTimeout(timer)
-        activeFetches -= 1
-        // A remounted card can already own a new request for the same URL.
-        if (tasks.get(task.src) === task) tasks.delete(task.src)
-        task.resolve(result)
-        pumpQueue()
-      })
+// All observations from one viewport callback enter the queue before choosing a batch.
+let pumpScheduled = false
+function schedulePump(batch?: CoverBatchItem): void {
+  if (!batch) return pumpQueue()
+  if (pumpScheduled) return
+  pumpScheduled = true
+  queueMicrotask(() => {
+    pumpScheduled = false
+    pumpQueue()
+  })
+}
+
+async function fetchCovers(group: CoverTask[], signal: AbortSignal): Promise<(Blob | null)[]> {
+  const first = group[0]!
+  const priority = first.visibleRefs ? 'high' : 'low'
+  if (group.length === 1) {
+    const response = await hostFetch(first.src, { signal, priority })
+    return [response.ok ? await response.blob() : null]
+  }
+  const response = await hostFetch(first.batch!.endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bundles: group.map((task) => task.batch!.bundle) }),
+    signal,
+    priority,
+  })
+  if (!response.ok) return []
+  const parts = await response.formData()
+  return group.map((_, index) => {
+    const part = parts.get(String(index))
+    return part && typeof part !== 'string' ? part : null
+  })
+}
+
+async function runGroup(group: CoverTask[]): Promise<void> {
+  activeFetches++
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), COVER_FETCH_TIMEOUT_MS)
+  for (const task of group) {
+    task.cancel = () => {
+      if (group.every((member) => tasks.get(member.src) !== member)) controller.abort()
+    }
+  }
+  try {
+    const blobs = await fetchCovers(group, controller.signal).catch(() => [])
+    for (const [index, task] of group.entries()) {
+      // A released card or earlier library cannot publish a late response.
+      if (tasks.get(task.src) !== task) continue
+      task.cancel = null
+      const blob = blobs[index]
+      if (blob?.size && !controller.signal.aborted) {
+        tasks.delete(task.src)
+        task.resolve(storeBlob(task.src, blob))
+      } else if (group.length > 1) {
+        // A cold cover or failed batch takes the normal bounded generation path once.
+        task.batch = undefined
+        queue.push(task)
+      } else {
+        tasks.delete(task.src)
+        task.resolve(null)
+      }
+    }
+  } finally {
+    window.clearTimeout(timer)
+    activeFetches--
+    pumpQueue()
   }
 }
 
-export function acquireCoverBlobUrl(src: string): {
+function pumpQueue(): void {
+  while (activeFetches < MAX_CONCURRENT_COVER_FETCHES && queue.length > 0) {
+    // The viewport registers cards in reading order. Keep that order for cold misses too.
+    const index = queue.findIndex((task) => task.visibleRefs > 0)
+    if (index < 0 && activeFetches > 0) return
+    const first = queue.splice(index < 0 ? 0 : index, 1)[0]!
+    const group = [first]
+    if (first.batch) {
+      for (let i = 0; i < queue.length && group.length < MAX_BATCH_SIZE;) {
+        const next = queue[i]!
+        if (
+          next.batch?.endpoint === first.batch.endpoint &&
+          !!next.visibleRefs === !!first.visibleRefs
+        )
+          group.push(queue.splice(i, 1)[0]!)
+        else i++
+      }
+    }
+    void runGroup(group)
+  }
+}
+
+export function acquireCoverBlobUrl(
+  src: string,
+  visible = true,
+  batch?: CoverBatchItem,
+): {
+  setVisible: (value: boolean) => void
   promise: Promise<string | null>
   release: () => void
 } {
   const cached = getCachedCoverBlobUrl(src)
   if (cached) {
-    return { promise: Promise.resolve(cached), release: () => {} }
+    return { promise: Promise.resolve(cached), setVisible: () => {}, release: () => {} }
   }
   let task = tasks.get(src)
   if (!task) {
@@ -103,7 +181,9 @@ export function acquireCoverBlobUrl(src: string): {
     task = {
       src,
       refs: 0,
-      controller: null,
+      visibleRefs: 0,
+      batch,
+      cancel: null,
       promise,
       resolve: resolvePromise,
     }
@@ -111,22 +191,27 @@ export function acquireCoverBlobUrl(src: string): {
     queue.push(task)
   }
   task.refs += 1
+  if (visible) task.visibleRefs++
   let released = false
-  pumpQueue()
+  schedulePump(task.batch)
   return {
     promise: task.promise,
+    setVisible: (value) => {
+      if (released || value === visible) return
+      task.visibleRefs += value ? 1 : -1
+      visible = value
+      schedulePump(task.batch)
+    },
     release: () => {
       if (released) return
       released = true
       task.refs -= 1
+      if (visible) task.visibleRefs--
       if (task.refs > 0 || tasks.get(src) !== task) return
       tasks.delete(src)
-      if (task.controller) {
-        task.controller.abort()
-      } else {
-        queue.splice(queue.indexOf(task), 1)
-        task.resolve(null)
-      }
+      if (task.cancel) task.cancel()
+      else queue.splice(queue.indexOf(task), 1)
+      task.resolve(null)
     },
   }
 }
@@ -141,13 +226,13 @@ export function evictCoverBlobPrefix(prefix: string): void {
 }
 
 export function clearCoverBlobCache(): void {
-  for (const task of queue.splice(0)) {
+  queue.length = 0
+  const retired = [...tasks.values()]
+  tasks.clear()
+  for (const task of retired) {
+    task.cancel?.()
     task.resolve(null)
   }
-  for (const task of tasks.values()) {
-    task.controller?.abort()
-  }
-  tasks.clear()
   for (const objectUrl of blobUrls.values()) {
     URL.revokeObjectURL(objectUrl)
   }

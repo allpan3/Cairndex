@@ -35,6 +35,9 @@ def changed(
         or not db.execute("SELECT 1 FROM config WHERE key='catalog_ready'").fetchone()
     ):
         return
+    from cairndex.replicas import cover_work
+
+    cover_work.changed(db, family, identity, previous, current)
     owners = (
         {identity}
         if family == "asset_bundles"

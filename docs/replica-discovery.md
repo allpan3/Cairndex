@@ -24,7 +24,13 @@ server** and opens automatically when complete metadata arrives. This also
 applies to an existing library on a new server. The working catalog, file
 observations and media cache belong to the backend, not a browser. Browsers on
 the same server share them; the desktop app's local server has its own copy.
-Media probing and preview generation remain separate from Update.
+As Update checks cataloged files, it queues one cover per bundle on the serving
+server. A background worker validates cached covers and prepares missing or stale
+ones. Accepted groups and changes to bundle artwork or file placement also queue
+the affected covers. Scan completion and grouping review do not wait for decoding.
+The cover status reports how many tracked bundles are ready, pending, unavailable,
+or failed. Another Update retries unavailable and failed covers. Full-size previews,
+media probing, and storyboard generation remain separate from Update.
 
 The first Update on that server says **Initial library scan** and explains that
 large libraries can take several minutes. Status exposes `initial_scan`, derived

@@ -260,6 +260,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Portable library Update prepares bundle covers in the background. Grouping and
+  cover changes refresh affected artwork. The browser loads visible covers first
+  and prefetches nearby rows even before the first Update. Automatic video covers
+  sample fewer frames at thumbnail resolution, and small image covers encode faster.
+  With `browse_version: 19`, the grid fetches up to 16 prepared covers in one
+  request to `POST /replica/media/prepared-covers` under the library API and
+  prefetches up to one screen of mounted rows. The first bundle page loads ahead of
+  background status checks, and scrolling over cards pauses previews until the pointer moves. Cover preparation
+  progress is available in the sidebar and the media maintenance status response.
+
 - **Instant local-first UI updates, faster SMB responsiveness, and cached cover
   delivery.** Metadata edits across Bundle Browser, inspectors, All Tags, Moments,
   and Grouping Review — including bundle and multi-bundle titles, star ratings,
@@ -267,7 +277,7 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   management, moment comments, and grouping row edits — now update the UI
   immediately and reconcile in the background with automatic rollback on
   failure. Bundle tag and collection chips reflect confirmed membership changes.
-  The grid loads up to four covers at once and cancels requests when their last
+  The grid uses up to four cover requests at once and cancels requests when their last
   card leaves the view. The inspector can load bundle details while the server
   checks thumbnail sources on SMB. Cached thumbnails retain their source checks
   and `Cache-Control: private, no-store` headers. Local catalog, grouping,
@@ -420,7 +430,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   0.23.46 (four TLS advisories, including a ServerHello downgrade and secrets in `Debug`
   output), rustls-webpki, webpki-roots, Tokio and event-listener 5.4.2; the yanked
   chacha20 0.10.1 is replaced by 0.10.2. The desktop build uses url 2.5.9 to fix a
-  stack overflow when resolving URL origins (RUSTSEC-2026-0592). Python: Pillow 13.0.0, certifi, setuptools,
+  stack overflow when resolving URL origins (RUSTSEC-2026-0592) and cookie 0.18.3 to fix
+  nonce reuse when encrypting private cookies after a fork (RUSTSEC-2026-0594).
+  Python: Pillow 13.0.0, certifi, setuptools,
   AnyIO and Mako 1.4.3 (GHSA-5639-2j2p-m4mx). Web development tools: Undici 7.30.1, Zod
   4.6.7, source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q) and brace-expansion.
 - **Library passphrases and device pairing codes skip the metadata edit queue,** which

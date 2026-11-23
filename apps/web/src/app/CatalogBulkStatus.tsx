@@ -42,7 +42,13 @@ export function CatalogBulkStatus({
     void runningBulk(library)
       .then((job) => {
         if (!job || stopped || bulkActivity()?.operation === job.id) return
-        return followBulk(library, job).then(() => onNotice({ text: 'Bulk change finished.' }))
+        return followBulk(library, job)
+          .then(() => !stopped && onNotice({ text: 'Bulk change finished.' }))
+          .finally(() => {
+            if (!stopped)
+              for (const key of AFFECTED)
+                void client.invalidateQueries({ queryKey: [key, library] })
+          })
       })
       .catch((reason: Error) => {
         try {
@@ -51,10 +57,6 @@ export function CatalogBulkStatus({
           return
         }
         if (!stopped) onNotice(failureNotice(reason))
-      })
-      .finally(() => {
-        if (!stopped)
-          for (const key of AFFECTED) void client.invalidateQueries({ queryKey: [key, library] })
       })
     return () => {
       stopped = true

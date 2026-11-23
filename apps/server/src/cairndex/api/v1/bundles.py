@@ -522,9 +522,9 @@ async def get_bundle_thumbnail(bundle_id: str, access: MediaAccessDep) -> FileRe
             assert access.replica is not None
             with access.replica.store.connection(readonly=True) as db:
                 selected = cover(db, bundle_id)
-            if selected is None:
-                raise NotFoundError(f"bundle {bundle_id!r} has no thumbnail")
-            return str(selected["id"]), cached_thumbnail(access.replica, selected["id"])
+                if selected is None:
+                    raise NotFoundError(f"bundle {bundle_id!r} has no thumbnail")
+                return str(selected["id"]), cached_thumbnail(access.replica, db, selected)
 
         selected_id, hit = await to_thread.run_sync(lookup_cached_bundle)
         if hit is not None:
@@ -566,9 +566,13 @@ async def get_file_thumbnail(
 
         def lookup_cached_file() -> Path | None:
             assert access.replica is not None
-            if access.replica.row("asset_files", file_id)["bundle_id"] != bundle_id:
-                raise NotFoundError("File is not in this bundle")
-            return cached_thumbnail(access.replica, file_id, expected_generation=expected)
+            from cairndex.replicas.catalog.projection import read_row
+
+            with access.replica.store.connection(readonly=True) as db:
+                row = read_row(db, "asset_files", file_id)
+                if row is None or row["bundle_id"] != bundle_id:
+                    raise NotFoundError("File is not in this bundle")
+                return cached_thumbnail(access.replica, db, row, expected_generation=expected)
 
         hit = await to_thread.run_sync(lookup_cached_file)
         if hit is not None:

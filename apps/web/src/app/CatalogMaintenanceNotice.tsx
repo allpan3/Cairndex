@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import type { useCatalogMaintenance } from './useCatalogMaintenance'
+import type { CoverProgress, useCatalogMaintenance } from './useCatalogMaintenance'
 
 export function CatalogMaintenanceNotice({
   maintenance: m,
@@ -55,6 +55,28 @@ export function CatalogMaintenanceNotice({
         )}
       </div>
       {error && <p role="alert">{error}</p>}
+    </section>
+  )
+}
+
+export function CoverPreparationNotice({ covers }: { covers?: CoverProgress | null }) {
+  if (!covers) return null
+  const total = covers.ready + covers.skipped + covers.failed + covers.pending
+  return (
+    <section className="sidebar__job-progress" aria-label="Bundle cover preparation">
+      <div role="status">
+        {covers.pending ? 'Preparing covers' : 'Cover preparation complete'} · {covers.ready} /{' '}
+        {total} ready
+        {covers.skipped > 0 && ` · ${covers.skipped} unavailable`}
+        {covers.failed > 0 && ` · ${covers.failed} failed`}
+      </div>
+      {covers.pending > 0 && (
+        <progress
+          aria-label="Cover preparation progress"
+          max={total}
+          value={total - covers.pending}
+        />
+      )}
     </section>
   )
 }

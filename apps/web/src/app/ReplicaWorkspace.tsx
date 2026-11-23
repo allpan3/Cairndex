@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { LibraryRead } from '../api/client'
 import type { components } from '../api/schema'
-import { holdEditor, replicaRequest, type ReplicaStatus } from '../api/replicas'
+import { holdEditor, replicaRequest } from '../api/replicas'
+import { useReplicaStatus } from '../api/useReplicaStatus'
 import { ReplicaEditor } from './ReplicaEditor'
 import { CatalogWorkspace } from './CatalogWorkspace'
 import type { PendingDeepLink } from './deepLinkUri'
@@ -28,11 +29,7 @@ function BoundedReplicaWorkspace({
   const [selected, setSelected] = useState<string | null>(null)
   const [exchanging, setExchanging] = useState(false)
   const [error, setError] = useState('')
-  const status = useQuery({
-    queryKey: ['replica', libraryId, 'status'],
-    queryFn: () => replicaRequest<ReplicaStatus>(libraryId, '/status'),
-    refetchInterval: 2000,
-  })
+  const status = useReplicaStatus(libraryId, 2000)
   const bundles = useQuery({
     queryKey: ['replica', libraryId, 'bundles', cursor],
     queryFn: () =>
@@ -182,21 +179,14 @@ export function ReplicaWorkspace(props: {
   deepLink?: PendingDeepLink | null
   onDeepLinkHandled?: () => void
 }) {
-  const status = useQuery({
-    queryKey: ['replica-capability', props.libraryId],
-    queryFn: () =>
-      replicaRequest<ReplicaStatus & { catalog_version?: number | null }>(
-        props.libraryId,
-        '/status',
-      ),
-  })
+  const status = useReplicaStatus(props.libraryId)
   if (status.isPending)
     return (
       <main className="replica-workspace">
         <p>Opening library metadata…</p>
       </main>
     )
-  if (status.error)
+  if (status.isError && !status.data)
     return (
       <main className="replica-workspace">
         <p role="alert">{status.error.message}</p>

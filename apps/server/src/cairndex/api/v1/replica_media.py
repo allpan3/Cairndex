@@ -1,12 +1,14 @@
 """Catalog playlist reads and local retry/cursor state for the shared media viewer"""
 
 import json
+import secrets
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
+from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from cairndex.api.media_deps import MediaAccessDep
 from cairndex.api.schemas.bundles import DirectoryMemberRead, FileRead
@@ -21,7 +23,8 @@ from cairndex.replicas.catalog.projection import read_row
 from cairndex.replicas.catalog.schemas import CatalogJob
 from cairndex.replicas.maintenance import MaintenanceIntent
 from cairndex.replicas.media import ReplicaMedia, catalog_file, file_annotations
-from cairndex.replicas.protocol import ReplicaError, Token
+from cairndex.replicas.media_cache import MAX_COVER_BATCH, prepared_bundle_covers
+from cairndex.replicas.protocol import ReplicaError, StrictModel, Token
 from cairndex.replicas.service import wake
 
 router = APIRouter(prefix="/libraries/{library_id}/replica/media", tags=["replica-media"])
@@ -35,6 +38,48 @@ def replica_media(access: MediaAccessDep) -> ReplicaMedia:
 
 
 Media = Annotated[ReplicaMedia, Depends(replica_media)]
+
+
+class PreparedCoverRequest(StrictModel):
+    bundles: list[Token] = Field(min_length=1, max_length=MAX_COVER_BATCH)
+
+
+_cover_read_slots = CapacityLimiter(4)
+
+
+@router.post(
+    "/prepared-covers",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {"multipart/form-data": {"schema": {"type": "string", "format": "binary"}}}
+        }
+    },
+)
+async def prepared_covers(request: PreparedCoverRequest, media: Media) -> Response:
+    """Prepared bundle covers as binary form parts named by zero-based request index.
+
+    Missing, unconfirmed and over-budget covers are omitted. The individual endpoint
+    remains available for generation. At most 2 MiB of image data is returned.
+    """
+    hits = await to_thread.run_sync(
+        prepared_bundle_covers, media, request.bundles, limiter=_cover_read_slots
+    )
+    boundary = secrets.token_hex(16)
+    parts: list[bytes] = []
+    for index, mime, data in hits:
+        header = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{index}"; filename="cover"\r\n'
+            f"Content-Type: {mime}\r\n\r\n"
+        )
+        parts.extend((header.encode("ascii"), data, b"\r\n"))
+    parts.append(f"--{boundary}--\r\n".encode("ascii"))
+    return Response(
+        b"".join(parts),
+        media_type=f"multipart/form-data; boundary={boundary}",
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 class PathMediaRead(BaseModel):
@@ -86,7 +131,15 @@ class MaintenanceStart(MaintenanceIntent):
     operation: Token
 
 
+class CoverPreparation(BaseModel):
+    pending: int = 0
+    ready: int = 0
+    skipped: int = 0
+    failed: int = 0
+
+
 class MaintenanceRead(BaseModel):
+    covers: CoverPreparation | None = None
     job: CatalogJob | None
     kind: Literal["probe", "storyboards"] | None
 

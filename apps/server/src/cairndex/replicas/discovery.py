@@ -12,6 +12,7 @@ from typing import Any
 
 from cairndex.core.errors import DomainError
 from cairndex.domain.enums import MediaKind
+from cairndex.replicas import cover_work
 from cairndex.replicas import discovery_sources as sources
 from cairndex.replicas.catalog.commands import Preview
 from cairndex.replicas.catalog.model import key, value_text
@@ -279,17 +280,20 @@ def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
         deadline = time.monotonic() + SCAN_SECONDS
         rows = db.execute(
             (
-                "SELECT f.entity,p.path FROM catalog_rows f JOIN catalog_paths p "
+                "SELECT f.entity,p.path,json_extract(f.body,'$.bundle_id') "
+                "FROM catalog_rows f JOIN catalog_paths p "
                 "ON p.owner='asset_files/'||f.entity WHERE f.family='asset_files' "
                 "AND f.entity>? ORDER BY f.entity LIMIT ?"
             ),
             (after, SCAN_BATCH),
         ).fetchall()
         completed, cursor = 0, after
+        checked_bundles: set[str] = set()
         for row in rows:
             if completed and time.monotonic() >= deadline:
                 break
-            identity, path = row
+            identity, path, bundle = row
+            checked_bundles.add(bundle)
             old_row = db.execute(
                 "SELECT body FROM discovery_baselines WHERE file_id=?", (identity,)
             ).fetchone()
@@ -385,6 +389,7 @@ def known_batch(store: CatalogStore, root: Path, run: str, after: str) -> None:
                     )
             completed += 1
             cursor = identity
+        cover_work.enqueue(db, checked_bundles, run)
         advance(
             db,
             run,

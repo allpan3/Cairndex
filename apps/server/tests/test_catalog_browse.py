@@ -216,6 +216,7 @@ def test_card_facts_follow_local_observations(tmp_path):
         12.5,
     )
     assert (first.width, first.height, first.resume_container) == (640, 360, "mp4")
+    assert first.cover_key and first.cover_key.endswith(":g1")
     assert first.resume_generation == "g1"
     assert first.resume_storyboard_version == storyboard_cache_key("g1")
     observe("file-video", "available", meta, position=60.0, completed=1)
@@ -223,6 +224,7 @@ def test_card_facts_follow_local_observations(tmp_path):
     # Progress of an earlier generation is not this file's resume position
     observe("file-video", "available", meta, position=12.5, generation="g2")
     assert card("bundle-000000").resume_position is None
+    assert card("bundle-000000").cover_key != first.cover_key
 
     # An unfinished member is current before the first one, and a lost file marks the card
     observe("file-photo", "unavailable")

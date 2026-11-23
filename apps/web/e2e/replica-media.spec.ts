@@ -502,6 +502,10 @@ test('portable bundle and File Browser cards preview a video this device has obs
     await expect(thumb).toHaveAttribute('data-hover-preview-mode', 'direct')
     const box = (await thumb.boundingBox())!
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, 40)
+    // Even a wheel at the scroll limit must cancel the pending dwell.
+    await page.waitForTimeout(750)
+    await expect(thumb).toHaveAttribute('data-hover-preview-state', 'inactive')
     await page.mouse.move(box.x + box.width / 2 + 4, box.y + box.height / 2)
     const preview = thumb.getByTestId('hover-preview-video')
     await expect(preview).toBeAttached()

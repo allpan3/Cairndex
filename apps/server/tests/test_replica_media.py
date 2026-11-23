@@ -743,3 +743,39 @@ def test_inspector_loads_while_cover_source_check_is_blocked(media_api, monkeypa
         finally:
             release.set()
         assert cover.result(timeout=10).status_code == 200
+
+
+def test_prepared_cover_batch_returns_only_guarded_cache_hits(media_api, monkeypatch):
+    from email import policy
+    from email.parser import BytesParser
+
+    from cairndex.replicas import media_cache
+
+    client, base, _, _, roots = media_api
+    path = base + "/replica/media/prepared-covers"
+    bundle = "bundle-000001"
+
+    def parts():
+        response = client.post(path, json={"bundles": ["unknown", bundle]})
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "private, no-store"
+        header = f"Content-Type: {response.headers['content-type']}\r\n\r\n".encode()
+        message = BytesParser(policy=policy.default).parsebytes(header + response.content)
+        return {
+            part.get_param("name", header="Content-Disposition"): part.get_payload(decode=True)
+            for part in message.iter_parts()
+        }
+
+    assert parts() == {}
+    single = client.get(base + "/bundles/" + bundle + "/thumbnail")
+    assert single.status_code == 200
+    assert parts() == {"1": single.content}
+    with monkeypatch.context() as bounded:
+        bounded.setattr(media_cache, "_MAX_BATCH_BYTES", len(single.content) - 1)
+        assert parts() == {}
+    for file in (roots[0] / "Playback").iterdir():
+        if file.is_file():
+            file.unlink()
+    assert parts() == {}
+    assert client.post(path, json={"bundles": [bundle] * 17}).status_code == 422
+    assert client.post(path, json={"bundles": ["../elsewhere"]}).status_code == 422

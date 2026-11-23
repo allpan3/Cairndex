@@ -1,3 +1,4 @@
+import { useReplicaStatus } from '../api/useReplicaStatus'
 import { CatalogOrdinaryBrowser } from './CatalogOrdinaryBrowser'
 // Shared bundle-first navigation and creation across every authored catalog family
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
@@ -14,12 +15,7 @@ import {
   type Job,
   type Page,
 } from '../api/catalog'
-import {
-  authorizeLibraryStorage,
-  holdEditor,
-  replicaRequest,
-  type ReplicaStatus,
-} from '../api/replicas'
+import { authorizeLibraryStorage, holdEditor } from '../api/replicas'
 import type { LibraryRead } from '../api/client'
 import { CatalogFilter } from './CatalogFilter'
 import { CatalogFocusedConflictReview } from './CatalogFocusedConflictReview'
@@ -38,7 +34,7 @@ import { StorageAccessDialog } from './StorageAccessDialog'
 import { LibraryAccessNotice } from './LibraryAccessNotice'
 import { useCatalogMaintenance } from './useCatalogMaintenance'
 import { usePortableJobNotifications } from '../desktop/usePortableJobNotifications'
-import { CatalogMaintenanceNotice } from './CatalogMaintenanceNotice'
+import { CatalogMaintenanceNotice, CoverPreparationNotice } from './CatalogMaintenanceNotice'
 import {
   getConnections,
   getPendingSelectionVersion,
@@ -321,19 +317,24 @@ export function CatalogWorkspace({
     setMedia(null)
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [deepLink, ordinaryBrowse, onDeepLinkHandled])
-  const status = useQuery({
-    queryKey: ['catalog-status', libraryId],
-    queryFn: () => replicaRequest<ReplicaStatus>(libraryId, '/status'),
-    refetchInterval: 1000,
-  })
+  const status = useReplicaStatus(libraryId, 1000)
   const state = status.data
+  const [firstPageReady, setFirstPageReady] = useState(false)
+  const finishOpening = useCallback(() => setFirstPageReady(true), [])
+  const backgroundReady = firstPageReady || !ordinaryBrowse || reviewMode
+  // Keep recovery and job controls reachable even if the first browse request stalls.
+  useEffect(() => {
+    if (backgroundReady || !state?.ready) return
+    const timer = window.setTimeout(finishOpening, 500)
+    return () => window.clearTimeout(timer)
+  }, [backgroundReady, finishOpening, state?.ready])
   const maintenance = useCatalogMaintenance(
     libraryId,
-    state?.maintenance_version === 1 && Boolean(state.ready) && Boolean(editor),
+    backgroundReady && state?.maintenance_version === 1 && Boolean(state.ready) && Boolean(editor),
   )
   const discovery = useReplicaDiscovery(
     libraryId,
-    state?.discovery_version === 1 && Boolean(state.ready) && Boolean(editor),
+    backgroundReady && state?.discovery_version === 1 && Boolean(state.ready) && Boolean(editor),
     refresh,
   )
   usePortableJobNotifications(libraryId, discovery.run.data, maintenance.status.data)
@@ -456,6 +457,7 @@ export function CatalogWorkspace({
         </section>
       )}
       {reviewMode && discovery.enabled && <DiscoveryControls discovery={discovery} />}
+      {reviewMode && <CoverPreparationNotice covers={maintenance.status.data?.covers} />}
       {discovery.open &&
         editor &&
         ((state?.grouping_version ?? 0) >= 1 ? (
@@ -603,6 +605,8 @@ export function CatalogWorkspace({
           <CatalogOrdinaryBrowser
             key={libraryId}
             libraries={libraries}
+            backgroundReady={backgroundReady}
+            onFirstPageReady={finishOpening}
             onChangeLibrary={onChangeLibrary}
             onManage={onManage}
             onSettings={onSettings}
@@ -693,6 +697,7 @@ export function CatalogWorkspace({
                     onComplete={(text) => onNotice({ text })}
                   />
                 )}
+                <CoverPreparationNotice covers={maintenance.status.data?.covers} />
                 {(attention || storageAccess) && (
                   <section className="sidebar__notice" aria-label="Metadata delivery status">
                     {attention && <p role="alert">{attention}</p>}

@@ -176,23 +176,27 @@ export function Browser(props: BrowserProps) {
   // dataTransfer's payload is unreadable during dragover by spec — the ref is
   // the one place that is always current within this window.
   const dragIdsRef = useRef<string[] | null>(null)
-  // Where the pointer came to rest as the drag ended. A settled reorder slides
-  // cards under that stationary pointer, and each one that passes gets a
-  // mouse-enter — so whichever card ends up under the cursor starts its hover
-  // preview unasked (and if it then slides on without a mouse-leave, keeps
-  // playing with the pointer nowhere near it). Previews stay disabled until the
-  // pointer travels away from this point — the signal that hovering is
-  // intentional again.
-  const settlePoint = useRef<{ x: number; y: number } | null>(null)
-  const [settling, setSettling] = useState(false)
-  const settleAt = (e: { clientX: number; clientY: number }) => {
-    settlePoint.current = { x: e.clientX, y: e.clientY }
-    setSettling(true)
+  // Scrolling or dropping a card can put another card under a stationary cursor.
+  // Resume previews only after the pointer moves from its last screen position.
+  const pointer = useRef<{ x: number; y: number } | null>(null)
+  const [settling, setSettling] = useState<'scroll' | 'drop' | null>(null)
+  const settleAt = (
+    e: { clientX: number; clientY: number },
+    reason: 'scroll' | 'drop' = 'drop',
+  ) => {
+    pointer.current = { x: e.clientX, y: e.clientY }
+    setSettling(reason)
   }
   const onContainerMouseMove = (e: React.MouseEvent) => {
-    if (!settling) return
-    const at = settlePoint.current
-    if (at === null || Math.hypot(e.clientX - at.x, e.clientY - at.y) > 8) setSettling(false)
+    const at = pointer.current
+    if (
+      settling &&
+      at &&
+      Math.hypot(e.clientX - at.x, e.clientY - at.y) <= (settling === 'drop' ? 8 : 0)
+    )
+      return
+    pointer.current = { x: e.clientX, y: e.clientY }
+    if (settling) setSettling(null)
   }
   const clearDrag = () => {
     dragIdsRef.current = null
@@ -629,7 +633,9 @@ export function Browser(props: BrowserProps) {
       ref={setScrollEl}
       onMouseDown={onBackgroundMouseDown}
       onMouseMove={onContainerMouseMove}
+      onWheelCapture={(e) => settleAt(e, 'scroll')}
       onScroll={() => {
+        setSettling((reason) => reason ?? 'scroll')
         if (shown.current && scrollEl) shown.current.scrollTop = scrollEl.scrollTop
       }}
     >
@@ -763,7 +769,7 @@ export function Browser(props: BrowserProps) {
                                 onContextMenu={onContextMenu}
                                 previewDisabled={
                                   dragId !== null ||
-                                  settling ||
+                                  settling !== null ||
                                   marqueeRect !== null ||
                                   props.contextMenuOpen === true
                                 }
@@ -859,7 +865,9 @@ function ListRow({
       {...dragProps}
     >
       <div className="list-row__thumb">
-        {item.has_cover && <CoverImage src={thumbnailUrl(item.id, item.cover_key)} />}
+        {item.has_cover && (
+          <CoverImage batch={item.cover_batch} src={thumbnailUrl(item.id, item.cover_key)} />
+        )}
       </div>
       <div className="list-row__title">
         <span className="list-row__name">{item.title ?? 'Untitled'}</span>

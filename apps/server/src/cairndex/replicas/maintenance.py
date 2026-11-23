@@ -46,7 +46,9 @@ def latest(store: CatalogStore) -> dict[str, Any]:
             "SELECT id,intent FROM catalog_jobs WHERE json_extract(intent,'$.action')="
             "'media_maintenance' ORDER BY sequence DESC LIMIT 1"
         ).fetchone()
+        covers = dict(db.execute("SELECT state,amount FROM cover_counts WHERE amount>0"))
     return {
+        "covers": covers or None,
         "job": job(store, row[0]) if row else None,
         "kind": json.loads(row[1])["body"]["kind"] if row else None,
     }

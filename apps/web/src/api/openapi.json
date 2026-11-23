@@ -4724,6 +4724,32 @@
         "title": "CoverFrameUpdate",
         "type": "object"
       },
+      "CoverPreparation": {
+        "properties": {
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "default": 0,
+            "title": "Pending",
+            "type": "integer"
+          },
+          "ready": {
+            "default": 0,
+            "title": "Ready",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "title": "CoverPreparation",
+        "type": "object"
+      },
       "CreateBundleFromFilesRequest": {
         "properties": {
           "file_ids": {
@@ -7807,6 +7833,16 @@
       },
       "MaintenanceRead": {
         "properties": {
+          "covers": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoverPreparation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "job": {
             "anyOf": [
               {
@@ -9329,6 +9365,26 @@
           "operator"
         ],
         "title": "PredicateNode",
+        "type": "object"
+      },
+      "PreparedCoverRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "bundles": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Bundles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "bundles"
+        ],
+        "title": "PreparedCoverRequest",
         "type": "object"
       },
       "ProposalDestinationUpdate": {
@@ -32152,6 +32208,92 @@
           }
         },
         "summary": "Local Path",
+        "tags": [
+          "replica-media"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/replica/media/prepared-covers": {
+      "post": {
+        "description": "Prepared bundle covers as binary form parts named by zero-based request index.\n\nMissing, unconfirmed and over-budget covers are omitted. The individual endpoint\nremains available for generation. At most 2 MiB of image data is returned.",
+        "operationId": "prepared_covers_api_v1_libraries__library_id__replica_media_prepared_covers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreparedCoverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "multipart/form-data": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prepared Covers",
         "tags": [
           "replica-media"
         ]

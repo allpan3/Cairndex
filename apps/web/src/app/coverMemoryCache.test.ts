@@ -10,6 +10,7 @@ beforeEach(() => {
 
 afterEach(() => {
   clearCoverBlobCache()
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
@@ -93,4 +94,87 @@ test('a remounted card starts a fresh request before its cancelled fetch settles
   requests[1]!(new Response('new'))
   await expect(shared.promise).resolves.toMatch(/^blob:synthetic-/)
   shared.release()
+})
+
+test('visible covers bypass nearby work and share an already requested cover', async () => {
+  const replies: Array<() => void> = []
+  const fetch = vi
+    .spyOn(platform, 'hostFetch')
+    .mockImplementation(
+      () => new Promise<Response>((resolve) => replies.push(() => resolve(new Response('img')))),
+    )
+  const near = acquireCoverBlobUrl('/near', false)
+  const next = acquireCoverBlobUrl('/next', false)
+  const promoted = acquireCoverBlobUrl('/promoted', false)
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/near'])
+  promoted.setVisible(true)
+  const visible = acquireCoverBlobUrl('/visible')
+  const shared = acquireCoverBlobUrl('/near')
+  expect(shared.promise).toBe(near.promise)
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/near', '/promoted', '/visible'])
+  replies.splice(0).forEach((resolve) => resolve())
+  await Promise.all([near.promise, visible.promise, promoted.promise])
+  expect(fetch.mock.calls.at(-1)?.[0]).toBe('/next')
+  replies[0]!()
+  await next.promise
+  for (const handle of [near, next, promoted, visible, shared]) handle.release()
+})
+
+test('one visible batch delivers hits and retries only the missing cover individually', async () => {
+  // Node's Response parser constructs a File in its own Web API realm.
+  vi.stubGlobal('File', (await vi.importActual<{ File: typeof File }>('node:buffer')).File)
+  const calls: string[] = []
+  vi.spyOn(platform, 'hostFetch').mockImplementation(async (input, init) => {
+    calls.push(String(input))
+    if (input !== '/prepared') return new Response('cold')
+    const ids = JSON.parse(String(init?.body)).bundles as string[]
+    return new Response(
+      `--sample\r\nContent-Disposition: form-data; name="${ids.indexOf('ready')}"; filename="cover"\r\nContent-Type: image/jpeg\r\n\r\nwarm\r\n--sample--\r\n`,
+      { headers: { 'Content-Type': 'multipart/form-data; boundary=sample' } },
+    )
+  })
+  const items = ['ready', 'cold'].map((bundle) =>
+    acquireCoverBlobUrl('/cover/' + bundle, true, { endpoint: '/prepared', bundle }),
+  )
+  const results = await Promise.all(items.map((item) => item.promise))
+  expect(results.every(Boolean)).toBe(true)
+  expect(calls).toEqual(['/prepared', '/cover/cold'])
+  items.forEach((item) => item.release())
+})
+
+test('releasing one card keeps its batch alive, clearing the library retires all late bytes', async () => {
+  let signal: AbortSignal | null | undefined
+  let respond!: (response: Response) => void
+  const fetch = vi.spyOn(platform, 'hostFetch').mockImplementation((_url, init) => {
+    signal = init?.signal
+    return new Promise<Response>((resolve) => {
+      respond = resolve
+    })
+  })
+  const a = acquireCoverBlobUrl('/a', true, { endpoint: '/batch', bundle: 'a' })
+  const b = acquireCoverBlobUrl('/b', true, { endpoint: '/batch', bundle: 'b' })
+  await Promise.resolve()
+  a.release()
+  expect(signal?.aborted).toBe(false)
+  clearCoverBlobCache()
+  expect(signal?.aborted).toBe(true)
+  respond(new Response(new FormData()))
+  expect(await Promise.all([a.promise, b.promise])).toEqual([null, null])
+  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(getCachedCoverBlobUrl('/b')).toBeUndefined()
+})
+
+test('an entirely cold visible batch starts individual covers in reading order', async () => {
+  const fetch = vi
+    .spyOn(platform, 'hostFetch')
+    .mockImplementation(async (url) =>
+      url === '/prepared' ? new Response(null, { status: 503 }) : new Response('image'),
+    )
+  const ids = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+  const handles = ids.map((bundle) =>
+    acquireCoverBlobUrl('/' + bundle, true, { endpoint: '/prepared', bundle }),
+  )
+  await Promise.all(handles.map((handle) => handle.promise))
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/prepared', ...ids.map((id) => '/' + id)])
+  handles.forEach((handle) => handle.release())
 })

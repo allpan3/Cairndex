@@ -108,7 +108,9 @@ def _generate(source: Path, dest: Path, size: PreviewSize) -> None:
                         frame.thumbnail((size, size), Image.Resampling.LANCZOS)
                         if frame.mode not in ("RGB", "RGBA"):
                             frame = frame.convert("RGBA" if "A" in frame.getbands() else "RGB")
-                        frame.save(tmp_path, format="WEBP", method=6, quality=88)
+                        frame.save(
+                            tmp_path, format="WEBP", method=2 if size == 640 else 6, quality=88
+                        )
             except DecompressionBombError as exc:
                 raise PreviewError("image dimensions exceed preview limits") from exc
             except (DecompressionBombWarning, UnidentifiedImageError, OSError) as exc:

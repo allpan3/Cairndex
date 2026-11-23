@@ -1,8 +1,12 @@
 """Private derivatives reuse the production decoders without mutating catalog choices"""
 
 import os
+import sqlite3
+import stat
+import threading
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Any
 
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import PathSafetyError
@@ -11,6 +15,8 @@ from cairndex.media import derived_cache, playback, previews, thumbnails
 from cairndex.media.hls import BurnSubtitle
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetFile
+from cairndex.replicas.catalog.inspector import cover
+from cairndex.replicas.catalog.projection import read_row
 from cairndex.replicas.media import ReplicaMedia, generation, open_source, open_sources
 from cairndex.replicas.protocol import ReplicaError
 from cairndex.scanning.media_types import classify
@@ -18,7 +24,8 @@ from cairndex.scanning.media_types import classify
 
 def cached_thumbnail(
     media: ReplicaMedia,
-    file_id: str,
+    db: sqlite3.Connection,
+    row: dict[str, Any],
     *,
     expected_generation: str | None = None,
 ) -> Path | None:
@@ -27,7 +34,7 @@ def cached_thumbnail(
     Falls back to ``None`` on any missing/changed/unconfirmed source or cache miss so
     the full guarded builder handles derivation and observation persistence.
     """
-    row = media.row("asset_files", file_id)
+    file_id = str(row["id"])
     relative_path = str(row["relative_path"])
     kind = classify(relative_path)
     if kind is None or kind[0] not in (MediaKind.IMAGE, MediaKind.VIDEO):
@@ -40,11 +47,10 @@ def cached_thumbnail(
     if expected_generation is not None and token != expected_generation:
         return None
     if media.store.descriptor.format_version == 3:
-        with media.store.connection(readonly=True) as db:
-            seen = db.execute(
-                "SELECT 1 FROM local_media WHERE file_id=? AND generation=? AND state='available'",
-                (file_id, token),
-            ).fetchone()
+        seen = db.execute(
+            "SELECT 1 FROM local_media WHERE file_id=? AND generation=? AND state='available'",
+            (file_id, token),
+        ).fetchone()
         if not seen:
             return None
     if kind[0] == MediaKind.IMAGE:
@@ -52,6 +58,37 @@ def cached_thumbnail(
         return dest if derived_cache.is_current(dest, token) else None
     dest = media.cache("thumbnails", file_id, f"{token}:{row.get('cover_time')}", ".jpg")
     return dest if dest.is_file() else None
+
+
+MAX_COVER_BATCH = 16
+_MAX_BATCH_BYTES = 2 * 1024 * 1024
+
+
+def prepared_bundle_covers(media: ReplicaMedia, bundles: list[str]) -> list[tuple[int, str, bytes]]:
+    """Collect only current cache hits from one catalog snapshot. Never start a decoder."""
+    hits = []
+    remaining = _MAX_BATCH_BYTES
+    with media.store.connection(readonly=True) as db:
+        for index, bundle in enumerate(bundles):
+            if read_row(db, "asset_bundles", bundle) is None:
+                continue
+            artwork = cover(db, bundle)
+            path = cached_thumbnail(media, db, artwork) if artwork else None
+            if path is None:
+                continue
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                with os.fdopen(fd, "rb") as stream:
+                    info = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= remaining:
+                        continue
+                    data = stream.read(info.st_size)
+            except FileNotFoundError:
+                continue  # Eviction between lookup and open is an ordinary miss.
+            if len(data) == info.st_size:
+                hits.append((index, thumbnails.thumbnail_media_type(path), data))
+                remaining -= len(data)
+    return hits
 
 
 def _preview_for_asset(media: ReplicaMedia, file_id: str, asset: AssetFile, size: int) -> Path:
@@ -76,7 +113,27 @@ def preview(media: ReplicaMedia, file_id: str, size: int) -> Path:
 
 
 # Cover timestamp is read from authored metadata and never selected by a local probe
+_cover_lock = threading.Lock()
+_foreground_covers = 0
+
+
+def foreground_covers_pending() -> bool:
+    with _cover_lock:
+        return _foreground_covers > 0
+
+
 def thumbnail(media: ReplicaMedia, file_id: str) -> Path:
+    global _foreground_covers
+    with _cover_lock:
+        _foreground_covers += 1
+    try:
+        return build_thumbnail(media, file_id)
+    finally:
+        with _cover_lock:
+            _foreground_covers -= 1
+
+
+def build_thumbnail(media: ReplicaMedia, file_id: str) -> Path:
     source, asset = media.resolve_file(file_id)
     if asset.media_kind == MediaKind.IMAGE:
         return _preview_for_asset(media, file_id, asset, 640)
