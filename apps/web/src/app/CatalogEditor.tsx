@@ -18,6 +18,7 @@ import { CatalogValue } from './CatalogControls'
 import { CatalogArrangement, CatalogComposite } from './CatalogStructures'
 import { CatalogHistory, CatalogReview } from './CatalogReview'
 import { useCatalogDraft } from './useCatalogDraft'
+import { catalogPoll } from '../api/catalogRevision'
 
 type Draft = {
   id: string
@@ -162,7 +163,7 @@ export function CatalogEditor({
         library,
         `/drafts?owner=${encodeURIComponent(owner)}`,
       ),
-    refetchInterval: 4000,
+    refetchInterval: catalogPoll(library, 4000),
   })
 
   // Persist every generation before starting a save; delayed writes are fenced by receipts

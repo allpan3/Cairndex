@@ -5,6 +5,7 @@ import { resolveAssetUrl, type FileRead, type Moment, type MomentCreate } from '
 import { replicaRequest } from './replicas'
 import { captureRequestScope } from './requestScope'
 import type { components } from './schema'
+import { catalogPoll } from './catalogRevision'
 
 type MomentPage = components['schemas']['CatalogMomentPage']
 type TagPage = components['schemas']['CatalogMembershipPage']
@@ -80,7 +81,7 @@ export function useCatalogMoments(library: string, bundleId: string | null) {
       return { moments, tagNames, files: ordered }
     },
     // Another device's moments arrive through the exchange, not through this tab
-    refetchInterval: 5000,
+    refetchInterval: catalogPoll(library, 5000),
   })
 }
 

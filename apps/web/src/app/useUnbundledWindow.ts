@@ -3,6 +3,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { catalog } from '../api/catalog'
 import type { FileBrowserEntry } from '../api/client'
 import type { components } from '../api/schema'
+import { catalogPoll } from '../api/catalogRevision'
 
 type Page = components['schemas']['CatalogUnbundledPage']
 type Item = Page['items'][number]
@@ -92,7 +93,7 @@ export function useUnbundledWindow(
           offset: index * UNBUNDLED_PAGE,
           limit: UNBUNDLED_PAGE,
         }),
-      refetchInterval: 4000,
+      refetchInterval: catalogPoll(library, 4000),
     })),
   })
   // Every page this query has read, active or not. The newest answer sizes the list,

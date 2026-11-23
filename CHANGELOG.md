@@ -260,6 +260,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- An idle portable browser no longer re-reads the catalog every few seconds. The
+  library status reports a private-metadata `revision`, and browse pages, sidebar
+  navigation and counts, the inspector, album and drafts refetch only when it
+  changes, instead of each polling every 2–5 s. React Query structural sharing is
+  back on, so an unchanged answer no longer re-renders the grid. On a synthetic
+  library an idle browser sends 14 requests in 10 s instead of 86.
+
 - Portable library Update prepares bundle covers in the background. Grouping and
   cover changes refresh affected artwork. The browser loads visible covers first
   and prefetches nearby rows even before the first Update. Automatic video covers

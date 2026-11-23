@@ -23,6 +23,7 @@ import { TagPickerPanel } from './TagPickerPanel'
 import { IconStar } from './icons'
 import { useCatalogFileDraft } from './useCatalogFileDraft'
 import { useContextMenu, type MenuEntry } from './useContextMenu'
+import { catalogPoll } from '../api/catalogRevision'
 
 /**
  * Compact header star button placed inline beside the filename in File Inspector.
@@ -136,7 +137,7 @@ export function CatalogFileAnnotations({
   const detailQuery = useQuery({
     queryKey: ['catalog-detail', library, 'asset_files', file],
     queryFn: () => catalog<Entity>(library, `/entities/asset_files/${file}`),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
 
   const starred = Boolean(starQuery.data?.starred)

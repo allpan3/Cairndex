@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -135,6 +136,9 @@ class PrivateStore:
         if self.path.is_symlink():
             raise ReplicaError("Private replica database must not be a symlink")
         self.descriptor, self.fault = descriptor, fault
+        self._handle = uuid4().hex[:12]
+        self._changes = 0
+        self._changes_lock = threading.Lock()
         with self.connection() as db:
             if not self._initializing:
                 from cairndex.replicas.catalog.protocol import CatalogDescriptor
@@ -153,6 +157,15 @@ class PrivateStore:
             db.execute("INSERT OR IGNORE INTO config VALUES ('replica', ?)", (uuid4().hex,))
         self._initializing = False
         self._database_identity = self.path.stat().st_dev, self.path.stat().st_ino
+
+    # Clients refetch catalog reads only when this changes, instead of polling each one.
+    # It names this handle and counts its committed transactions that changed rows, so a
+    # restart, recovery or rebound store also reads as changed. Every write to the
+    # private database goes through `connection`, the only place that counts.
+    @property
+    def revision(self) -> str:
+        with self._changes_lock:
+            return f"{self._handle}.{self._changes}"
 
     # Retired handles cannot resume a transaction against a replaced active generation
     def retire(self) -> None:
@@ -204,7 +217,11 @@ class PrivateStore:
                 db.execute("PRAGMA journal_mode=WAL")
             db.execute("BEGIN" if readonly else "BEGIN IMMEDIATE")
             yield db
+            changed = not readonly and db.total_changes > 0
             db.commit()
+            if changed:
+                with self._changes_lock:
+                    self._changes += 1
         except sqlite3.Error as error:
             with suppress(sqlite3.Error):
                 db.rollback()
@@ -577,12 +594,14 @@ class Store(PrivateStore):
 
     # Status distinguishes local save/publication from peer delivery, which remains unknown
     def status(self) -> dict[str, Any]:
-        with self.connection() as db:
+        revision = self.revision
+        with self.connection(readonly=True) as db:
             blocked = db.execute("SELECT value FROM config WHERE key='blocked'").fetchone()
             ready = bool(
                 db.execute("SELECT 1 FROM events WHERE id=?", (self.descriptor.genesis,)).fetchone()
             )
             return {
+                "revision": revision,
                 "ready": ready,
                 "blocked": blocked[0] if blocked else None,
                 "outbox": db.execute(

@@ -7974,6 +7974,8 @@ export interface components {
             peer_delivery: "unknown";
             /** Ready */
             ready: boolean;
+            /** Revision */
+            revision?: string | null;
             /** Selection Version */
             selection_version?: number | null;
             /**

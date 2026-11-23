@@ -7,6 +7,7 @@ import type { components } from '../api/schema'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { CatalogBundleInspector } from './CatalogBundleInspector'
+import { catalogPoll } from '../api/catalogRevision'
 
 /**
  * The portable bundle inspector in the viewer's rail.
@@ -63,12 +64,12 @@ export function CatalogViewerInspector({
     queryFn: () =>
       catalog<components['schemas']['CatalogBundleSummary']>(library, `/bundles/${bundle}/summary`),
     enabled: status?.bundle_summary_version === 1,
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   const detail = useQuery({
     queryKey: ['catalog-detail', library, 'asset_bundles', bundle],
     queryFn: () => catalog<Entity>(library, `/entities/asset_bundles/${bundle}`),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   if (!detail.data || detail.data.fields.$alive?.value !== 'true')
     return (

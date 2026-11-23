@@ -79,6 +79,7 @@ import {
 } from './icons'
 import { QuickPreview } from './QuickPreview'
 import { useQuickPreview } from './useQuickPreview'
+import { catalogPoll } from '../api/catalogRevision'
 
 type Page = components['schemas']['CatalogBrowsePage']
 // Browse version 11 adds local file observations and opening/edit history.
@@ -260,7 +261,7 @@ export function CatalogBundleBrowser({
     enabled: Boolean(selection.smartCollectionId),
     queryFn: () =>
       catalog<Entity>(library, `/entities/smart_folders/${selection.smartCollectionId}`),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   const smartValue = smart.data?.fields.$filter?.value
   const smartFilter = smartValue ? JSON.parse(JSON.parse(smartValue).filter_json) : null
@@ -353,7 +354,7 @@ export function CatalogBundleBrowser({
       }),
     getNextPageParam: (page) =>
       page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   // Let the grid mount and its visible covers enter the network queue first.
   useEffect(() => {
@@ -709,7 +710,7 @@ export function CatalogBundleBrowser({
     queryKey: ['catalog-detail', library, 'asset_bundles', single],
     enabled: Boolean(single),
     queryFn: () => catalog<Entity>(library, `/entities/asset_bundles/${single}`),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
     retry: 1,
   })
   const albumTitle =
@@ -742,7 +743,7 @@ export function CatalogBundleBrowser({
       if (albumId) return null
       return catalogBundleHostPath(library, single!)
     },
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   const hostPath = hostTarget.isSuccess && single ? (hostTarget.data ?? null) : null
   useEffect(() => {

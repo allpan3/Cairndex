@@ -1117,3 +1117,18 @@ def test_file_star_concurrent_with_file_delete_surfaces_hold(catalog_pair):
     exchange(a, b)
     assert len(a.entity("asset_files", "file-subtitle")["fields"]["$alive"]["candidates"]) == 2
     assert len(b.entity("asset_files", "file-subtitle")["fields"]["$alive"]["candidates"]) == 2
+
+
+# Clients refetch catalog reads only when the revision moves, so reads must not move it
+def test_revision_moves_only_with_committed_changes(catalog_pair):
+    _, a, b = catalog_pair
+    before = a.status()["revision"]
+    value(a, "asset_bundles", "bundle-000000", "title")
+    with a.connection() as db:
+        db.execute("SELECT COUNT(*) FROM events").fetchone()
+    assert a.status()["revision"] == before
+    save(a, edit(a, "asset_bundles", "bundle-000000", "title", "Amber"), "amber")
+    after = a.status()["revision"]
+    assert after != before
+    # Another handle on the same history never shares a revision with this one
+    assert b.status()["revision"].split(".")[0] != after.split(".")[0]

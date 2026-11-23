@@ -10288,6 +10288,17 @@
             "title": "Ready",
             "type": "boolean"
           },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
           "selection_version": {
             "anyOf": [
               {

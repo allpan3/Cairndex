@@ -27,7 +27,7 @@ export function QueryScope({ children }: { children: ReactNode }) {
     () =>
       new QueryClient({
         defaultOptions: {
-          queries: { staleTime: 30_000, refetchOnWindowFocus: false, structuralSharing: false },
+          queries: { staleTime: 30_000, refetchOnWindowFocus: false },
         },
       }),
   )
