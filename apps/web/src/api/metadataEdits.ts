@@ -1,3 +1,4 @@
+import { operationId } from './operationId'
 import { hostFetch } from '../platform'
 import {
   metadataEditingBlocked,
@@ -40,13 +41,6 @@ let serial = 0
 const inFlight = new Map<string, Promise<unknown>>()
 const storageFailures = new Set<string>()
 export const editStorageWarning = () => storageFailures.has(storageKey())
-
-// Cryptographic operation identities also work on private LAN HTTP origins
-function editId(): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
-    byte.toString(16).padStart(2, '0'),
-  ).join('')
-}
 
 // Draft requests remain private and are isolated by durable server/library identity
 function storageKey(): string {
@@ -172,13 +166,13 @@ export async function chooseEdit(edit: PendingEdit, choice: Choice): Promise<voi
       ...edit,
       basis: edit.recovery.basis,
       recovery: undefined,
-      operation: editId(),
+      operation: operationId(),
     }
   if (choice === 'reviewed' && edit.conflict?.reviewable) {
     edit = {
       ...edit,
       reviewed: { ...edit.reviewed, [edit.conflict.unit]: edit.conflict.revision },
-      operation: editId(),
+      operation: operationId(),
     }
   }
   try {
@@ -337,12 +331,12 @@ async function runEdit<T>(initial: PendingEdit): Promise<T> {
       throw new MetadataEditError(message, choice === 'discard')
     }
     if (choice === 'reviewed' && recovery)
-      edit = { ...edit, basis: recovery.basis, recovery: undefined, operation: editId() }
+      edit = { ...edit, basis: recovery.basis, recovery: undefined, operation: operationId() }
     if (choice === 'reviewed' && conflict?.reviewable) {
       edit = {
         ...edit,
         reviewed: { ...edit.reviewed, [conflict.unit]: conflict.revision },
-        operation: editId(),
+        operation: operationId(),
       }
     }
   }
@@ -362,12 +356,12 @@ export function sendMetadata<T>(
   )
   if (pending) return executeEdit<T>(pending)
   return executeEdit<T>({
-    id: editId(),
+    id: operationId(),
     url,
     method,
     body: encoded,
     basis,
-    operation: editId(),
+    operation: operationId(),
     reviewed: {},
     message: '',
   })

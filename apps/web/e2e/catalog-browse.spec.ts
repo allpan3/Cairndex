@@ -46,6 +46,11 @@ test('ordinary catalog browse, continued edits, delayed delivery and conflict re
         }),
       ),
     )
+    // A NAS served over LAN HTTP has Web Crypto randomness but no secure-context UUID or locks.
+    await contexts[0]!.addInitScript(() => {
+      Object.defineProperty(crypto, 'randomUUID', { value: undefined })
+      Object.defineProperty(navigator, 'locks', { value: undefined })
+    })
     const pages = await Promise.all(contexts.map((context) => context.newPage()))
     for (let i = 0; i < 2; i++) {
       await proxyApi(pages[i]!, backends[i]!.baseUrl)

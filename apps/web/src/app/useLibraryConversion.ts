@@ -1,3 +1,4 @@
+import { operationId } from '../api/operationId'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import {
@@ -83,7 +84,7 @@ export function useLibraryConversion(
     if (!root || busy) return
     if ((action === 'activate' || action === 'undo') && (!review?.receipt || !history.preparation))
       return
-    const operation = crypto.randomUUID().replaceAll('-', '')
+    const operation = operationId()
     const next =
       action === 'inspect'
         ? { task: operation, preparation: null, activation: null }
