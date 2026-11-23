@@ -1,4 +1,5 @@
 import type { BundleSummary, FileRead } from '../api/client'
+import { coverAspectKey, measuredCoverAspect } from './coverAspects'
 import type { LayoutMode } from './types'
 
 export interface PlacedCard<T = BundleSummary> {
@@ -19,6 +20,8 @@ const GAP = ROW_GAP
 // is CSS's (`.card--framed .card__thumb`), so a couple of spare pixels here show
 // as card surface under the text, while too few would clip the title outright.
 const META_HEIGHT = 44
+// Two centred lines under a Justified tile, as in Eagle: title, then duration or size
+export const JUSTIFIED_META_HEIGHT = 36
 
 /** Every card-layout tile's cover frame, as width ÷ height.
  *
@@ -40,8 +43,8 @@ export const ZOOM_MAX = 640
 /** A Justified row's target height, as a fraction of the shared zoom.
  *
  * Above 9/16 (a Card cover's height at the same zoom) because the layouts are
- * judged separately and Justified was the one reading as too small — it has no
- * title block under each tile, so the same height carries less weight on screen
+ * judged separately and Justified was the one reading as too small — it had no
+ * title block under each tile then, so the same height carried less weight on screen
  * (owner, 2026-08-23). Rows now actually reach this, which the packing rule
  * below did not previously manage. */
 const JUSTIFIED_TARGET_FRACTION = 0.7
@@ -84,10 +87,14 @@ export function collectionCardWidth(zoom: number): number {
  * `width`/`height` describe the file under the playback cursor, which is the
  * same file for a single-video bundle and a different one whenever a cover was
  * chosen or an image leads a video bundle — that mismatch was the black frame.
- * Falling back to them still beats guessing, and 16:9 is the last resort for a
- * bundle nothing has probed yet. */
+ * Without a cover size, the shape this device decoded for the same cover version
+ * comes next (coverAspects.ts), clamped so one odd image cannot take a whole row.
+ * Falling back to the file still beats guessing, and 16:9 is the last resort for
+ * a bundle nothing has probed or shown yet. */
 function aspect(item: BundleSummary): number {
   if (item.cover_width && item.cover_height) return item.cover_width / item.cover_height
+  const measured = measuredCoverAspect(coverAspectKey(item.id, item.cover_key))
+  if (measured) return Math.max(0.4, Math.min(3, measured))
   if (item.width && item.height) return item.width / item.height
   return CARD_COVER_ASPECT
 }
@@ -109,6 +116,8 @@ export function packRows<T>(
   zoom: number,
   showCardDetails = true,
   aspectOf: (item: T) => number = () => CARD_COVER_ASPECT,
+  /** Room under each Justified tile for its labels; the tile's cover keeps its shape */
+  justifiedMeta = 0,
 ): Row<T>[] {
   if (containerWidth <= 0 || items.length === 0) return []
 
@@ -160,7 +169,7 @@ export function packRows<T>(
       // `Row.height` carries the gap below it, so the row above's own height is
       // that minus the gap.
       const above = rows[rows.length - 1]
-      rowH = Math.min(rowH, above ? above.height - GAP : Infinity, targetH)
+      rowH = Math.min(rowH, above ? above.height - GAP - justifiedMeta : Infinity, targetH)
     }
     let x = 0
     const cards: PlacedCard<T>[] = current.map((item) => {
@@ -169,7 +178,7 @@ export function packRows<T>(
       x += w + GAP
       return card
     })
-    rows.push({ height: rowH + GAP, cards })
+    rows.push({ height: rowH + justifiedMeta + GAP, cards })
     current = []
     aspectSum = 0
   }
@@ -210,5 +219,13 @@ export function computeRows(
   zoom: number,
   showCardDetails = true,
 ): Row[] {
-  return packRows(items, layout, containerWidth, zoom, showCardDetails, aspect)
+  return packRows(
+    items,
+    layout,
+    containerWidth,
+    zoom,
+    showCardDetails,
+    aspect,
+    showCardDetails ? JUSTIFIED_META_HEIGHT : 0,
+  )
 }

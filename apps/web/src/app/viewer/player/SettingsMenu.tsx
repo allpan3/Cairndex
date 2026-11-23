@@ -7,6 +7,7 @@ import { qualityOptions } from './quality'
 import type { ClipRangeController } from './useClipRange'
 import type { HlsSessionState } from './useHlsSession'
 import type { PlayerController } from './usePlayer'
+import { rangeFill } from '../../../lib/rangeFill'
 
 /** Map the slider's linear stop index to the supported seek-step values. */
 function seekStepAt(index: number): (typeof PLAYER_SEEK_STEPS)[number] {
@@ -117,6 +118,11 @@ export function SettingsMenu({
               max={PLAYER_SEEK_STEPS.length - 1}
               step={1}
               value={PLAYER_SEEK_STEPS.indexOf(player.seekStep)}
+              style={rangeFill(
+                PLAYER_SEEK_STEPS.indexOf(player.seekStep),
+                0,
+                PLAYER_SEEK_STEPS.length - 1,
+              )}
               aria-label="Seek step"
               aria-valuetext={`${player.seekStep} seconds`}
               onChange={(event) =>
@@ -153,6 +159,7 @@ export function SettingsMenu({
               max={3}
               step={0.25}
               value={player.rate}
+              style={rangeFill(player.rate, 0.25, 3)}
               aria-label="Playback speed"
               aria-valuetext={`${player.rate} times`}
               onChange={(event) => player.setRate(Number(event.currentTarget.value))}

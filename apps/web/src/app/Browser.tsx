@@ -762,7 +762,8 @@ export function Browser(props: BrowserProps) {
                               <BundleCard
                                 item={c.item}
                                 selected={selectedIds.has(c.item.id)}
-                                showMeta={layout === 'grid' && showCardDetails}
+                                showMeta={showCardDetails}
+                                layout={layout === 'grid' ? 'grid' : 'justified'}
                                 onSelect={onSelect}
                                 onOpen={onOpen}
                                 onOpenAlbum={onOpenAlbum}

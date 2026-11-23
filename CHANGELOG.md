@@ -267,6 +267,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   back on, so an unchanged answer no longer re-renders the grid. On a synthetic
   library an idle browser sends 14 requests in 10 s instead of 86.
 
+- The Justified layout now shows card details: each title and known pixel size
+  sits centred under its cover, with no card frame. Selection rings the cover
+  and highlights the title. Covers fill tiles of their own shape instead of
+  sitting in black bars, using the shape this device measured when the server
+  has no cover size. Type and duration badges are quieter translucent chips, and
+  every slider (zoom, volume, playback settings) uses one thin filled track.
+
 - Portable library Update prepares bundle covers in the background. Grouping and
   cover changes refresh affected artwork. The browser loads visible covers first
   and prefetches nearby rows even before the first Update. Automatic video covers

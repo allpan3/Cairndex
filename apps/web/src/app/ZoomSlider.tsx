@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { rangeFill } from '../lib/rangeFill'
 
 /**
  * The item-size slider. With `onPreview`, a pointer drag reports each value
@@ -57,6 +58,7 @@ export function ZoomSlider({
       max={max}
       step={10}
       value={live ?? value}
+      style={rangeFill(live ?? value, min, max)}
       aria-label={label}
       onPointerDown={() => {
         if (onPreview) drag.current = { active: true, value: null }

@@ -1,10 +1,21 @@
 import { expect, test } from 'vitest'
 
 import type { BundleSummary } from '../api/client'
-import { CARD_COVER_ASPECT, ZOOM_MAX, ZOOM_MIN, computeRows } from './layout'
+import { recordCoverAspect } from './coverAspects'
+import {
+  CARD_COVER_ASPECT,
+  JUSTIFIED_META_HEIGHT,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  computeRows,
+  type Row,
+} from './layout'
 
 const META_HEIGHT = 44
 const GAP = 10
+
+/** A justified row's cover height: the row carries the gap and the labels below it. */
+const coverHeight = (row: Row) => row.height - GAP - JUSTIFIED_META_HEIGHT
 
 /** A summary carrying only what the layout reads. */
 function item(
@@ -64,15 +75,14 @@ test('a justified tile takes the shape of its own cover', () => {
   )
 
   const card = rows[0]!.cards[0]!
-  const height = rows[0]!.height - GAP
-  expect(card.width / height).toBeCloseTo(4 / 3, 5)
+  expect(card.width / coverHeight(rows[0]!)).toBeCloseTo(4 / 3, 5)
 })
 
 test('a justified tile falls back to the cursor file, then to 16:9', () => {
   const shapeOf = (summary: BundleSummary): number => {
     const row = computeRows([summary], 'justified', 900, 200)[0]
     if (!row) throw new Error('expected a row')
-    return row.cards[0]!.width / (row.height - GAP)
+    return row.cards[0]!.width / coverHeight(row)
   }
 
   // No cover dimensions: the cursor file is the next best description of what
@@ -80,6 +90,26 @@ test('a justified tile falls back to the cursor file, then to 16:9', () => {
   expect(shapeOf(item('cursor', { width: 1000, height: 500 }))).toBeCloseTo(2, 5)
   // Nothing probed at all — a guess either way, so guess the library's shape.
   expect(shapeOf(item('unprobed'))).toBeCloseTo(CARD_COVER_ASPECT, 5)
+})
+
+test('a justified tile uses the shape this device measured for its cover', () => {
+  // Most images are never probed, so browse has no size for them; the decoded
+  // cover's own shape is the next best thing, ahead of the cursor file's
+  recordCoverAspect('measured|', 600, 900)
+  const row = computeRows(
+    [item('measured', { width: 1920, height: 1080 })],
+    'justified',
+    900,
+    200,
+  )[0]!
+  expect(row.cards[0]!.width / coverHeight(row)).toBeCloseTo(2 / 3, 2)
+})
+
+test('justified labels take room only when card details are shown', () => {
+  const shown = computeRows([item('a')], 'justified', 900, 200, true)[0]!
+  const hidden = computeRows([item('a')], 'justified', 900, 200, false)[0]!
+  expect(shown.height - hidden.height).toBe(JUSTIFIED_META_HEIGHT)
+  expect(shown.cards[0]!.width).toBe(hidden.cards[0]!.width)
 })
 
 test('the zoom range reaches a card worth looking at, and none too small to read', () => {
@@ -95,7 +125,7 @@ test('the zoom range reaches a card worth looking at, and none too small to read
 
 /** Every justified row's height, in source order. */
 function justifiedHeights(items: BundleSummary[], containerWidth: number, zoom: number): number[] {
-  return computeRows(items, 'justified', containerWidth, zoom).map((row) => row.height - GAP)
+  return computeRows(items, 'justified', containerWidth, zoom).map(coverHeight)
 }
 
 /** Covers in four shapes, the mix a real library has. */
@@ -153,7 +183,6 @@ test('a lone last tile keeps its shape rather than filling the row', () => {
   expect(lastRow.cards).toHaveLength(1)
   // It stops short of the right edge, which is what a justified gallery does
   // with a row it cannot fill.
-  const height = lastRow.height - GAP
-  expect(lastRow.cards[0]!.width).toBeCloseTo((height * 16) / 9, 5)
+  expect(lastRow.cards[0]!.width).toBeCloseTo((coverHeight(lastRow) * 16) / 9, 5)
   expect(lastRow.cards[0]!.width).toBeLessThan(900)
 })

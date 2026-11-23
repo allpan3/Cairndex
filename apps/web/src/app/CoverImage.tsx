@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { observeCover } from './coverViewport'
+import { recordCoverAspect } from './coverAspects'
 import {
   type CoverBatchItem,
   acquireCoverBlobUrl,
@@ -17,7 +18,16 @@ import {
  * It is inert decoration, like every cover (see the inert-media rule in
  * index.css): the card beneath owns clicks, menus and drags.
  */
-export function CoverImage({ src, batch }: { src: string; batch?: CoverBatchItem }) {
+export function CoverImage({
+  src,
+  batch,
+  aspectKey,
+}: {
+  src: string
+  batch?: CoverBatchItem
+  /** Remember this cover's decoded shape for the next Justified layout */
+  aspectKey?: string
+}) {
   const endpoint = batch?.endpoint
   const bundle = batch?.bundle
   const image = useRef<HTMLImageElement | null>(null)
@@ -90,9 +100,15 @@ export function CoverImage({ src, batch }: { src: string; batch?: CoverBatchItem
         alt=""
         decoding="async"
         draggable={false}
-        onLoad={() =>
+        onLoad={(event) => {
+          if (aspectKey)
+            recordCoverAspect(
+              aspectKey,
+              event.currentTarget.naturalWidth,
+              event.currentTarget.naturalHeight,
+            )
           setLoaded((current) => (current?.src === src ? current : { src, instant: false }))
-        }
+        }}
         onError={() => {
           if (!useBlobs || effectiveBlob) setFailed(src)
         }}

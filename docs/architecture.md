@@ -347,6 +347,11 @@ Current browsing surfaces:
 - View options groups layout, zoom, sort and card details in one anchored
   panel. Changes apply live; hiding card details also removes their row height
   from virtualized layout and marquee geometry.
+- Justified tiles take each cover's own shape: the prepared cover's size, else
+  the shape this device last decoded for that cover version (kept in
+  `localStorage`, at most 5,000 entries), else the primary file's size, else
+  16:9. With card details on, the title and known pixel size sit centred under
+  the cover in a fixed 36 px band that the row packing includes.
 - Context menus share keyboard navigation and viewport-clamped submenus. Bundle
   Copy actions read the selected bundle; tag pastes reuse guarded membership
   changes and organizing Undo. Text fields retain their own shortcuts.

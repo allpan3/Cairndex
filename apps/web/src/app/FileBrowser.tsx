@@ -76,6 +76,7 @@ import { navTargetsFrom, rowStep } from './spatialNav'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 import type { LocatedFile, PlayerPrefs, SortOption, SortPref } from './types'
+import { rangeFill } from '../lib/rangeFill'
 
 // File Browser mirrors the bundle browser's toolbar, but with file-appropriate
 // sort fields (bundles' rating/file-count/date-added don't apply) and only
@@ -1784,6 +1785,7 @@ function FileList({
               max={FILE_ZOOM_MAX}
               step={10}
               value={prefs.zoom}
+              style={rangeFill(prefs.zoom, FILE_ZOOM_MIN, FILE_ZOOM_MAX)}
               onChange={(e) => setPrefs({ ...prefs, zoom: Number(e.target.value) })}
               aria-label="Zoom"
             />
