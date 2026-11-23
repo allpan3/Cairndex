@@ -99,10 +99,25 @@ export function useUnbundledWindow(
   // Every page this query has read, active or not. The newest answer sizes the list,
   // so a queue that shrank or grew shows it at once, and a page still loading after
   // a jump does not collapse the list to nothing.
-  const cached = client
-    .getQueryCache()
-    .findAll({ queryKey: base })
-    .filter((entry) => entry.state.data !== undefined && typeof entry.queryKey[3] === 'number')
+  const pagesOf = (key: readonly unknown[]) =>
+    client
+      .getQueryCache()
+      .findAll({ queryKey: key })
+      .filter((entry) => entry.state.data !== undefined && typeof entry.queryKey[3] === 'number')
+  // A new search keeps the last search's rows until its own first page arrives,
+  // rather than blanking the list between keystrokes. Sort and library must match.
+  const own = pagesOf(base)
+  const [shown, setShown] = useState(identity)
+  if (own.length > 0 && shown !== identity) setShown(identity)
+  const [, previousLibrary, previous] = JSON.parse(shown) as [string, string, typeof query]
+  const cached =
+    own.length === 0 &&
+    previousLibrary === library &&
+    previous.q !== query.q &&
+    previous.sort === query.sort &&
+    previous.order === query.order
+      ? pagesOf(['catalog-unbundled', library, previous])
+      : own
   const newest = [...cached].sort((a, b) => b.state.dataUpdatedAt - a.state.dataUpdatedAt)[0]?.state
     .data as Page | undefined
   const count = newest?.total ?? 0

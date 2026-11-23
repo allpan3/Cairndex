@@ -373,6 +373,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- Typing a search in the Bundle Browser or the Unbundled queue keeps the previous
+  results on screen until the new ones arrive, instead of blanking the grid between
+  keystrokes.
+
 - Unbundled and File Browser thumbnails reappear at once when their rows scroll back
   into view. They now share the bundle-cover request queue and the session's memory
   cache, instead of re-reading every thumbnail over SMB with no limit on concurrent

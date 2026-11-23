@@ -333,18 +333,19 @@ export function CatalogBundleBrowser({
     sort: activeSort,
     order: activeOrder,
   }
+  const browseKey = [
+    'catalog-browse',
+    library,
+    query,
+    activeSort,
+    activeOrder,
+    selection,
+    includeDescendants,
+    seed,
+    expression,
+  ] as const
   const browse = useInfiniteQuery({
-    queryKey: [
-      'catalog-browse',
-      library,
-      query,
-      activeSort,
-      activeOrder,
-      selection,
-      includeDescendants,
-      seed,
-      expression,
-    ],
+    queryKey: browseKey,
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       catalog<Page>(library, '/bundles/browse', 'POST', {
@@ -355,6 +356,12 @@ export function CatalogBundleBrowser({
     getNextPageParam: (page) =>
       page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
     refetchInterval: catalogPoll(library, 2000),
+    // While a new search runs, keep the last results rather than blanking the grid
+    // between keystrokes. Any other change of scope shows the loading state at once.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery && sameScopeExceptSearch(previousQuery.queryKey, browseKey)
+        ? previous
+        : undefined,
   })
   // Let the grid mount and its visible covers enter the network queue first.
   useEffect(() => {
@@ -1646,5 +1653,13 @@ export function CatalogBundleBrowser({
         />
       )}
     </div>
+  )
+}
+
+// Browse keys are ['catalog-browse', library, search, ...scope]; index 2 is the search
+function sameScopeExceptSearch(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return (
+    a.length === b.length &&
+    JSON.stringify(a.filter((_, i) => i !== 2)) === JSON.stringify(b.filter((_, i) => i !== 2))
   )
 }
