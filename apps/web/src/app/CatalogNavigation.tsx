@@ -41,6 +41,7 @@ export function CatalogNavigation({
   dragItem = null,
   onDragItem,
   bundleMovesEnabled = false,
+  backgroundReady = true,
   newCollectionRequest = null,
   onNewCollectionHandled,
   renameCollectionRequest = null,
@@ -51,6 +52,7 @@ export function CatalogNavigation({
   collections,
   onNotice,
 }: {
+  backgroundReady?: boolean
   systemViewsEnabled: boolean
   /** What the Files surface lists, for the sidebar's active row. */
   fileScope: 'browse' | 'unbundled' | 'trash'
@@ -101,11 +103,12 @@ export function CatalogNavigation({
   const counted = (status?.browse_version ?? 0) >= 10
   const counts = useQuery({
     queryKey: ['catalog-view-counts', library],
-    enabled: counted,
+    enabled: counted && backgroundReady,
     queryFn: () => catalog<ViewCounts>(library, '/bundles/counts'),
     refetchInterval: 5000,
   })
   const smart = useQuery({
+    enabled: backgroundReady,
     queryKey: ['catalog-navigation', library, 'smart_folders'],
     queryFn: () => catalogNavigation<SmartCollectionRead>(library, 'smart_folders'),
     refetchInterval: 2000,

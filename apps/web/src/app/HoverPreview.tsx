@@ -125,10 +125,10 @@ export function HoverPreview({
   } = useHoverPreview(effectiveSource, videoRef, disabled, storyboardTimeForPosition)
   useEffect(() => {
     const fileId = source?.fileId
-    if (!pointerInside || !source?.needsProbe || !catalogLibrary || !fileId) return
+    if (disabled || !pointerInside || !source?.needsProbe || !catalogLibrary || !fileId) return
     const timer = window.setTimeout(() => setProbeArmedFor(fileId), 300)
     return () => window.clearTimeout(timer)
-  }, [catalogLibrary, pointerInside, source?.fileId, source?.needsProbe])
+  }, [catalogLibrary, disabled, pointerInside, source?.fileId, source?.needsProbe])
   const storyboardUrl =
     effectiveSource?.mediaKind === 'video'
       ? fileStoryboardUrl(effectiveSource.fileId, effectiveSource.storyboardVersion ?? undefined)

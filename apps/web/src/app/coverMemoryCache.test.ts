@@ -10,6 +10,7 @@ beforeEach(() => {
 
 afterEach(() => {
   clearCoverBlobCache()
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
@@ -120,6 +121,8 @@ test('visible covers bypass nearby work and share an already requested cover', a
 })
 
 test('one visible batch delivers hits and retries only the missing cover individually', async () => {
+  // Node's Response parser constructs a File in its own Web API realm.
+  vi.stubGlobal('File', (await vi.importActual<{ File: typeof File }>('node:buffer')).File)
   const calls: string[] = []
   vi.spyOn(platform, 'hostFetch').mockImplementation(async (input, init) => {
     calls.push(String(input))
@@ -159,4 +162,19 @@ test('releasing one card keeps its batch alive, clearing the library retires all
   expect(await Promise.all([a.promise, b.promise])).toEqual([null, null])
   expect(fetch).toHaveBeenCalledTimes(1)
   expect(getCachedCoverBlobUrl('/b')).toBeUndefined()
+})
+
+test('an entirely cold visible batch starts individual covers in reading order', async () => {
+  const fetch = vi
+    .spyOn(platform, 'hostFetch')
+    .mockImplementation(async (url) =>
+      url === '/prepared' ? new Response(null, { status: 503 }) : new Response('image'),
+    )
+  const ids = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+  const handles = ids.map((bundle) =>
+    acquireCoverBlobUrl('/' + bundle, true, { endpoint: '/prepared', bundle }),
+  )
+  await Promise.all(handles.map((handle) => handle.promise))
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/prepared', ...ids.map((id) => '/' + id)])
+  handles.forEach((handle) => handle.release())
 })

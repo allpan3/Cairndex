@@ -132,6 +132,7 @@ export function CatalogBundleBrowser({
   locateRequest,
   update,
   onBrowseAll,
+  onFirstPageReady,
   locateFile = null,
   selection,
   filters,
@@ -178,6 +179,7 @@ export function CatalogBundleBrowser({
   locateRequest: number
   update?: { running: boolean; disabled: boolean; onClick: () => void }
   onBrowseAll?: () => void
+  onFirstPageReady?: () => void
   /** The file a Locate request opens its bundle on */
   locateFile?: LocatedFile | null
   filters: AdHocFilters
@@ -353,6 +355,12 @@ export function CatalogBundleBrowser({
       page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
     refetchInterval: 2000,
   })
+  // Let the grid mount and its visible covers enter the network queue first.
+  useEffect(() => {
+    if (browse.isPending || !onFirstPageReady) return
+    const frame = requestAnimationFrame(onFirstPageReady)
+    return () => cancelAnimationFrame(frame)
+  }, [browse.isPending, onFirstPageReady])
   const coverEndpoint =
     (status?.browse_version ?? 0) >= 19
       ? resolveApiUrl(`/api/v1/libraries/${library}/replica/media/prepared-covers`)

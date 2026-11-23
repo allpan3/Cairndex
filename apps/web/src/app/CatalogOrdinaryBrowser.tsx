@@ -91,6 +91,8 @@ import { useUndoShortcut } from './undoShortcut'
 import type { MenuEntry } from './useContextMenu'
 
 export function CatalogOrdinaryBrowser(props: {
+  backgroundReady?: boolean
+  onFirstPageReady?: () => void
   library: string
   libraries: LibraryRead[]
   editor: string
@@ -397,10 +399,12 @@ export function CatalogOrdinaryBrowser(props: {
   const leaving = useMemo(() => leavingPaths(tasks.tasks), [tasks.tasks])
   const arriving = useMemo(() => arrivingFolders(tasks.tasks), [tasks.tasks])
   // Write mode in Libraries is the one switch; each action below is its own operation
-  const writeMode = useWriteMode(props.library, sourceEnabled)
+  const backgroundReady = props.backgroundReady !== false || mode !== 'collection'
+  const readSourceState = sourceEnabled && backgroundReady
+  const writeMode = useWriteMode(props.library, readSourceState)
   const writable = sourceEnabled && writeMode.data?.effective === true
-  const trash = useTrash(props.library, sourceEnabled, mode === 'file' && fileScope === 'trash')
-  const unfinished = useUnfinishedOperations(props.library, sourceEnabled, tasks)
+  const trash = useTrash(props.library, readSourceState, mode === 'file' && fileScope === 'trash')
+  const unfinished = useUnfinishedOperations(props.library, readSourceState, tasks)
   const rename = writable
     ? async (path: string, newName: string) => {
         const name = newName.trim()
@@ -478,6 +482,7 @@ export function CatalogOrdinaryBrowser(props: {
       >
         {panels.sidebar && (
           <CatalogNavigation
+            backgroundReady={backgroundReady}
             editor={props.editor}
             library={props.library}
             libraries={props.libraries}
@@ -822,7 +827,7 @@ export function CatalogOrdinaryBrowser(props: {
           onApplied={bundled}
         />
       )}
-      <CatalogBulkStatus library={props.library} onNotice={setNotice} />
+      {backgroundReady && <CatalogBulkStatus library={props.library} onNotice={setNotice} />}
       <CatalogToast
         notice={notice ?? (hostFiles.error ? { text: hostFiles.error, alert: true } : null)}
         onDismiss={notice ? dismissNotice : hostFiles.dismissError}

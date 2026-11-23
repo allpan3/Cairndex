@@ -266,7 +266,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   sample fewer frames at thumbnail resolution, and small image covers encode faster.
   With `browse_version: 19`, the grid fetches up to 16 prepared covers in one
   request to `POST /replica/media/prepared-covers` under the library API and
-  prefetches up to one screen of mounted rows. Cover preparation
+  prefetches up to one screen of mounted rows. The first bundle page loads ahead of
+  background status checks, and scrolling over cards pauses previews until the pointer moves. Cover preparation
   progress is available in the sidebar and the media maintenance status response.
 
 - **Instant local-first UI updates, faster SMB responsiveness, and cached cover

@@ -136,7 +136,7 @@ grouping/discovery commands drain without waiting on periodic SMB transport
 ticks, Grouping **Accept selected** reuses recorded candidate fingerprints and
 batches candidate/group checks with parallel generation verification.
 The grid uses at most four cover requests at once. A prepared-cover response
-can carry up to 16 bundle covers, and nearby rows use one speculative request at a time. Cached thumbnail lookups run off
+can carry up to 16 bundle covers. Visible misses queue in reading order, and nearby rows use one speculative request at a time. The first bundle page takes priority over sidebar and job queries. Cached thumbnail lookups run off
 the server event loop so bundle details can load during a slow SMB source check.
 Bundle tag and collection chips update after the server confirms the change.
 Other metadata edits apply optimistically with rollback. The global top sweep

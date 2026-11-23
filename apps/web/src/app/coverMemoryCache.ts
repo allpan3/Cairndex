@@ -82,8 +82,9 @@ function schedulePump(batch?: CoverBatchItem): void {
 
 async function fetchCovers(group: CoverTask[], signal: AbortSignal): Promise<(Blob | null)[]> {
   const first = group[0]!
+  const priority = first.visibleRefs ? 'high' : 'low'
   if (group.length === 1) {
-    const response = await hostFetch(first.src, { signal, priority: 'low' } as RequestInit)
+    const response = await hostFetch(first.src, { signal, priority })
     return [response.ok ? await response.blob() : null]
   }
   const response = await hostFetch(first.batch!.endpoint, {
@@ -91,6 +92,7 @@ async function fetchCovers(group: CoverTask[], signal: AbortSignal): Promise<(Bl
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ bundles: group.map((task) => task.batch!.bundle) }),
     signal,
+    priority,
   })
   if (!response.ok) return []
   const parts = await response.formData()
@@ -137,19 +139,20 @@ async function runGroup(group: CoverTask[]): Promise<void> {
 
 function pumpQueue(): void {
   while (activeFetches < MAX_CONCURRENT_COVER_FETCHES && queue.length > 0) {
-    let index = queue.length - 1
-    while (index >= 0 && !queue[index]!.visibleRefs) index--
+    // The viewport registers cards in reading order. Keep that order for cold misses too.
+    const index = queue.findIndex((task) => task.visibleRefs > 0)
     if (index < 0 && activeFetches > 0) return
     const first = queue.splice(index < 0 ? 0 : index, 1)[0]!
     const group = [first]
     if (first.batch) {
-      for (let i = queue.length - 1; i >= 0 && group.length < MAX_BATCH_SIZE; i--) {
+      for (let i = 0; i < queue.length && group.length < MAX_BATCH_SIZE;) {
         const next = queue[i]!
         if (
           next.batch?.endpoint === first.batch.endpoint &&
           !!next.visibleRefs === !!first.visibleRefs
         )
           group.push(queue.splice(i, 1)[0]!)
+        else i++
       }
     }
     void runGroup(group)
