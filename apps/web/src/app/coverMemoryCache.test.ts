@@ -94,3 +94,27 @@ test('a remounted card starts a fresh request before its cancelled fetch settles
   await expect(shared.promise).resolves.toMatch(/^blob:synthetic-/)
   shared.release()
 })
+
+test('visible covers bypass nearby work and share an already requested cover', async () => {
+  const replies: Array<() => void> = []
+  const fetch = vi
+    .spyOn(platform, 'hostFetch')
+    .mockImplementation(
+      () => new Promise<Response>((resolve) => replies.push(() => resolve(new Response('img')))),
+    )
+  const near = acquireCoverBlobUrl('/near', false)
+  const next = acquireCoverBlobUrl('/next', false)
+  const promoted = acquireCoverBlobUrl('/promoted', false)
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/near'])
+  promoted.setVisible(true)
+  const visible = acquireCoverBlobUrl('/visible')
+  const shared = acquireCoverBlobUrl('/near')
+  expect(shared.promise).toBe(near.promise)
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/near', '/promoted', '/visible'])
+  replies.splice(0).forEach((resolve) => resolve())
+  await Promise.all([near.promise, visible.promise, promoted.promise])
+  expect(fetch.mock.calls.at(-1)?.[0]).toBe('/next')
+  replies[0]!()
+  await next.promise
+  for (const handle of [near, next, promoted, visible, shared]) handle.release()
+})

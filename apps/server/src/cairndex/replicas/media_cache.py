@@ -1,6 +1,7 @@
 """Private derivatives reuse the production decoders without mutating catalog choices"""
 
 import os
+import threading
 from contextlib import ExitStack
 from pathlib import Path
 
@@ -76,7 +77,27 @@ def preview(media: ReplicaMedia, file_id: str, size: int) -> Path:
 
 
 # Cover timestamp is read from authored metadata and never selected by a local probe
+_cover_lock = threading.Lock()
+_foreground_covers = 0
+
+
+def foreground_covers_pending() -> bool:
+    with _cover_lock:
+        return _foreground_covers > 0
+
+
 def thumbnail(media: ReplicaMedia, file_id: str) -> Path:
+    global _foreground_covers
+    with _cover_lock:
+        _foreground_covers += 1
+    try:
+        return build_thumbnail(media, file_id)
+    finally:
+        with _cover_lock:
+            _foreground_covers -= 1
+
+
+def build_thumbnail(media: ReplicaMedia, file_id: str) -> Path:
     source, asset = media.resolve_file(file_id)
     if asset.media_kind == MediaKind.IMAGE:
         return _preview_for_asset(media, file_id, asset, 640)

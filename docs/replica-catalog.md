@@ -340,7 +340,10 @@ folder, Unbundled queue, or viewer context. Rejected versions stay in history.
 ![Reviewing a deletion and a competing edit in a synthetic bundle](screenshots/selected-item-conflict-review.png)
 
 Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
-local derivatives in the private cache; missing artwork leaves metadata usable.
+local derivatives in the private cache. Update and catalog artwork changes prepare bundle
+covers on the local worker. Browsing also requests visible artwork immediately and
+prefetches nearby cards one at a time when visible requests have drained. Both
+paths reuse the same generation-checked artifacts and decoder locks.
 File pages retain catalog order. Selecting one file checks its local bytes and
 shows the shared file inspector in place of the bundle controls. Clearing the
 file selection restores the bundle inspector and its unsaved draft; file details

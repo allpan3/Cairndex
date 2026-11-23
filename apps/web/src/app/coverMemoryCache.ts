@@ -9,6 +9,7 @@ const COVER_FETCH_TIMEOUT_MS = 20_000
 
 interface CoverTask {
   src: string
+  visibleRefs: number
   refs: number
   controller: AbortController | null
   promise: Promise<string | null>
@@ -61,8 +62,11 @@ function storeBlob(src: string, blob: Blob): string {
 
 function pumpQueue(): void {
   while (activeFetches < MAX_CONCURRENT_COVER_FETCHES && queue.length > 0) {
-    // LIFO so newly visible cards at the current scroll position load before older scrolled-into items
-    const task = queue.pop()!
+    let index = queue.length - 1
+    while (index >= 0 && !queue[index]!.visibleRefs) index--
+    if (index < 0 && activeFetches > 0) return
+    // Only one speculative request runs when the visible queue is empty.
+    const task = queue.splice(index < 0 ? 0 : index, 1)[0]!
     const controller = new AbortController()
     task.controller = controller
     activeFetches += 1
@@ -86,13 +90,17 @@ function pumpQueue(): void {
   }
 }
 
-export function acquireCoverBlobUrl(src: string): {
+export function acquireCoverBlobUrl(
+  src: string,
+  visible = true,
+): {
+  setVisible: (value: boolean) => void
   promise: Promise<string | null>
   release: () => void
 } {
   const cached = getCachedCoverBlobUrl(src)
   if (cached) {
-    return { promise: Promise.resolve(cached), release: () => {} }
+    return { promise: Promise.resolve(cached), setVisible: () => {}, release: () => {} }
   }
   let task = tasks.get(src)
   if (!task) {
@@ -103,6 +111,7 @@ export function acquireCoverBlobUrl(src: string): {
     task = {
       src,
       refs: 0,
+      visibleRefs: 0,
       controller: null,
       promise,
       resolve: resolvePromise,
@@ -111,14 +120,22 @@ export function acquireCoverBlobUrl(src: string): {
     queue.push(task)
   }
   task.refs += 1
+  if (visible) task.visibleRefs++
   let released = false
   pumpQueue()
   return {
     promise: task.promise,
+    setVisible: (value) => {
+      if (released || value === visible) return
+      task.visibleRefs += value ? 1 : -1
+      visible = value
+      pumpQueue()
+    },
     release: () => {
       if (released) return
       released = true
       task.refs -= 1
+      if (visible) task.visibleRefs--
       if (task.refs > 0 || tasks.get(src) !== task) return
       tasks.delete(src)
       if (task.controller) {

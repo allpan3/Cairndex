@@ -361,3 +361,32 @@ GROUPING_TABLES = {
     "grouping_replacements",
     "grouping_review_file_identity",
 }
+
+# Rebuildable local work. A ticket fences a decoder that finishes after a cover changes.
+COVER_SCHEMA = """
+CREATE TABLE IF NOT EXISTS cover_work (
+    bundle TEXT PRIMARY KEY, scan TEXT, ticket INTEGER NOT NULL, state TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS cover_work_pending ON cover_work(bundle) WHERE state='pending';
+CREATE TABLE IF NOT EXISTS cover_counts (state TEXT PRIMARY KEY, amount INTEGER NOT NULL);
+CREATE TRIGGER IF NOT EXISTS cover_insert AFTER INSERT ON cover_work BEGIN
+    INSERT INTO cover_counts VALUES (NEW.state,1)
+    ON CONFLICT(state) DO UPDATE SET amount=amount+1;
+END;
+CREATE TRIGGER IF NOT EXISTS cover_remove AFTER DELETE ON cover_work BEGIN
+    UPDATE cover_counts SET amount=amount-1 WHERE state=OLD.state;
+END;
+CREATE TRIGGER IF NOT EXISTS cover_transition AFTER UPDATE OF state ON cover_work
+WHEN OLD.state<>NEW.state BEGIN
+    UPDATE cover_counts SET amount=amount-1 WHERE state=OLD.state;
+    INSERT INTO cover_counts VALUES (NEW.state,1)
+    ON CONFLICT(state) DO UPDATE SET amount=amount+1;
+END;
+"""
+COVER_TABLES = {
+    "cover_work",
+    "cover_work_pending",
+    "cover_counts",
+    "cover_insert",
+    "cover_remove",
+    "cover_transition",
+}

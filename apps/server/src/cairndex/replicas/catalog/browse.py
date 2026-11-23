@@ -338,6 +338,15 @@ def _summaries(db: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[CatalogB
 
         value = json.loads(row["body"])
         artwork = cover(db, row["entity"])
+        cover_key = None
+        if artwork:
+            cover_key = f"{artwork['id']}:{artwork['cover_time']}"
+            observed = db.execute(
+                "SELECT generation FROM local_media WHERE file_id=? AND state='available'",
+                (artwork["id"],),
+            ).fetchone()
+            if observed and observed[0]:
+                cover_key += f":{observed[0]}"
         count = db.execute(
             "SELECT count(*) FROM catalog_rows WHERE family='asset_files' "
             "AND json_extract(body,'$.bundle_id')=?",
@@ -359,7 +368,7 @@ def _summaries(db: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[CatalogB
                 else None,
                 grouping_state=GroupingState[value["grouping_state"]],
                 cover_file_id=artwork["id"] if artwork else None,
-                cover_key=f"{artwork['id']}:{artwork['cover_time']}" if artwork else None,
+                cover_key=cover_key,
                 **local.get(row["entity"], {}),
             )
         )

@@ -38,7 +38,7 @@ import { StorageAccessDialog } from './StorageAccessDialog'
 import { LibraryAccessNotice } from './LibraryAccessNotice'
 import { useCatalogMaintenance } from './useCatalogMaintenance'
 import { usePortableJobNotifications } from '../desktop/usePortableJobNotifications'
-import { CatalogMaintenanceNotice } from './CatalogMaintenanceNotice'
+import { CatalogMaintenanceNotice, CoverPreparationNotice } from './CatalogMaintenanceNotice'
 import {
   getConnections,
   getPendingSelectionVersion,
@@ -456,6 +456,7 @@ export function CatalogWorkspace({
         </section>
       )}
       {reviewMode && discovery.enabled && <DiscoveryControls discovery={discovery} />}
+      {reviewMode && <CoverPreparationNotice covers={maintenance.status.data?.covers} />}
       {discovery.open &&
         editor &&
         ((state?.grouping_version ?? 0) >= 1 ? (
@@ -693,6 +694,7 @@ export function CatalogWorkspace({
                     onComplete={(text) => onNotice({ text })}
                   />
                 )}
+                <CoverPreparationNotice covers={maintenance.status.data?.covers} />
                 {(attention || storageAccess) && (
                   <section className="sidebar__notice" aria-label="Metadata delivery status">
                     {attention && <p role="alert">{attention}</p>}

@@ -53,9 +53,28 @@ print(json.dumps({str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdig
     })
     const base = `/api/v1/libraries/${library.id}/replica`
     const read = async (path: string) => (await fetch(backend.baseUrl + base + path)).json()
+    // No browser has requested artwork yet. Update alone prepares the private cache.
+    await expect.poll(async () => (await read('/status')).ready).toBe(true)
+    await apiPost(backend.baseUrl, base + '/discovery/runs', { operation: 'prepare-test-covers' })
+    await expect
+      .poll(async () => (await read('/discovery/status')).state, { timeout: 60_000 })
+      .toBe('succeeded')
+    await expect
+      .poll(
+        async () => {
+          const covers = (await read('/media/maintenance')).covers
+          return covers?.ready > 0 && covers.pending === 0
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(true)
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
     await expect(page.getByRole('listbox', { name: 'Bundles', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Bundle cover preparation' })).toContainText(
+      'Cover preparation complete',
+    )
+    await expect(page.locator('.cover-image--shown').first()).toBeVisible()
     const before = await read('/catalog/entities/asset_files/media-direct')
     await page.getByRole('button', { name: 'More library actions', exact: true }).click()
     await expect(page.getByRole('menuitem', { name: 'Scan new files', exact: true })).toBeVisible()

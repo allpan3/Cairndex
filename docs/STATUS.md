@@ -2,6 +2,10 @@
 
 ## Current checkpoint
 
+Portable Update queues private bundle covers during catalog checks. The background
+worker resumes pending covers after restart, and the browser prioritizes visible
+artwork and prefetches nearby cards without requiring Update.
+
 The local desktop test installation runs `236f7354` from
 `perf/smb-responsiveness-and-previews` (2026-11-21). A healthy bundle has no
 conflict action in its context menu. When edits compete, the owner can review

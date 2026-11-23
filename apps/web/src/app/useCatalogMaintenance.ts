@@ -5,7 +5,10 @@ import { replicaRequest } from '../api/replicas'
 
 type Kind = 'probe' | 'storyboards'
 type Progress = { completed: number; total: number; failed: number; skipped: number }
+export type CoverProgress = { pending: number; ready: number; skipped: number; failed: number }
+
 type Maintenance = {
+  covers?: CoverProgress | null
   kind: Kind | null
   job: {
     id: string

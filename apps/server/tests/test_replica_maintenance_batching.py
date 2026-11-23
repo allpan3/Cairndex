@@ -134,3 +134,62 @@ def test_delayed_observation_cannot_replace_newer_playback_facts(images):
     retained = media.file("image-000")
     assert retained.quick_fingerprint == current.quick_fingerprint
     assert retained.tech_metadata == {"width": 48, "height": 32}
+
+
+def test_update_prepares_cold_cover_once_and_revalidates_on_next_scan(images, monkeypatch):
+    from cairndex.replicas import cover_work, discovery, discovery_state
+    from cairndex.replicas.media_cache import cached_thumbnail
+
+    store, root = images.store, images.package
+    media = ReplicaMedia(store, root, "synthetic")
+    assert cached_thumbnail(media, "image-000") is None
+    initial = store.frontier()
+
+    def update(operation):
+        discovery_state.enqueue(store, operation)
+        for _ in range(1000):
+            discovery.tick(store, root)
+            if discovery_state.run(store, operation)["state"] == "succeeded":
+                break
+        else:
+            pytest.fail("Update did not complete")
+        pending = maintenance.latest(store)["covers"]["pending"]
+        assert pending == 2  # Forty images in a bundle need one cover.
+        for _ in range(pending):
+            cover_work.step(store, root, "synthetic", lambda: False)
+
+    update("first-scan")
+    assert maintenance.latest(store)["covers"] == {"ready": 1, "skipped": 1}
+    hit = cached_thumbnail(media, "image-000")
+    assert hit and hit.is_file()
+    original = cover_work.build_thumbnail
+
+    def build(media, file_id):
+        assert file_id != "image-000", "the second Update should reuse the prepared cover"
+        return original(media, file_id)
+
+    monkeypatch.setattr(cover_work, "build_thumbnail", build)
+    update("second-scan")
+    assert store.frontier() == initial
+
+
+def test_new_cover_edit_wins_over_inflight_background_work(images, monkeypatch):
+    from cairndex.replicas import cover_work
+
+    store = images.store
+    with store.connection() as db:
+        cover_work.enqueue(db, ["bundle-000001"], "scan")
+
+    def edit(*args):
+        with store.connection() as db:
+            cover_work.changed(
+                db,
+                "asset_files",
+                "image-000",
+                {"bundle_id": "bundle-000001", "cover_time": None},
+                {"bundle_id": "bundle-000001", "cover_time": 2},
+            )
+
+    monkeypatch.setattr(cover_work, "build_thumbnail", edit)
+    cover_work.step(store, images.package, "synthetic", lambda: False)
+    assert maintenance.latest(store)["covers"] == {"pending": 1}

@@ -6012,6 +6012,29 @@ export interface components {
             /** Time */
             time: number;
         };
+        /** CoverPreparation */
+        CoverPreparation: {
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Pending
+             * @default 0
+             */
+            pending: number;
+            /**
+             * Ready
+             * @default 0
+             */
+            ready: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+        };
         /** CreateBundleFromFilesRequest */
         CreateBundleFromFilesRequest: {
             /** File Ids */
@@ -7125,6 +7148,7 @@ export interface components {
         };
         /** MaintenanceRead */
         MaintenanceRead: {
+            covers?: components["schemas"]["CoverPreparation"] | null;
             job: components["schemas"]["CatalogJob"] | null;
             /** Kind */
             kind: ("probe" | "storyboards") | null;

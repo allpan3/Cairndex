@@ -4724,6 +4724,32 @@
         "title": "CoverFrameUpdate",
         "type": "object"
       },
+      "CoverPreparation": {
+        "properties": {
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "default": 0,
+            "title": "Pending",
+            "type": "integer"
+          },
+          "ready": {
+            "default": 0,
+            "title": "Ready",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "title": "CoverPreparation",
+        "type": "object"
+      },
       "CreateBundleFromFilesRequest": {
         "properties": {
           "file_ids": {
@@ -7807,6 +7833,16 @@
       },
       "MaintenanceRead": {
         "properties": {
+          "covers": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoverPreparation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "job": {
             "anyOf": [
               {

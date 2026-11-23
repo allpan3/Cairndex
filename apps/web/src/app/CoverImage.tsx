@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { observeCover } from './coverViewport'
 import { acquireCoverBlobUrl, canCacheCoverBlobs, getCachedCoverBlobUrl } from './coverMemoryCache'
 
 /**
@@ -26,20 +27,31 @@ export function CoverImage({ src }: { src: string }) {
   const [failed, setFailed] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!useBlobs || getCachedCoverBlobUrl(src)) return
-    let cancelled = false
-    const handle = acquireCoverBlobUrl(src)
-    void handle.promise.then((objectUrl) => {
-      if (cancelled) return
-      if (!objectUrl) {
-        setFailed(src)
+    if (!useBlobs || !image.current || getCachedCoverBlobUrl(src)) return
+    let handle: ReturnType<typeof acquireCoverBlobUrl> | undefined
+    const stop = observeCover(image.current, (visibility) => {
+      if (visibility === 'outside') {
+        handle?.release()
+        handle = undefined
         return
       }
-      setBlobState({ src, blobUrl: objectUrl })
+      const visible = visibility === 'visible'
+      if (handle) {
+        handle.setVisible(visible)
+        return
+      }
+      const request = acquireCoverBlobUrl(src, visible)
+      handle = request
+      void request.promise.then((objectUrl) => {
+        if (handle !== request) return
+        if (objectUrl) setBlobState({ src, blobUrl: objectUrl })
+        else setFailed(src)
+      })
     })
     return () => {
-      cancelled = true
-      handle.release()
+      stop()
+      handle?.release()
+      handle = undefined
     }
   }, [src, useBlobs])
 

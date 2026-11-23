@@ -260,6 +260,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- Portable library Update prepares bundle covers in the background. Grouping and
+  cover changes refresh affected artwork. The browser loads visible covers first
+  and prefetches nearby rows even before the first Update. Cover preparation
+  progress is available in the sidebar and the media maintenance status response.
+
 - **Instant local-first UI updates, faster SMB responsiveness, and cached cover
   delivery.** Metadata edits across Bundle Browser, inspectors, All Tags, Moments,
   and Grouping Review — including bundle and multi-bundle titles, star ratings,

@@ -566,6 +566,8 @@ class ReplicaWorker:
                     continue
 
     def _submit_sources(self, library_id: str) -> None:
+        from cairndex.replicas import cover_work
+
         with _lock:
             handle = _handles.get(library_id)
         if (
@@ -580,7 +582,8 @@ class ReplicaWorker:
                 "SELECT 1 FROM source_operations "
                 "WHERE state IN ('queued','accepted') UNION ALL "
                 "SELECT 1 FROM catalog_jobs WHERE state='queued' "
-                "AND json_extract(intent,'$.action')='media_maintenance' LIMIT 1"
+                "AND json_extract(intent,'$.action')='media_maintenance' UNION ALL "
+                + cover_work.PENDING
             ).fetchone()
         if waiting:
             self._pending[library_id] = self._sources.submit(self.run_sources, library_id)
@@ -592,6 +595,7 @@ class ReplicaWorker:
         as playback. Source writes have a separate serialized lane and do not
         hold the metadata transport lock.
         """
+        from cairndex.replicas import cover_work
         from cairndex.replicas.maintenance import advance
 
         while not self._stop.is_set():
@@ -616,19 +620,22 @@ class ReplicaWorker:
                         "SELECT 1 FROM catalog_jobs WHERE state='queued' "
                         "AND json_extract(intent,'$.action')='media_maintenance' LIMIT 1"
                     ).fetchone()
-                if media:
+                    covers = db.execute(cover_work.PENDING).fetchone()
+                if media or (covers and not source):
                     manifest = read_manifest(transport.root)
                     if manifest.replica is None or manifest.replica.model_dump_json() != handle[3]:
                         raise ReplicaError("Library descriptor changed; recovery review required")
-                    advance(
-                        store,
-                        transport.root,
-                        library_id,
-                        lambda: self._stop.is_set() or lifecycle.blocked(library_id),
-                    )
+
+                    def stopped() -> bool:
+                        return self._stop.is_set() or lifecycle.blocked(library_id)
+
+                    if media:
+                        advance(store, transport.root, library_id, stopped)
+                    elif not cover_work.step(store, transport.root, library_id, stopped):
+                        return
             if source:
                 exchange(library_id, source_work=lambda: not self._stop.is_set())
-            if not source and not media:
+            if not source and not media and not covers:
                 return
             # Yield between bounded batches and wake immediately on shutdown.
             if self._stop.wait(BUSY_WAIT):

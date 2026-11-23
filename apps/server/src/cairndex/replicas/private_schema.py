@@ -30,6 +30,7 @@ def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
     )
     from cairndex.replicas.catalog.suggestion_index import SCHEMA as suggestion_schema
     from cairndex.replicas.private_layout import BULK_SCHEMA as bulk_schema
+    from cairndex.replicas.private_layout import COVER_SCHEMA as cover_schema
     from cairndex.replicas.private_layout import DISCOVERY_SCHEMA as discovery_schema
     from cairndex.replicas.private_layout import GROUPING_SCHEMA as grouping_schema
     from cairndex.replicas.private_layout import LOCAL_HISTORY_SCHEMA as local_history_schema
@@ -56,6 +57,7 @@ def known_schemas(catalog: bool) -> tuple[dict[str, str], ...]:
                     + local_history_schema
                     + grouping_schema
                     + bulk_schema
+                    + cover_schema
                 )
                 if legacy == 2:
                     expected.execute(
@@ -106,6 +108,7 @@ def validate_schema(db: sqlite3.Connection, *, catalog: bool) -> dict[str, str]:
     from cairndex.replicas.private_layout import (
         BASE_TABLES,
         BULK_TABLES,
+        COVER_TABLES,
         GROUPING_TABLES,
         LOCAL_FACTS_TABLES,
         LOCAL_HISTORY_TABLES,
@@ -126,7 +129,7 @@ def validate_schema(db: sqlite3.Connection, *, catalog: bool) -> dict[str, str]:
         SOURCE_TABLES,
         PROGRESS_TABLES,
     )
-    groups += (LOCAL_FACTS_TABLES, LOCAL_HISTORY_TABLES, GROUPING_TABLES, BULK_TABLES)
+    groups += (LOCAL_FACTS_TABLES, LOCAL_HISTORY_TABLES, GROUPING_TABLES, BULK_TABLES, COVER_TABLES)
     if any(group & actual.keys() for group in groups[1:]) and not actual.keys() >= BASE_TABLES:
         raise ReplicaError("Private discovery schema is incomplete")
     for group in groups:
