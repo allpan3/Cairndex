@@ -23,6 +23,7 @@ import { membershipText, useOrganizeUndo } from './organizeUndo'
 import { useReplicaStatus } from '../api/useReplicaStatus'
 import { CollectionPickerPanel } from './CollectionPickerPanel'
 import { TagPickerPanel } from './TagPickerPanel'
+import { catalogPoll } from '../api/catalogRevision'
 
 type Page = components['schemas']['CatalogMembershipPage']
 type BulkPage = components['schemas']['CatalogBulkMembershipPage']
@@ -152,7 +153,7 @@ export function CatalogBundleMemberships({
     queryKey: assignedKey,
     enabled: !large,
     queryFn: () => read('', '', true),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   const shared = useQuery({
     queryKey: [...key, family, 'shared'],

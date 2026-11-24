@@ -335,9 +335,11 @@ class CatalogStorage(PrivateStore):
 
     # Indexed local state distinguishes complete activation, waiting payloads and delivery limits
     def status(self) -> dict[str, Any]:
+        revision = self.revision
         with self.connection(readonly=True) as db:
             config = dict(db.execute("SELECT key,value FROM config"))
             return {
+                "revision": revision,
                 "ready": "catalog_ready" in config,
                 "catalog_version": self.descriptor.catalog_version,
                 "browse_version": 19 if self.descriptor.format_version == 3 else 12,

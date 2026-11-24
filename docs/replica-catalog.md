@@ -339,6 +339,17 @@ folder, Unbundled queue, or viewer context. Rejected versions stay in history.
 
 ![Reviewing a deletion and a competing edit in a synthetic bundle](screenshots/selected-item-conflict-review.png)
 
+Catalog reads refresh when the private metadata changes, not on timers. `GET
+.../replica/status` reports `revision`, which changes after every committed
+transaction that changed rows in the private store and also when the store handle is
+reopened. The workspace polls status once a second; when `revision` moves, it
+invalidates the library's `catalog-…` queries (browse pages, navigation, counts,
+inspector, album, memberships, drafts, maintenance), at most once per 1.5 s during a
+burst of background commits. Maintenance progress still polls every second while a
+job runs or covers are pending. Against a server without `revision`, those reads keep
+their earlier poll intervals. An idle browser with a bundle selected sends about 14
+requests in 10 s instead of 86 (`e2e/catalog-idle-requests.spec.ts`).
+
 Automatic artwork follows image-before-video order. Bundle thumbnails use guarded
 local derivatives in the private cache. Update and catalog artwork changes prepare bundle
 covers on the local worker. Browsing also requests visible artwork immediately and

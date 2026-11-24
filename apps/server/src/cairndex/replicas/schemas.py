@@ -38,6 +38,8 @@ class DraftRequest(StrictModel):
 
 # Provider publication is distinguishable from an unavailable peer receipt
 class ReplicaStatus(StrictModel):
+    # Changes after every committed change to this library's private metadata
+    revision: str | None = None
     browse_version: int | None = None
     album_version: int | None = None
     inspector_version: int | None = None

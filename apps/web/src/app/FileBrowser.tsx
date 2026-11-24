@@ -38,6 +38,8 @@ import { contactSheetMenuItem, type ContactSheetTarget } from './contactSheetExp
 import { ContactSheetDialog } from './ContactSheetDialog'
 import { useFileWriteActions } from './fileWriteActions'
 import { newFolderError } from './sourceActions'
+import { observeCover } from './coverViewport'
+import { acquireCoverBlobUrl, canCacheCoverBlobs, getCachedCoverBlobUrl } from './coverMemoryCache'
 import { ConflictDialog, DeleteDialog, DirectoryPicker, NameEditor } from './FileWriteDialogs'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
@@ -246,18 +248,16 @@ function thumbnailFor(entry: FileBrowserEntry): string | null {
  * server cannot produce one — an unprobed or undecodable file answers 503, and
  * the icon is a better answer than a broken image.
  *
- * **Only requested once on screen.** Neither the file grid nor the file list is
- * virtualized, so every row in a folder mounts at once; asking for all of their
- * thumbnails immediately saturated the browser's per-origin connections and made
- * everything sharing them — video loads above all — wait behind frame
- * extractions nobody was looking at (owner: "videos take longer to load",
- * 2026-07-27).
+ * **Requested through the shared cover queue.** The file grid and list are
+ * virtualized, and their thumbnail responses are `no-store`, so a plain `<img>`
+ * re-fetched every thumbnail over SMB each time its row scrolled back into view, with
+ * no limit on how many ran at once. Like bundle covers, a thumbnail now waits for its
+ * row to be near the viewport, joins the bounded queue that keeps video and JSON
+ * requests moving (owner: "videos take longer to load", 2026-07-27), and is kept in
+ * the session's memory cache, so returning to a row shows it at once.
  *
- * `loading="lazy"` was the first attempt and does not work here: verified in a
- * real browser, an in-viewport thumbnail inside the listing's own scroll
- * container stayed unloaded through scrolling and only appeared once forced
- * eager. So visibility is observed directly, which also makes the behavior
- * ours to test rather than the browser's to decide.
+ * Without blob support (jsdom), the row requests its image directly once visible:
+ * `loading="lazy"` stayed unloaded inside the listing's own scroll container.
  */
 function EntryThumb({
   entry,
@@ -277,31 +277,49 @@ function EntryThumb({
   // whose source later changes (fast-add links it, giving it a real thumbnail
   // URL) reuses this instance — a boolean would keep it stuck on the icon.
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
-  const [visible, setVisible] = useState(false)
+  const [loaded, setLoaded] = useState<{ src: string; url: string } | null>(null)
   const holderRef = useRef<HTMLSpanElement | null>(null)
+  const useBlobs = canCacheCoverBlobs()
+  const warm = src && useBlobs ? getCachedCoverBlobUrl(src) : undefined
 
   useEffect(() => {
     const node = holderRef.current
-    if (!node || visible) return
-    // Generous margin so a thumbnail is in flight by the time it is scrolled to,
-    // without reaching the whole folder.
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) setVisible(true)
-      },
-      { rootMargin: '200px' },
-    )
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [visible])
+    if (!node || !src || warm || failedSrc === src || loaded?.src === src) return
+    let handle: ReturnType<typeof acquireCoverBlobUrl> | undefined
+    const stop = observeCover(node, (visibility) => {
+      if (visibility === 'outside') {
+        handle?.release()
+        handle = undefined
+        return
+      }
+      const visible = visibility === 'visible'
+      if (!useBlobs) {
+        if (visible) setLoaded({ src, url: src })
+        return
+      }
+      if (handle) return handle.setVisible(visible)
+      const request = acquireCoverBlobUrl(src, visible)
+      handle = request
+      void request.promise.then((url) => {
+        if (handle !== request) return
+        if (url) setLoaded({ src, url })
+        else setFailedSrc(src)
+      })
+    })
+    return () => {
+      stop()
+      handle?.release()
+    }
+  }, [src, warm, useBlobs, failedSrc, loaded?.src])
 
   if (!src || failedSrc === src) return <>{fallback}</>
+  const url = warm ?? (loaded?.src === src ? loaded.url : undefined)
   return (
     <span ref={holderRef} className={holderClassName}>
-      {visible ? (
+      {url ? (
         <img
           className={className}
-          src={src}
+          src={url}
           alt=""
           decoding="async"
           onError={() => setFailedSrc(src)}

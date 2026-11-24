@@ -26,6 +26,7 @@ import { flattenHierarchy, usePopover } from './usePopover'
 import type { LayoutMode, LocatedFile } from './types'
 import type { LibraryHostFiles } from '../desktop/useLibraryHostFiles'
 import { useCatalogHistory } from './useCatalogHistory'
+import { catalogPoll } from '../api/catalogRevision'
 
 type Page = components['schemas']['CatalogAlbumPage']
 type Item = Page['items'][number]
@@ -208,7 +209,7 @@ function AlbumPage({
     },
     getNextPageParam: (page) =>
       page.next_offset === null ? undefined : { offset: page.next_offset, revision: page.revision },
-    refetchInterval: activeView ? 2000 : false,
+    refetchInterval: activeView ? catalogPoll(library, 2000) : false,
     retry: false,
   })
   const catalogLibrary = useContext(CatalogQueryContext)
@@ -216,7 +217,7 @@ function AlbumPage({
     queryKey: ['catalog-navigation', library, 'tags'],
     queryFn: () => catalogNavigation<TagRead>(library, 'tags'),
     enabled: catalogLibrary !== null && albumFilterEnabled,
-    refetchInterval: catalogLibrary !== null ? 2000 : false,
+    refetchInterval: catalogLibrary !== null ? catalogPoll(library, 2000) : false,
   })
   const items = useMemo(() => pages.data?.pages.flatMap((page) => page.items) ?? [], [pages.data])
   const first = pages.data?.pages[0]

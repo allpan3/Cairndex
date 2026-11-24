@@ -22,6 +22,7 @@ import { BundleCoverStack } from './BundleCoverStack'
 import type { BundleCardItem } from './BundleCard'
 import { CatalogConflictDialog } from './CatalogConflictDialog'
 import { SELECT_BUNDLES_EVENT } from './catalogBulkNotice'
+import { catalogPoll } from '../api/catalogRevision'
 
 type Snapshot = components['schemas']['CatalogSelectionRead']
 const empty = {
@@ -113,7 +114,7 @@ export function CatalogMultiBundleInspector({
       large
         ? readSelection(library, ids)
         : catalog<Snapshot>(library, '/bundles/selection', 'POST', { ids }),
-    refetchInterval: large ? false : 2000,
+    refetchInterval: large ? false : catalogPoll(library, 2000),
   })
   const items = snapshot.data?.items ?? []
   const held = items.some((item) => item.held)

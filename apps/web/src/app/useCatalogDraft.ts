@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { catalog, operationId } from '../api/catalog'
 import { draftKey } from '../api/replicas'
+import { catalogPoll } from '../api/catalogRevision'
 
 type Envelope<T> = { id: string; revision: number; body: T }
 
@@ -74,7 +75,7 @@ export function useCatalogDraft<T extends object>(
     enabled: listCopies,
     queryFn: () =>
       catalog<{ items: Envelope<T>[] }>(library, `/drafts?owner=${encodeURIComponent(owner)}`),
-    refetchInterval: 4000,
+    refetchInterval: catalogPoll(library, 4000),
   })
   // Browser storage is written immediately; server delivery retries the same generation
   function update(body: T) {

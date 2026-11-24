@@ -41,6 +41,7 @@ import {
   subscribeConnections,
   takeLibraryIndex,
 } from '../desktop/connections'
+import { catalogPoll, useCatalogRevision } from '../api/catalogRevision'
 
 // New identities are created from complete authored defaults and reviewed before saving
 function CatalogCreate({
@@ -319,6 +320,7 @@ export function CatalogWorkspace({
   }, [deepLink, ordinaryBrowse, onDeepLinkHandled])
   const status = useReplicaStatus(libraryId, 1000)
   const state = status.data
+  useCatalogRevision(libraryId, state?.revision)
   const [firstPageReady, setFirstPageReady] = useState(false)
   const finishOpening = useCallback(() => setFirstPageReady(true), [])
   const backgroundReady = firstPageReady || !ordinaryBrowse || reviewMode
@@ -353,7 +355,7 @@ export function CatalogWorkspace({
         `/entities/${family}?after=${encodeURIComponent(after)}&deleted=${deleted}`,
       ),
     enabled: reviewMode,
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(libraryId, 2000),
   })
   const identity = catalogSelected ?? page.data?.items[0]?.id
   // Bind the initial selection before refreshed discoveries can sort ahead of its editor
@@ -362,7 +364,7 @@ export function CatalogWorkspace({
     queryKey: ['catalog-detail', libraryId, family, identity],
     enabled: reviewMode && Boolean(identity),
     queryFn: () => catalog<Entity>(libraryId, `/entities/${family}/${identity}`),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(libraryId, 2000),
   })
   // Refresh the selected projection after a durable local operation
   function refresh() {

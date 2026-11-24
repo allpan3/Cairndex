@@ -101,7 +101,6 @@ describe('QueryScope', () => {
 
     await waitFor(() => expect(seen.length).toBeGreaterThan(0))
     expect(seen[0]?.queries?.refetchOnWindowFocus).toBe(false)
-    expect(seen[0]?.queries?.structuralSharing).toBe(false)
     expect(container.querySelector('.top-progress')).toBeNull()
   })
 

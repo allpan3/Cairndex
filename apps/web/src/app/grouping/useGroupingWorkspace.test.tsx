@@ -29,7 +29,7 @@ function newClient(queries: { staleTime?: number; structuralSharing?: boolean } 
   return client
 }
 // As the app's QueryScope client: reopening within 30 s does not refetch on mount
-const APP_QUERIES = { staleTime: 30_000, structuralSharing: false }
+const APP_QUERIES = { staleTime: 30_000 }
 // The workspace list polls every 1.5 s; each wait for its next answer allows two polls
 const NEXT_POLL = { timeout: 3_000 }
 function setup(client = newClient()) {

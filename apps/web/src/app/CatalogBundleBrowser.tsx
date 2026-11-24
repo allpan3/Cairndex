@@ -79,6 +79,7 @@ import {
 } from './icons'
 import { QuickPreview } from './QuickPreview'
 import { useQuickPreview } from './useQuickPreview'
+import { catalogPoll } from '../api/catalogRevision'
 
 type Page = components['schemas']['CatalogBrowsePage']
 // Browse version 11 adds local file observations and opening/edit history.
@@ -260,7 +261,7 @@ export function CatalogBundleBrowser({
     enabled: Boolean(selection.smartCollectionId),
     queryFn: () =>
       catalog<Entity>(library, `/entities/smart_folders/${selection.smartCollectionId}`),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   const smartValue = smart.data?.fields.$filter?.value
   const smartFilter = smartValue ? JSON.parse(JSON.parse(smartValue).filter_json) : null
@@ -332,18 +333,19 @@ export function CatalogBundleBrowser({
     sort: activeSort,
     order: activeOrder,
   }
+  const browseKey = [
+    'catalog-browse',
+    library,
+    query,
+    activeSort,
+    activeOrder,
+    selection,
+    includeDescendants,
+    seed,
+    expression,
+  ] as const
   const browse = useInfiniteQuery({
-    queryKey: [
-      'catalog-browse',
-      library,
-      query,
-      activeSort,
-      activeOrder,
-      selection,
-      includeDescendants,
-      seed,
-      expression,
-    ],
+    queryKey: browseKey,
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       catalog<Page>(library, '/bundles/browse', 'POST', {
@@ -353,7 +355,13 @@ export function CatalogBundleBrowser({
       }),
     getNextPageParam: (page) =>
       page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
+    // While a new search runs, keep the last results rather than blanking the grid
+    // between keystrokes. Any other change of scope shows the loading state at once.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery && sameScopeExceptSearch(previousQuery.queryKey, browseKey)
+        ? previous
+        : undefined,
   })
   // Let the grid mount and its visible covers enter the network queue first.
   useEffect(() => {
@@ -709,7 +717,7 @@ export function CatalogBundleBrowser({
     queryKey: ['catalog-detail', library, 'asset_bundles', single],
     enabled: Boolean(single),
     queryFn: () => catalog<Entity>(library, `/entities/asset_bundles/${single}`),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
     retry: 1,
   })
   const albumTitle =
@@ -742,7 +750,7 @@ export function CatalogBundleBrowser({
       if (albumId) return null
       return catalogBundleHostPath(library, single!)
     },
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   const hostPath = hostTarget.isSuccess && single ? (hostTarget.data ?? null) : null
   useEffect(() => {
@@ -1645,5 +1653,13 @@ export function CatalogBundleBrowser({
         />
       )}
     </div>
+  )
+}
+
+// Browse keys are ['catalog-browse', library, search, ...scope]; index 2 is the search
+function sameScopeExceptSearch(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return (
+    a.length === b.length &&
+    JSON.stringify(a.filter((_, i) => i !== 2)) === JSON.stringify(b.filter((_, i) => i !== 2))
   )
 }

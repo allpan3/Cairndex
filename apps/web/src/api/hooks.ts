@@ -205,6 +205,7 @@ import {
   nextMembership,
 } from './counts'
 import { type ScanOutcome, scanOutcome } from '../app/scanSummary'
+import { catalogPoll } from './catalogRevision'
 
 export type BrowseQuery = Omit<BrowseParams, 'offset'>
 
@@ -1514,7 +1515,7 @@ export function useCollections() {
             'collections',
           )
         : fetchAllCollections(signal),
-    refetchInterval: library ? 2000 : false,
+    refetchInterval: library ? catalogPoll(library, 2000) : false,
   })
 }
 
@@ -1533,7 +1534,7 @@ export function useTags() {
       library
         ? catalogNavigation<Awaited<ReturnType<typeof fetchTags>>[number]>(library, 'tags')
         : fetchTags(signal),
-    refetchInterval: library ? 2000 : false,
+    refetchInterval: library ? catalogPoll(library, 2000) : false,
   })
 }
 
@@ -1772,7 +1773,7 @@ export function useTagGroups() {
             'tag_groups',
           )
         : fetchTagGroups(signal),
-    refetchInterval: library ? 2000 : false,
+    refetchInterval: library ? catalogPoll(library, 2000) : false,
   })
 }
 

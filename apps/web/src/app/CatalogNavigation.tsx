@@ -15,6 +15,7 @@ import { Sidebar } from './Sidebar'
 import type { AppMode, Selection } from './types'
 import type { CatalogCollections } from './useCatalogCollections'
 import { CatalogSmartCollectionEditor } from './CatalogSmartCollectionEditor'
+import { catalogPoll } from '../api/catalogRevision'
 
 type ViewCounts = components['schemas']['CatalogViewCounts']
 
@@ -105,13 +106,13 @@ export function CatalogNavigation({
     queryKey: ['catalog-view-counts', library],
     enabled: counted && backgroundReady,
     queryFn: () => catalog<ViewCounts>(library, '/bundles/counts'),
-    refetchInterval: 5000,
+    refetchInterval: catalogPoll(library, 5000),
   })
   const smart = useQuery({
     enabled: backgroundReady,
     queryKey: ['catalog-navigation', library, 'smart_folders'],
     queryFn: () => catalogNavigation<SmartCollectionRead>(library, 'smart_folders'),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   const items = collections.items
   return (

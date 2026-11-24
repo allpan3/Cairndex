@@ -12,6 +12,7 @@ import { commit } from './catalogOrganize'
 import { fileLockKey, withCatalogWriteLock } from './catalogWriteQueue'
 import { captureRequestScope, requestScopeVersion } from './requestScope'
 import type { components } from './schema'
+import { catalogPoll } from './catalogRevision'
 
 export type CatalogFileStarRead = components['schemas']['CatalogFileStarRead']
 export type CatalogFileSelectionRead = components['schemas']['CatalogFileSelectionRead']
@@ -274,7 +275,7 @@ export function useFileStar(library: string, fileId: string | null, enabled: boo
     queryKey: ['catalog-file-star', library, fileId],
     enabled: enabled && fileId !== null,
     queryFn: () => fetchFileStar(library, fileId!),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
 }
 
@@ -336,7 +337,7 @@ export function useFileTagChoices(
           limit: '50',
         })}`,
       ),
-    refetchInterval: assigned ? 2000 : false,
+    refetchInterval: assigned ? catalogPoll(library, 2000) : false,
   })
 }
 

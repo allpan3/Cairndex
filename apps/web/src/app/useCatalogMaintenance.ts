@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { catalog, operationId } from '../api/catalog'
 import { replicaRequest } from '../api/replicas'
+import { catalogPoll } from '../api/catalogRevision'
 
 type Kind = 'probe' | 'storyboards'
 type Progress = { completed: number; total: number; failed: number; skipped: number }
@@ -28,7 +29,13 @@ export function useCatalogMaintenance(library: string, enabled: boolean) {
     enabled,
     queryFn: ({ signal }) =>
       replicaRequest<Maintenance>(library, '/media/maintenance', 'GET', undefined, signal),
-    refetchInterval: 1000,
+    // Progress moves every second while work runs; an idle library follows its revision
+    refetchInterval: (query) => {
+      const data = query.state.data
+      const working =
+        ['queued', 'running'].includes(data?.job?.state ?? '') || (data?.covers?.pending ?? 0) > 0
+      return working ? 1000 : catalogPoll(library, 1000)()
+    },
   })
   const active = ['queued', 'running'].includes(status.data?.job?.state ?? '')
   async function start(kind: Kind) {

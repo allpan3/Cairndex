@@ -22,6 +22,7 @@ import { getActiveDrag, type DragItem } from './dnd'
 import { bundleCount, membershipText, type OrganizeUndo } from './organizeUndo'
 import { RemoveCollectionDialog } from './RemoveCollectionDialog'
 import type { Selection } from './types'
+import { catalogPoll } from '../api/catalogRevision'
 
 /** A navigation collection: `count` is its subtree, `direct_count` its own bundles. */
 export type CatalogCollection = CollectionRead & { count: number; direct_count?: number }
@@ -68,7 +69,7 @@ export function useCatalogCollections(
   const collections = useQuery({
     queryKey: ['catalog-navigation', library, 'collections'],
     queryFn: () => catalogNavigation<CatalogCollection>(library, 'collections'),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   const client = useQueryClient()
   const [deleting, setDeleting] = useState<CollectionRead[] | null>(null)

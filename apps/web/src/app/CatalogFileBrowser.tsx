@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { catalog } from '../api/catalog'
+import { catalogPoll } from '../api/catalogRevision'
 
 // Catalog paths are metadata identities; browsing never probes or modifies physical media
 export function CatalogFileBrowser({
@@ -23,7 +24,7 @@ export function CatalogFileBrowser({
         library,
         `/files?directory=${encodeURIComponent(directory)}&after=${encodeURIComponent(after)}`,
       ),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   function open(path: string) {
     setDirectory(path)

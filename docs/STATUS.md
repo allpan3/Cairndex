@@ -357,6 +357,23 @@ is not an owner-NAS or full-UI Update benchmark.
 
 ## Remaining limits and next steps
 
+- Browser idle load (2026-11-23). Compared with Eagle on the same library, the warm
+  Bundles grid was as fast, but the open window kept about 25 queries polling: 86
+  requests in 10 idle seconds on a 240-bundle synthetic library, with every loaded
+  browse page refetched. Replica status now carries a `revision` that moves only
+  when the private store commits a change, and catalog reads refetch on that
+  instead of their own timers: 14 requests in the same 10 s (status, ownership and
+  auth). Unbundled and File Browser thumbnails now use the shared cover cache, and
+  a new search keeps the previous results on screen until it answers. On the
+  owner's real library, opened by the desktop app's own backend over SMB, 60 idle
+  seconds of the Justified view fell from 8.4 to 6.6 backend CPU-seconds, from 2.9
+  to 1.3 web-page CPU-seconds, and from 2.2 MB to 0.22 MB of backend traffic; the
+  backend still used about 11% of one core there. Not changed: with no client
+  the server still uses about 2.6% CPU for the replica worker's 1 s pass and 2 s
+  exchange, which multi-device sync latency depends on; each request reads the
+  library manifest over SMB to authorize it; and each cover opens its file on the
+  share. Backing off the exchange when idle and caching the
+  manifest identity are the next candidates.
 - Portable migration gaps (owner request, 2026-11-11), merged in #142, not
   installed. Restored: Size, Has missing file and Has cover filters from this
   device's observations; File Browser card hover previews for unchanged observed

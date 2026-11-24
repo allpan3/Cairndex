@@ -18,6 +18,7 @@ import { useContextMenu, type MenuEntry } from './useContextMenu'
 import { hostFileMenuEntries } from './hostActions'
 import { useLocalContactSheet } from './useLocalContactSheet'
 import { ContactSheetDialog } from './ContactSheetDialog'
+import { catalogPoll } from '../api/catalogRevision'
 
 const PAGE = 30
 type Page = components['schemas']['CatalogAlbumPage']
@@ -132,7 +133,7 @@ function FilePage(
         library,
         `/media/bundles/${bundle}/album?offset=${offset}&limit=${PAGE}${directory ? `&directory_id=${encodeURIComponent(directory)}` : ''}`,
       ),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   const items = page.data?.items ?? []
   const files = items.flatMap((item) => (item.file ? [item.file] : []))

@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { catalog, displayCell, runJob, type Job } from '../api/catalog'
+import { catalogPoll } from '../api/catalogRevision'
 
 const actions: Record<Job['action'], string> = {
   save: 'Save metadata',
@@ -30,7 +31,7 @@ export function CatalogJobs({
     queryKey: ['catalog-jobs', library, after],
     queryFn: () =>
       catalog<{ items: Job[]; next_cursor: number | null }>(library, `/jobs?after=${after}`),
-    refetchInterval: 2000,
+    refetchInterval: catalogPoll(library, 2000),
   })
   // Reopening a receipt never executes or repeats the saved intent
   async function open(id: string) {
