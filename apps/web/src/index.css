@@ -327,9 +327,14 @@ button {
   margin: 10px 0;
 }
 .sidebar__heading {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 4px 8px;
+}
+/* A note inside a section, such as an empty Collections list: body text, not a heading */
+.sidebar__note {
+  font-size: 12px;
   color: var(--text-muted);
   padding: 4px 8px;
 }
@@ -349,9 +354,14 @@ button {
 .nav-item:hover {
   background: var(--surface);
 }
+/* The current place is a neutral highlight, as in Finder and Eagle; accent colour
+   stays reserved for selected content */
 .nav-item--active {
-  background: var(--accent-soft);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-strong);
+}
+.nav-item--active .nav-item__icon {
+  opacity: 1;
 }
 .nav-item__icon {
   width: 16px;
@@ -508,6 +518,52 @@ button {
   background: var(--accent-soft);
   color: var(--text-strong);
 }
+/* Toolbar controls are bare icons, as in Eagle and Finder: no frame until the
+   pointer is over one, and the current choice is a neutral fill. Accent stays
+   for content selection and the active filter dot. Grouped buttons keep a small
+   gap instead of shared borders. Filter popovers elsewhere keep framed .seg. */
+.toolbar .seg {
+  border-color: transparent;
+  background: transparent;
+  overflow: visible;
+  gap: 2px;
+}
+.toolbar .seg button,
+.toolbar button.seg {
+  background: transparent;
+  border-radius: 6px;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.toolbar .seg button:hover:not(:disabled),
+.toolbar button.seg:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-strong);
+}
+.toolbar .seg button.is-active,
+.toolbar button.seg.is-active {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-strong);
+}
+.sidebar__titlebar .seg {
+  border-color: transparent;
+  background: transparent;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.sidebar__titlebar .seg:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-strong);
+}
+.toolbar input[type='search'] {
+  border-color: transparent;
+}
+.toolbar input[type='search']:focus {
+  border-color: var(--accent);
+  outline: none;
+}
 /* One turn of the Refresh icon per click (see RefreshButton) */
 .toolbar__refresh--turning .icon {
   animation: toolbar-refresh-turn 450ms ease-out;
@@ -537,6 +593,8 @@ button {
 .toolbar__view-options {
   display: none;
   flex: none;
+  align-items: center;
+  padding: 5px 8px;
   cursor: pointer;
 }
 @container surface (max-width: 700px) {
@@ -639,7 +697,65 @@ button {
   flex: 0 0 auto;
 }
 .zoom input[type='range'] {
-  width: 84px;
+  width: 112px;
+}
+
+/* Every range control in the app: a thin track with a small knob, filled up to the
+   value through --range-fill where a component sets it, instead of WebKit's large
+   default thumb. */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0 var(--range-fill, 0%),
+    var(--border-strong) var(--range-fill, 0%) 100%
+  );
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: #e9ecf2;
+  border: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+input[type='range']::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+input[type='range']::-moz-range-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e9ecf2;
+  border: 0;
+}
+input[type='range']:focus-visible {
+  outline: none;
+}
+input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--accent-soft-strong);
+}
+input[type='range']:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 /* --- Toolbar filter row (ad-hoc filters) --------------------------------- */
@@ -939,9 +1055,8 @@ button {
   align-items: center;
   gap: 4px;
   margin: 12px 6px 4px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-muted);
 }
 .alltags__side-add {
@@ -1509,6 +1624,62 @@ button {
   flex: 0 0 auto;
   aspect-ratio: 16 / 9;
 }
+/* A Justified tile is the cover itself, as in Eagle: no card surface or border,
+   lightly rounded, its labels centred underneath. Selection rings the image a
+   little outside its edge and highlights the title, so a selected cover is not
+   covered by its own frame. The labels take exactly JUSTIFIED_META_HEIGHT
+   (layout.ts), so the cover keeps the shape the row gave it. */
+.card--justified {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.card--justified .card__thumb {
+  border-radius: 5px;
+  overflow: hidden;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.12s ease;
+}
+.card--justified:hover .card__thumb {
+  outline-color: var(--border-strong);
+}
+.card--justified.card--selected,
+.card--justified.card--selected:hover {
+  border: 0;
+  box-shadow: none;
+}
+.card--justified.card--selected .card__thumb {
+  outline-color: var(--accent);
+}
+.card--justified .card__meta {
+  flex: 0 0 36px;
+  box-sizing: border-box;
+  padding: 5px 0 0;
+  text-align: center;
+  line-height: 15px;
+}
+.card--justified .card__title {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border-radius: 4px;
+  vertical-align: top;
+}
+.card--justified.card--selected .card__title {
+  background: var(--accent);
+  color: #fff;
+}
+.card--justified .card__sub {
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+/* The tile already has the cover's shape; cropping a near miss beats black bars */
+.card--justified .hover-preview--media > .cover-image {
+  object-fit: cover;
+}
 .hover-preview--media {
   background-color: #050609;
   background-size: contain;
@@ -1585,15 +1756,22 @@ button {
     display: none;
   }
 }
+/* Badges sit on the image as quiet translucent chips, so they read on any cover */
 .card__badge {
   position: absolute;
   top: 6px;
   left: 6px;
-  background: rgba(0, 0, 0, 0.65);
-  color: #fff;
+  background: rgba(18, 20, 24, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.92);
   font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 3px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 15px;
+  padding: 0 5px;
+  border-radius: 4px;
   text-transform: uppercase;
 }
 .card__open {
@@ -1633,20 +1811,27 @@ button {
 }
 .card__badge--missing {
   background: var(--error);
+  border-color: transparent;
 }
 .card__badge--review {
   background: var(--warn);
+  border-color: transparent;
   color: #1f1600;
 }
 .card__dur {
   position: absolute;
   bottom: 6px;
   right: 6px;
-  background: rgba(0, 0, 0, 0.7);
-  color: #fff;
+  background: rgba(18, 20, 24, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.92);
   font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 3px;
+  font-weight: 500;
+  line-height: 15px;
+  padding: 0 5px;
+  border-radius: 4px;
   font-variant-numeric: tabular-nums;
 }
 .card__meta {
@@ -2286,9 +2471,8 @@ button {
 
 .field-label {
   display: block;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-muted);
   margin: 12px 0 4px;
 }
@@ -3381,6 +3565,31 @@ button {
 }
 .state--error {
   color: var(--error);
+}
+/* A listing's height comes from flex stretch, which a percentage height does not
+   resolve against, so an empty view's message sat at the top of the pane. As a
+   flex column the listing lets the message take the room below anything above it
+   (collection cards) and centre in it. */
+.browser__listing:has(> .state) {
+  display: flex;
+  flex-direction: column;
+}
+.browser__listing:has(> .state) > * {
+  flex-shrink: 0;
+}
+.browser__listing > .state {
+  flex: 1 0 auto;
+  height: auto;
+  padding-bottom: 80px;
+}
+/* The first line says what happened; the rest are hints and actions */
+.state > div:first-child {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.state > .btn {
+  min-width: 160px;
 }
 code {
   font-family: var(--mono);
@@ -5197,11 +5406,14 @@ code {
    pass used — and **not in fullscreen**, where the OS hides the lights entirely
    and the extra inset reads as the title floating for no reason (owner,
    2026-07-27). `:fullscreen` covers the element-fullscreen path; the shell's
-   native window fullscreen sets `data-fullscreen` on the body. */
+   native window fullscreen sets `data-fullscreen` on the body.
+
+   The title shares the lights' line, set 100px in as the sidebar-less toolbar
+   is, rather than sitting under them: stacked below, the lights read as part of
+   the title block. Its two lines centre on the lights' 22px centre line. */
 :root[data-titlebar='overlay'] .mv-topbar {
-  height: 76px;
-  padding-top: 26px;
-  background: linear-gradient(rgba(0, 0, 0, 0.72) 45%, rgba(0, 0, 0, 0));
+  height: 64px;
+  padding: 0 18px 20px 100px;
 }
 :root[data-titlebar='overlay'] .media-viewer:fullscreen .mv-topbar,
 :root[data-titlebar='overlay'] body[data-fullscreen='true'] .mv-topbar {
@@ -7769,7 +7981,9 @@ code {
    body — painting a background box behind those looked broken (visibly so during
    a drag-over, when :hover is active on the drop target), so their hover
    thickens the ring instead. */
-.nav-item--active:hover,
+.nav-item--active:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
 .list-row--selected:hover,
 .file-table .file-row--selected:hover {
   background: var(--accent-soft-strong);
@@ -8162,6 +8376,14 @@ code {
 .collcard:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+/* A Justified tile rings its cover, not its labels: the focused one that is not
+   selected gets a softer ring than selection, so the keyboard cursor stays distinct */
+.browser__listing:focus .card--justified[data-focused='true'] {
+  outline: none;
+}
+.browser__listing:focus .card--justified[data-focused='true']:not(.card--selected) .card__thumb {
+  outline-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 /* Compatibility notices reserve space instead of covering browsing controls. */
 .library-workspace {
@@ -9819,7 +10041,9 @@ button.pick-row:disabled {
   z-index: 150;
   display: flex;
   flex-direction: column;
-  background: rgba(8, 9, 12, 0.88);
+  /* Opaque, as Eagle's and Finder's previews are: the grid showing through a
+     translucent backdrop competed with the item being previewed */
+  background: #0c0d10;
   animation: quick-preview-in var(--motion-duration) var(--motion-easing);
 }
 @keyframes quick-preview-in {

@@ -93,3 +93,25 @@ test('Open bundle trigger distinguishes single vs multi-file cards and stops car
   expect(screen.queryByRole('button', { name: /Open bundle/ })).not.toBeInTheDocument()
   expect(screen.getByText('3')).toBeInTheDocument()
 })
+
+test('a Justified tile labels its cover with the size it knows, and no placeholder dash', () => {
+  const props = {
+    selected: false,
+    showMeta: true,
+    onSelect: vi.fn(),
+    onOpen: vi.fn(),
+    onContextMenu: vi.fn(),
+  }
+  const view = render(
+    <BundleCard item={{ ...baseItem, duration: 4 }} layout="justified" {...props} />,
+  )
+  const card = view.container.querySelector('.card')!
+  expect(card).toHaveClass('card--justified')
+  expect(card).not.toHaveClass('card--framed')
+  // Duration is already on the tile, and the size is unknown: the line stays blank
+  expect(card.querySelector('.card__sub')).toHaveTextContent(/^$/)
+  view.rerender(
+    <BundleCard item={{ ...baseItem, width: 1280, height: 720 }} layout="justified" {...props} />,
+  )
+  expect(card.querySelector('.card__sub')).toHaveTextContent('1280 × 720')
+})

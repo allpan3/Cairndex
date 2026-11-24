@@ -917,11 +917,11 @@ export function Sidebar({
           onContextMenu={collectionsEditable ? collectionsBackgroundMenu : undefined}
         />
         {createError && !collectionDraft && (
-          <div className="sidebar__heading" role="alert">
+          <div className="sidebar__note" role="alert">
             {createError}
           </div>
         )}
-        {tree.length === 0 && <div className="sidebar__heading">No collections yet</div>}
+        {tree.length === 0 && <div className="sidebar__note">No collections yet</div>}
         {tree.map((node, i) => (
           <CollectionBranch
             navigationOnly={!collectionsEditable}

@@ -6,6 +6,7 @@ import { fileThumbnailUrl, thumbnailUrl } from '../api/client'
 import { formatDimensions, formatDuration } from '../lib/format'
 import type { CoverBatchItem } from './coverMemoryCache'
 import { CoverImage } from './CoverImage'
+import { coverAspectKey } from './coverAspects'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
 import { IconLayers } from './icons'
@@ -27,6 +28,8 @@ interface BundleCardProps {
   item: BundleCardItem
   selected: boolean
   showMeta: boolean
+  /** Card frames every cover 16:9; Justified tiles take each cover's own shape */
+  layout?: 'grid' | 'justified'
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
   onOpenAlbum?: (id: string) => void
@@ -44,6 +47,7 @@ export function BundleCard({
   item,
   selected,
   showMeta,
+  layout = 'grid',
   onSelect,
   onOpen,
   onOpenAlbum,
@@ -124,7 +128,7 @@ export function BundleCard({
   )
   return (
     <div
-      className={`card${showMeta ? ' card--framed' : ''}${selected ? ' card--selected' : ''}${
+      className={`card${layout === 'justified' ? ' card--justified' : showMeta ? ' card--framed' : ''}${selected ? ' card--selected' : ''}${
         fileDropOver ? ' card--file-drop' : ''
       }`}
       // Selection happens on press, not release. A drag that begins on an
@@ -156,7 +160,11 @@ export function BundleCard({
     >
       <HoverPreview source={previewSource} disabled={previewDisabled} className="card__thumb">
         {item.has_cover ? (
-          <CoverImage batch={item.cover_batch} src={thumbnailUrl(item.id, item.cover_key)} />
+          <CoverImage
+            batch={item.cover_batch}
+            src={thumbnailUrl(item.id, item.cover_key)}
+            aspectKey={coverAspectKey(item.id, item.cover_key)}
+          />
         ) : (
           <div className="card__placeholder">▦</div>
         )}
@@ -210,12 +218,19 @@ export function BundleCard({
       </HoverPreview>
       {showMeta && (
         <div className="card__meta">
-          <div className="card__title">{item.title ?? 'Untitled'}</div>
+          <div className="card__title" title={item.title ?? 'Untitled'}>
+            {item.title ?? 'Untitled'}
+          </div>
           <div className="card__sub">
             <span>
-              {isVideo && item.duration
-                ? formatDuration(item.duration)
-                : formatDimensions(item.width, item.height)}
+              {layout === 'justified'
+                ? // The tile shows duration already; an unknown size is left blank, not dashed
+                  item.width && item.height
+                  ? formatDimensions(item.width, item.height)
+                  : ''
+                : isVideo && item.duration
+                  ? formatDuration(item.duration)
+                  : formatDimensions(item.width, item.height)}
             </span>
           </div>
         </div>

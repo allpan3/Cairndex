@@ -20,6 +20,7 @@ import { SettingsMenu } from './SettingsMenu'
 import type { ClipRangeController } from './useClipRange'
 import type { HlsSessionState } from './useHlsSession'
 import type { PlayerController } from './usePlayer'
+import { rangeFill } from '../../../lib/rangeFill'
 
 interface ControlBarProps {
   player: PlayerController
@@ -132,6 +133,7 @@ export function ControlBar({
           max={1}
           step={0.01}
           value={player.muted ? 0 : player.volume}
+          style={rangeFill(player.muted ? 0 : player.volume, 0, 1)}
           onChange={(event) => player.setVolume(Number(event.currentTarget.value))}
         />
         <button
