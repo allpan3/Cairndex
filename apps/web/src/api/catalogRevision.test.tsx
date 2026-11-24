@@ -26,7 +26,7 @@ function setup() {
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     ),
   })
-  return { invalidated, refreshes, view }
+  return { client, invalidated, refreshes, view }
 }
 
 afterEach(() => {
@@ -68,5 +68,33 @@ describe('useCatalogRevision', () => {
     expect(refreshes).toHaveBeenCalledTimes(1)
     vi.advanceTimersByTime(1500)
     expect(refreshes).toHaveBeenCalledTimes(2)
+  })
+
+  it('lets a page being appended finish, then refreshes it unless the append failed', () => {
+    vi.useFakeTimers()
+    const { client, invalidated, view } = setup()
+    const browse = client.getQueryCache().find({ queryKey: ['catalog-browse', 'lib-a', 'q'] })!
+    const appending = {
+      fetchStatus: 'fetching',
+      fetchMeta: { fetchMore: { direction: 'forward' } },
+    } as const
+    browse.setState(appending)
+    view.rerender({ revision: 'h.1' })
+    view.rerender({ revision: 'h.2' })
+    expect(invalidated).toEqual([['catalog-detail', 'lib-a', 'asset_bundles', 'b1']])
+    vi.advanceTimersByTime(1500)
+    expect(invalidated).toHaveLength(1)
+    browse.setState({ fetchStatus: 'idle', fetchMeta: null })
+    vi.advanceTimersByTime(1500)
+    expect(invalidated.at(-1)).toEqual(['catalog-browse', 'lib-a', 'q'])
+
+    invalidated.length = 0
+    for (const query of client.getQueryCache().getAll()) query.setState({ isInvalidated: false })
+    browse.setState(appending)
+    view.rerender({ revision: 'h.3' })
+    vi.advanceTimersByTime(1500)
+    browse.setState({ fetchStatus: 'idle', fetchMeta: null, status: 'error' })
+    vi.advanceTimersByTime(3000)
+    expect(invalidated).toEqual([['catalog-detail', 'lib-a', 'asset_bundles', 'b1']])
   })
 })

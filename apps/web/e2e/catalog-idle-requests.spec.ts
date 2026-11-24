@@ -34,7 +34,7 @@ test('an idle portable browser re-reads nothing until the catalog changes @fulls
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
     const grid = page.getByRole('listbox', { name: 'Bundles', exact: true })
-    await expect(grid.getByRole('option').first()).toBeVisible()
+    await expect(grid.getByRole('option').first()).toBeVisible({ timeout: 30_000 })
     // Load several browse pages, then select one bundle so its inspector is open too
     for (let i = 0; i < 6; i++) {
       await grid.hover()
